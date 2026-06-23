@@ -1,0 +1,207 @@
+import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Play, Clock, FileText, CheckCircle2, RotateCcw,
+} from 'lucide-react';
+import { PageHeader, Card, Button, Badge, Skeleton } from '../../shared/ui';
+import { useAssessments } from '../../../hooks/useAssessments';
+import { useMySubmissions } from '../../../hooks/useSubmissions';
+import { assessmentTakeApi, type TakeSubmission, type SubmissionResult } from '../../../hooks/useSubmissionApi';
+import { useToasts } from '../../shared/ui';
+
+export function MyAssessmentsPage() {
+  const [tab, setTab]         = useState<'available' | 'completed'>('available');
+  const [startingId, setStartingId] = useState<string | null>(null);
+  const navigate              = useNavigate();
+  const { push, node }        = useToasts();
+
+  const { data: available, loading: aLoading } = useAssessments({ status: 'PUBLISHED', limit: 20 });
+  const { data: completed, loading: cLoading } = useMySubmissions({ status: 'GRADED', limit: 20 });
+  const { data: inProgressSubs, loading: iLoading } = useMySubmissions({ status: 'IN_PROGRESS', limit: 20 });
+
+  const loading = aLoading || cLoading || iLoading;
+
+  // Build a map of assessmentId → submissionId for in-progress attempts
+  const inProgressMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of inProgressSubs?.items ?? []) {
+      m.set(s.assessment.id, s.id);
+    }
+    return m;
+  }, [inProgressSubs]);
+
+  const handleStart = async (assessmentId: string) => {
+    setStartingId(assessmentId);
+    try {
+      const resp = await assessmentTakeApi.start(assessmentId);
+
+      if (resp.autoSubmitted) {
+        // Time already expired while starting — go straight to result page
+        const result = resp.submission as SubmissionResult;
+        push({ kind: 'info', title: 'Time already expired', sub: 'Redirecting to your results…' });
+        setTimeout(() => navigate(`/student/assessment-result/${result.id}`, { state: { result } }), 400);
+        return;
+      }
+
+      const sub = resp.submission as TakeSubmission;
+      navigate(`/student/take/${sub.id}`, { state: { submission: sub } });
+    } catch (e: any) {
+      push({ kind: 'danger', title: 'Cannot start', sub: e.message });
+    } finally {
+      setStartingId(null);
+    }
+  };
+
+  const tabs = [
+    { id: 'available' as const, label: 'Available',  count: available?.meta.total ?? 0 },
+    { id: 'completed' as const, label: 'Completed',  count: completed?.meta.total ?? 0  },
+  ];
+
+  return (
+    <>
+      {node}
+      <PageHeader
+        eyebrow="Student · Assessments"
+        title="My Assessments"
+        subtitle="Assessments assigned to you and your recent results."
+      />
+
+      <div className="flex gap-2 mb-5">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`h-9 px-4 rounded-xl text-[12.5px] font-semibold transition ${
+              tab === t.id
+                ? 'bg-brand text-brand-ink'
+                : 'bg-surface1 text-fg2 border border-line hover:text-fg1'
+            }`}
+          >
+            {t.label} <span className="opacity-60">({t.count})</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ── Available tab ─────────────────────────────────────── */}
+      {tab === 'available' && (
+        loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i} className="p-5"><Skeleton className="h-36" /></Card>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {(available?.items ?? []).map((a) => {
+              const isInProgress = inProgressMap.has(a.id);
+              const isStarting   = startingId === a.id;
+
+              return (
+                <Card
+                  key={a.id}
+                  className="p-5 group flex flex-col hover:border-line2 transition"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="w-11 h-11 rounded-xl bg-brand-soft text-brand grid place-items-center">
+                      <FileText size={18} />
+                    </div>
+                    <Badge tone={isInProgress ? 'warning' : 'success'}>
+                      {isInProgress ? 'In Progress' : 'Available'}
+                    </Badge>
+                  </div>
+
+                  <h3 className="font-display font-semibold text-[15.5px] text-fg1 mb-1 group-hover:text-brand transition">
+                    {a.title}
+                  </h3>
+                  <p className="text-[12.5px] text-fg3 line-clamp-2 mb-3">
+                    {a.description ?? 'No description'}
+                  </p>
+
+                  <div className="flex items-center gap-4 text-[11.5px] text-fg3 mb-4">
+                    <span className="flex items-center gap-1">
+                      <Clock size={11} />{a.duration} min
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <FileText size={11} />{a.questionCount} questions
+                    </span>
+                    {a.subject && <span>{a.subject.name}</span>}
+                  </div>
+
+                  <Button
+                    icon={isInProgress ? RotateCcw : Play}
+                    className="w-full mt-auto"
+                    onClick={() => handleStart(a.id)}
+                    disabled={isStarting}
+                  >
+                    {isStarting ? 'Loading…' : isInProgress ? 'Resume' : 'Start now'}
+                  </Button>
+                </Card>
+              );
+            })}
+
+            {!aLoading && !available?.items?.length && (
+              <div className="col-span-full text-center py-12 text-fg3 text-[13px]">
+                No assessments available right now
+              </div>
+            )}
+          </div>
+        )
+      )}
+
+      {/* ── Completed tab ─────────────────────────────────────── */}
+      {tab === 'completed' && (
+        cLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i} className="p-5"><Skeleton className="h-36" /></Card>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {(completed?.items ?? []).map((s) => (
+              <Card key={s.id} className="p-5 group flex flex-col hover:border-line2 transition">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-11 h-11 rounded-xl bg-brand-soft text-brand grid place-items-center">
+                    <FileText size={18} />
+                  </div>
+                  <Badge tone="info">Completed</Badge>
+                </div>
+
+                <h3 className="font-display font-semibold text-[15.5px] text-fg1 mb-1 group-hover:text-brand transition">
+                  {s.assessment.title}
+                </h3>
+                {s.assessment.subject && (
+                  <p className="text-[12px] text-fg3 mb-1">{s.assessment.subject.name}</p>
+                )}
+
+                <div className="text-[11.5px] text-fg3 mb-4">
+                  Score:{' '}
+                  <span className="font-mono font-semibold text-fg1">{s.score}/{s.totalMarks}</span>
+                  {' · '}{s.percent}%
+                </div>
+
+                <Button
+                  variant="soft"
+                  icon={CheckCircle2}
+                  className="w-full mt-auto"
+                  onClick={() => navigate(`/student/assessment-result/${s.id}`)}
+                >
+                  View Results
+                </Button>
+              </Card>
+            ))}
+
+            {!cLoading && !completed?.items?.length && (
+              <div className="col-span-full text-center py-12 text-fg3 text-[13px]">
+                No completed assessments.{' '}
+                <button onClick={() => setTab('available')} className="text-brand">
+                  Start one →
+                </button>
+              </div>
+            )}
+          </div>
+        )
+      )}
+    </>
+  );
+}

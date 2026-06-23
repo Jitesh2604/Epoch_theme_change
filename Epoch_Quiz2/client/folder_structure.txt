@@ -1,0 +1,41 @@
+src/
+├── App.tsx
+├── main.tsx
+├── components/
+│   ├── index.ts
+│   ├── layout/
+│   │   ├── index.ts
+│   │   ├── Footer.tsx
+│   │   ├── NavBar.tsx
+│   │   └── PageHead.tsx
+│   └── ui/
+│       ├── index.ts
+│       ├── Confetti.tsx
+│       ├── Icon.tsx
+│       └── Toast.tsx
+├── lib/
+│   ├── data.ts
+│   └── i18n.ts
+├── pages/
+│   ├── auth/
+│   │   ├── _shared.tsx
+│   │   ├── LoginPage.tsx
+│   │   └── SignupPage.tsx
+│   ├── home/
+│   │   └── HomePage.tsx
+│   ├── quiz/
+│   │   ├── CategoryPage.tsx
+│   │   ├── LevelSelectPage.tsx
+│   │   ├── QuizInterfacePage.tsx
+│   │   ├── QuizPlayPage.tsx
+│   │   └── ResultPage.tsx
+│   └── static/
+│       ├── InstructionPage.tsx
+│       └── StaticPage.tsx
+├── styles/
+│   ├── index.css
+│   └── tokens.css
+├── tweaks/
+│   └── TweaksPanel.tsx
+└── types/
+    └── index.ts

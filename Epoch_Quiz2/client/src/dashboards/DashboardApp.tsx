@@ -1,0 +1,74 @@
+import { useEffect, useState, Component, type ReactNode, type ErrorInfo } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { RoleSelectionPage } from './RoleSelectionPage';
+import { AdminDashboard } from './admin/AdminDashboard';
+import { TeacherDashboard } from './teacher/TeacherDashboard';
+import { StudentDashboard } from './student/StudentDashboard';
+import { RequireRole } from './shared/RequireRole';
+import { getRole, pathForRole } from './shared/auth';
+import { refreshSession, getRefreshToken } from '../lib/authStore';
+
+class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('[Dashboard] Render error:', error, info); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen bg-bg text-fg1 grid place-items-center px-6">
+          <div className="max-w-sm text-center space-y-3">
+            <h2 className="font-display font-semibold text-[20px]">Something went wrong</h2>
+            <p className="text-[13px] text-fg2">{(this.state.error as Error).message}</p>
+            <button onClick={() => window.location.reload()} className="px-4 py-2 rounded-xl bg-brand text-brand-ink text-[13px] font-semibold">
+              Reload
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function RootFallback() {
+  const role = getRole();
+  return <Navigate to={role ? pathForRole(role) : '/select-role'} replace />;
+}
+
+export function DashboardApp() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const theme = localStorage.getItem('epoch-theme') ?? 'dark';
+    document.documentElement.classList.toggle('theme-light', theme === 'light');
+
+    // Always attempt session restore when there is a refresh token.
+    // Do NOT gate this on loadUser() — epoch-user can be absent (e.g. after
+    // the previous refreshSession bug cleared it) while epoch-refresh-token
+    // is still valid. Without this, the access token is never restored and
+    // every API call fires without an Authorization header → 401.
+    if (getRefreshToken()) {
+      refreshSession()
+        .catch(() => { /* clearTokens already called inside refreshSession */ })
+        .finally(() => setReady(true));
+    } else {
+      setReady(true);
+    }
+  }, []);
+
+  if (!ready) return null;
+
+  return (
+    <DashboardErrorBoundary>
+    <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+      <Routes>
+        <Route path="/select-role" element={<RoleSelectionPage />} />
+        <Route path="/admin/*"   element={<RequireRole role="admin"><AdminDashboard /></RequireRole>} />
+        <Route path="/teacher/*" element={<RequireRole role="teacher"><TeacherDashboard /></RequireRole>} />
+        <Route path="/student/*" element={<RequireRole role="student"><StudentDashboard /></RequireRole>} />
+        <Route path="*" element={<RootFallback />} />
+      </Routes>
+    </BrowserRouter>
+    </DashboardErrorBoundary>
+  );
+}

@@ -1,0 +1,245 @@
+/* ============================================================
+   Epoch Quiz — Design Tokens v2
+   Palette: Deep Olive · Moss Green · Tan · Bone · Café Noir
+   Light mode is the DEFAULT. Dark mode uses class="dark" on <html>.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* ── Primitive palette ── */
+:root {
+  --olive-950: #111408;
+  --olive-900: #1C2010;
+  --olive-800: #252C17;
+  --olive-700: #354024;
+  --olive-600: #4A5A32;
+  --olive-500: #607240;
+  --olive-400: #7A8A50;
+  --olive-300: #96A46A;
+  --olive-200: #B5C090;
+  --olive-100: #D2DCB8;
+  --olive-50:  #EBF0E0;
+
+  --moss-600: #6A7448;
+  --moss-500: #889063;
+  --moss-400: #9EA874;
+  --moss-300: #B5BF88;
+
+  --caramel-950: #1A0E04;
+  --caramel-900: #2C1E08;
+  --caramel-800: #4C3D19;
+  --caramel-700: #6B5525;
+  --caramel-600: #8A6F35;
+  --caramel-500: #AA8C52;
+  --caramel-400: #CFBB99;
+  --caramel-300: #DDD0B0;
+  --caramel-200: #E5D7C4;
+  --caramel-100: #EFE7D8;
+  --caramel-50:  #F7F2E8;
+
+  /* ─────────────────────────────────────
+     LIGHT MODE (default)
+     ───────────────────────────────────── */
+  --bg:           #F5EDE0;
+  --surface-1:    #FFFFFF;
+  --surface-2:    #FAF5EE;
+  --surface-3:    #F2EAD8;
+  --glass:        rgba(255, 255, 255, 0.85);
+  --glass-strong: rgba(255, 255, 255, 0.96);
+
+  --fg-1: #2C1E08;
+  --fg-2: #4C3D19;
+  --fg-3: #7A6847;
+  --fg-4: #B0987A;
+
+  --border-1:      rgba(76, 61, 25, 0.10);
+  --border-2:      rgba(76, 61, 25, 0.18);
+  --border-strong: rgba(76, 61, 25, 0.30);
+
+  --brand:        #354024;
+  --brand-hover:  #2A3319;
+  --brand-soft:   rgba(53, 64, 36, 0.08);
+  --brand-ink:    #FFFFFF;
+  --warm:         #889063;
+  --warm-soft:    rgba(136, 144, 99, 0.10);
+
+  --success: #2E7D32;
+  --warn:    #B45309;
+  --danger:  #B91C1C;
+  --info:    #1565C0;
+
+  --ring: 0 0 0 2px var(--brand), 0 0 0 5px rgba(53, 64, 36, 0.12);
+
+  --shadow-elev-1: 0 1px 3px rgba(44, 30, 8, 0.06), 0 4px 16px rgba(44, 30, 8, 0.05);
+  --shadow-elev-2: 0 2px 8px rgba(44, 30, 8, 0.08), 0 16px 40px rgba(44, 30, 8, 0.08);
+  --shadow-glow:   0 0 0 1px rgba(53, 64, 36, 0.15), 0 8px 28px rgba(53, 64, 36, 0.18);
+  --inset-top:     inset 0 1px 0 rgba(255, 255, 255, 0.70);
+
+  --aurora-mesh:
+    radial-gradient(60% 80% at 10% 0%,   rgba(136, 144, 99, 0.16) 0%,  transparent 65%),
+    radial-gradient(50% 60% at 90% 100%, rgba(207, 187, 153, 0.20) 0%, transparent 65%),
+    radial-gradient(40% 50% at 50% 50%,  rgba(239, 231, 216, 0.28) 0%, transparent 65%);
+
+  /* ─────────────────────────────────────
+     Radii
+     ───────────────────────────────────── */
+  --radius-xs:   4px;
+  --radius-sm:   8px;
+  --radius-md:   10px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-2xl:  20px;
+  --radius-pill: 999px;
+
+  /* ─────────────────────────────────────
+     Spacing
+     ───────────────────────────────────── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* ─────────────────────────────────────
+     Motion
+     ───────────────────────────────────── */
+  --ease:      cubic-bezier(.22, 1, .36, 1);
+  --dur-fast:  140ms;
+  --dur-base:  220ms;
+  --dur-slow:  360ms;
+  --dur-page:  500ms;
+
+  /* ─────────────────────────────────────
+     Typography
+     ───────────────────────────────────── */
+  --font-display: 'Lora', Georgia, 'Times New Roman', serif;
+  --font-body:    'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --text-xs:   11px;
+  --text-sm:   13px;
+  --text-base: 15px;
+  --text-md:   17px;
+  --text-lg:   20px;
+  --text-xl:   23px;
+  --text-2xl:  28px;
+  --text-3xl:  36px;
+  --text-4xl:  44px;
+  --text-5xl:  56px;
+  --text-6xl:  70px;
+
+  --leading-tight:   1.15;
+  --leading-snug:    1.30;
+  --leading-normal:  1.55;
+  --leading-relaxed: 1.70;
+
+  --tracking-tight:  -0.02em;
+  --tracking-snug:   -0.01em;
+  --tracking-normal: 0em;
+  --tracking-wide:   0.05em;
+}
+
+/* ─────────────────────────────────────
+   DARK MODE — class="dark" on <html>
+   ───────────────────────────────────── */
+.dark {
+  --bg:           #1A1812;
+  --surface-1:    #222018;
+  --surface-2:    #2A2820;
+  --surface-3:    #333028;
+  --glass:        rgba(34, 32, 24, 0.88);
+  --glass-strong: rgba(40, 38, 28, 0.96);
+
+  --fg-1: #EDE4D0;
+  --fg-2: #C4B490;
+  --fg-3: #8A7A58;
+  --fg-4: #5C4C34;
+
+  --border-1:      rgba(207, 187, 153, 0.10);
+  --border-2:      rgba(207, 187, 153, 0.18);
+  --border-strong: rgba(207, 187, 153, 0.28);
+
+  --brand:        #6A8A44;
+  --brand-hover:  #7A9A52;
+  --brand-soft:   rgba(106, 138, 68, 0.14);
+  --brand-ink:    #FFFFFF;
+  --warm:         #8A9068;
+  --warm-soft:    rgba(138, 144, 104, 0.12);
+
+  --success: #4CAF50;
+  --warn:    #F59E0B;
+  --danger:  #EF5350;
+  --info:    #42A5F5;
+
+  --ring: 0 0 0 2px var(--brand), 0 0 0 5px rgba(106, 138, 68, 0.15);
+
+  --shadow-elev-1: 0 1px 3px rgba(0, 0, 0, 0.30), 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-elev-2: 0 2px 8px rgba(0, 0, 0, 0.35), 0 16px 40px rgba(0, 0, 0, 0.50);
+  --shadow-glow:   0 0 0 1px rgba(106, 138, 68, 0.20), 0 8px 28px rgba(106, 138, 68, 0.18);
+  --inset-top:     inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+  --aurora-mesh:
+    radial-gradient(60% 80% at 10% 0%,   rgba(106, 138, 68, 0.12) 0%,  transparent 65%),
+    radial-gradient(50% 60% at 90% 100%, rgba(138, 144, 104, 0.10) 0%, transparent 65%),
+    radial-gradient(40% 50% at 50% 50%,  rgba(53, 64, 36, 0.08) 0%,  transparent 65%);
+}
+
+/* ─────────────────────────────────────
+   Backward compat: .theme-light still adds light styling
+   (used by legacy components; dark is now opt-in only)
+   ───────────────────────────────────── */
+.theme-light { /* light is default — this class is now a no-op */ }
+
+/* ─────────────────────────────────────
+   Base element styles
+   ───────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg-1);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+  margin: 0;
+  color: var(--fg-1);
+  text-wrap: balance;
+}
+h1 { font-size: var(--text-5xl); font-weight: 700; }
+h2 { font-size: var(--text-3xl); }
+h3 { font-size: var(--text-2xl); }
+h4 { font-size: var(--text-xl); }
+h5 { font-size: var(--text-md); letter-spacing: var(--tracking-snug); }
+
+p { margin: 0; color: var(--fg-2); line-height: var(--leading-relaxed); text-wrap: pretty; }
+
+a { color: var(--brand); text-decoration: none; transition: opacity var(--dur-fast) var(--ease); }
+a:hover { opacity: 0.75; }
+
+code, pre, kbd { font-family: var(--font-mono); font-size: 0.90em; }
+button { font-family: inherit; }
+
+::selection { background: rgba(53, 64, 36, 0.12); color: var(--fg-1); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

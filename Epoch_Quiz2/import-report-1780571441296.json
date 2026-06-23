@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-06-04T11:10:41.296Z",
+  "sourceFile": "C:\\Jite\\Epoch_Quiz\\questions_1_100.json",
+  "creator": {
+    "email": "admin@epoch.local",
+    "role": "SUPER_ADMIN"
+  },
+  "totalFound": 98,
+  "validRecords": 98,
+  "invalidRecords": 0,
+  "duplicatesSkipped": 0,
+  "inserted": 98,
+  "insertFailed": 0,
+  "dbVerification": {
+    "checked": 98,
+    "found": 98,
+    "missing": 0,
+    "missingPrompts": []
+  },
+  "totalQuestionsInBank": 98,
+  "validationErrors": [],
+  "insertErrors": []
+}

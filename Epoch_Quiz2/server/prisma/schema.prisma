@@ -1,0 +1,895 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Publication {
+  id           String       @id @default(cuid())
+  name         String
+  mobileNo     String?
+  email        String?      @unique
+  passwordHash String?
+  gstNo        String?
+  panNo        String?
+  address      String?      @db.Text
+  country      String?
+  state        String?
+  city         String?
+  zip          String?
+  logoUrl      String?
+  status       UserStatus   @default(PENDING)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  assessments  Assessment[]
+  boards       Board[]
+  books        Book[]
+  quizzes      Quiz[]
+  series       Series[]
+  users        User[]       @relation("PublicationUsers")
+
+  @@map("publications")
+}
+
+model Board {
+  id              String           @id @default(cuid())
+  name            String
+  publicationId   String?
+  status          UserStatus       @default(ACTIVE)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  assessments     Assessment[]
+  publication     Publication?     @relation(fields: [publicationId], references: [id])
+  books           Book[]
+  quizzes         Quiz[]
+  studentProfiles StudentProfile[]
+  teacherProfiles TeacherProfile[]
+
+  @@index([publicationId])
+  @@map("boards")
+}
+
+model Series {
+  id              String           @id @default(cuid())
+  name            String
+  publicationId   String?
+  status          UserStatus       @default(ACTIVE)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  books           Book[]
+  quizzes         Quiz[]
+  publication     Publication?     @relation(fields: [publicationId], references: [id])
+  studentProfiles StudentProfile[]
+  teacherSeries   TeacherSeries[]
+
+  @@index([publicationId])
+  @@map("series")
+}
+
+model Class {
+  id                        String                    @id @default(cuid())
+  name                      String
+  serial                    String?
+  status                    UserStatus                @default(ACTIVE)
+  createdAt                 DateTime                  @default(now())
+  updatedAt                 DateTime                  @updatedAt
+  assessmentAssignedClasses AssessmentAssignedClass[]
+  assessments               Assessment[]
+  books                     Book[]
+  questions                 Question[]
+  quizAssignedClasses       QuizAssignedClass[]
+  quizzes                   Quiz[]
+  studentProfiles           StudentProfile[]
+  teacherClasses            TeacherClass[]
+
+  @@map("classes")
+}
+
+model Subject {
+  id              String           @id @default(cuid())
+  name            String           @unique
+  slug            String           @unique
+  serial          String?
+  status          UserStatus       @default(ACTIVE)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  assessments     Assessment[]
+  books           Book[]
+  questions       Question[]
+  quizzes         Quiz[]
+  teacherSubjects TeacherSubject[]
+
+  @@map("subjects")
+}
+
+model Book {
+  id            String        @id @default(cuid())
+  name          String
+  publicationId String?
+  boardId       String?
+  seriesId      String?
+  classId       String?
+  subjectId     String?
+  isbn          String?       @unique
+  imageUrl      String?
+  status        UserStatus    @default(ACTIVE)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  assessments   Assessment[]
+  board         Board?        @relation(fields: [boardId], references: [id])
+  class         Class?        @relation(fields: [classId], references: [id])
+  publication   Publication?  @relation(fields: [publicationId], references: [id])
+  series        Series?       @relation(fields: [seriesId], references: [id])
+  subject       Subject?      @relation(fields: [subjectId], references: [id])
+  chapters      Chapter[]
+  questions     Question[]
+  quizzes       Quiz[]
+  studentBooks  StudentBook[]
+  teacherBooks  TeacherBook[]
+
+  @@index([publicationId])
+  @@index([boardId])
+  @@index([seriesId])
+  @@index([classId])
+  @@index([subjectId])
+  @@map("books")
+}
+
+model Chapter {
+  id                 String              @id @default(cuid())
+  name               String
+  bookId             String?
+  serial             Int?
+  status             UserStatus          @default(ACTIVE)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  assessmentChapters AssessmentChapter[]
+  book               Book?               @relation(fields: [bookId], references: [id])
+  questions          Question[]
+  quizChapters       QuizChapter[]
+
+  @@index([bookId])
+  @@map("chapters")
+}
+
+model User {
+  id                         String                      @id @default(cuid())
+  email                      String                      @unique
+  mobileNo                   String?                     @unique
+  passwordHash               String
+  name                       String
+  role                       Role
+  status                     UserStatus                  @default(ACTIVE)
+  avatarHue                  Int                         @default(180)
+  profileComplete            Boolean                     @default(false)
+  publicationId              String?
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
+  assessmentAssignedStudents AssessmentAssignedStudent[]
+  createdAssessments         Assessment[]                @relation("AssessmentCreatedBy")
+  leaderboardEntries         Leaderboard[]               @relation("StudentLeaderboard")
+  questionUploads            QuestionUpload[]            @relation("UploaderQuestions")
+  createdQuestions           Question[]                  @relation("QuestionCreatedBy")
+  quizAssignedStudents       QuizAssignedStudent[]
+  quizAttempts               QuizAttempt[]               @relation("StudentAttempts")
+  createdQuizzes             Quiz[]                      @relation("QuizCreatedBy")
+  refreshTokens              RefreshToken[]
+  studentProfile             StudentProfile?
+  submissions                Submission[]
+  teacherProfile             TeacherProfile?
+  publication                Publication?                @relation("PublicationUsers", fields: [publicationId], references: [id])
+
+  @@index([role])
+  @@index([status])
+  @@index([publicationId])
+  @@map("users")
+}
+
+model TeacherProfile {
+  id             String           @id @default(cuid())
+  userId         String           @unique
+  mobileNo       String?
+  dob            DateTime?
+  schoolName     String?
+  boardId        String?
+  educationBoard String?
+  stateBoard     String?
+  teacherCode    String?          @unique
+  address        String?          @db.Text
+  country        String?
+  state          String?
+  city           String?
+  zip            String?
+  imageUrl       String?
+  bio            String?          @db.Text
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  books          TeacherBook[]
+  classes        TeacherClass[]
+  board          Board?           @relation(fields: [boardId], references: [id])
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teacherSeries  TeacherSeries[]
+  subjects       TeacherSubject[]
+
+  @@index([boardId])
+  @@map("teacher_profiles")
+}
+
+model StudentProfile {
+  id             String        @id @default(cuid())
+  userId         String        @unique
+  mobileNo       String?
+  dob            DateTime?
+  schoolName     String?
+  boardId        String?
+  educationBoard String?
+  stateBoard     String?
+  classId        String?
+  seriesId       String?
+  teacherCode    String?
+  address        String?       @db.Text
+  country        String?
+  state          String?
+  city           String?
+  zip            String?
+  imageUrl       String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  books          StudentBook[]
+  board          Board?        @relation(fields: [boardId], references: [id])
+  class          Class?        @relation(fields: [classId], references: [id])
+  series         Series?       @relation(fields: [seriesId], references: [id])
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([boardId])
+  @@index([classId])
+  @@index([seriesId], map: "student_profiles_seriesId_fkey")
+  @@map("student_profiles")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model StudentBook {
+  studentProfileId String
+  bookId           String
+  book             Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  studentProfile   StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+
+  @@id([studentProfileId, bookId])
+  @@index([bookId], map: "student_books_bookId_fkey")
+  @@map("student_books")
+}
+
+model TeacherClass {
+  teacherProfileId String
+  classId          String
+  class            Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacherProfile   TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
+
+  @@id([teacherProfileId, classId])
+  @@index([classId], map: "teacher_classes_classId_fkey")
+  @@map("teacher_classes")
+}
+
+model TeacherSubject {
+  teacherProfileId String
+  subjectId        String
+  subject          Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacherProfile   TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
+
+  @@id([teacherProfileId, subjectId])
+  @@index([subjectId], map: "teacher_subjects_subjectId_fkey")
+  @@map("teacher_subjects")
+}
+
+model TeacherSeries {
+  teacherProfileId String
+  seriesId         String
+  series           Series         @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  teacherProfile   TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
+
+  @@id([teacherProfileId, seriesId])
+  @@index([seriesId], map: "teacher_series_seriesId_fkey")
+  @@map("teacher_series")
+}
+
+model TeacherBook {
+  teacherProfileId String
+  bookId           String
+  book             Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  teacherProfile   TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
+
+  @@id([teacherProfileId, bookId])
+  @@index([bookId], map: "teacher_books_bookId_fkey")
+  @@map("teacher_books")
+}
+
+model Question {
+  id                  String               @id @default(cuid())
+  type                QuestionType
+  prompt              String               @db.Text
+  promptImageUrl      String?
+  optionA             String?
+  optionAImageUrl     String?
+  optionB             String?
+  optionBImageUrl     String?
+  optionC             String?
+  optionCImageUrl     String?
+  optionD             String?
+  optionDImageUrl     String?
+  correctAnswer       String?
+  correctOptions      String               @db.LongText
+  correctBoolean      Boolean?
+  modelAnswer         String?              @db.Text
+  matchPairs          String?              @db.LongText
+  explanation         String?              @db.Text
+  explanationImageUrl String?
+  marks               Int                  @default(1)
+  negativeMarks       Float                @default(0)
+  difficulty          Difficulty           @default(MEDIUM)
+  language            String?              @default("English")
+  tags                String               @db.LongText
+  status              UserStatus           @default(ACTIVE)
+  bookId              String?
+  chapterId           String?
+  subjectId           String?
+  classId             String?
+  createdById         String
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  answers             Answer[]
+  assessments         AssessmentQuestion[]
+  attemptAnswers      AttemptAnswer[]
+  book                Book?                @relation(fields: [bookId], references: [id])
+  chapter             Chapter?             @relation(fields: [chapterId], references: [id])
+  class               Class?               @relation(fields: [classId], references: [id])
+  createdBy           User                 @relation("QuestionCreatedBy", fields: [createdById], references: [id])
+  subject             Subject?             @relation(fields: [subjectId], references: [id])
+  quizQuestions       QuizQuestion[]
+
+  @@index([createdById])
+  @@index([type])
+  @@index([subjectId])
+  @@index([difficulty])
+  @@index([bookId])
+  @@index([chapterId])
+  @@index([classId])
+  @@map("questions")
+}
+
+model Assessment {
+  id                 String                      @id @default(cuid())
+  title              String
+  assessmentType     AssessmentType              @default(CHAPTER_TEST)
+  description        String?                     @db.Text
+  boardId            String?
+  classId            String?
+  subjectId          String?
+  bookId             String?
+  questionSelection  QuestionSelection           @default(MANUAL)
+  totalQuestions     Int                         @default(0)
+  duration           Int                         @default(60)
+  totalMarks         Int                         @default(0)
+  passingMarks       Int                         @default(0)
+  negativeMarking    Boolean                     @default(false)
+  negativeMarksValue Float                       @default(0)
+  shuffleQuestions   Boolean                     @default(false)
+  showResultAfter    ShowResultAfter             @default(IMMEDIATELY)
+  showExplanation    Boolean                     @default(true)
+  instructions       String?                     @db.Text
+  language           String?                     @default("English")
+  bannerImageUrl     String?
+  startDatetime      DateTime?
+  endDatetime        DateTime?
+  status             AssessmentStatus            @default(DRAFT)
+  publishedAt        DateTime?
+  createdById        String
+  publicationId      String?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+  assignedClasses    AssessmentAssignedClass[]
+  assignedStudents   AssessmentAssignedStudent[]
+  chapters           AssessmentChapter[]
+  questions          AssessmentQuestion[]
+  board              Board?                      @relation(fields: [boardId], references: [id])
+  book               Book?                       @relation(fields: [bookId], references: [id])
+  class              Class?                      @relation(fields: [classId], references: [id])
+  createdBy          User                        @relation("AssessmentCreatedBy", fields: [createdById], references: [id])
+  publication        Publication?                @relation(fields: [publicationId], references: [id])
+  subject            Subject?                    @relation(fields: [subjectId], references: [id])
+  questionUploads    QuestionUpload[]
+  submissions        Submission[]
+
+  @@index([createdById])
+  @@index([status])
+  @@index([subjectId])
+  @@index([boardId])
+  @@index([classId])
+  @@index([publicationId])
+  @@index([bookId], map: "assessments_bookId_fkey")
+  @@map("assessments")
+}
+
+model AssessmentQuestion {
+  id               String     @id @default(cuid())
+  assessmentId     String
+  questionId       String
+  order            Int
+  marksOverride    Float?
+  negMarksOverride Float?
+  assessment       Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  question         Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, questionId])
+  @@unique([assessmentId, order])
+  @@index([assessmentId])
+  @@index([questionId])
+  @@map("assessment_questions")
+}
+
+model AssessmentChapter {
+  assessmentId String
+  chapterId    String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  chapter      Chapter    @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@id([assessmentId, chapterId])
+  @@index([chapterId], map: "assessment_chapters_chapterId_fkey")
+  @@map("assessment_chapters")
+}
+
+model AssessmentAssignedClass {
+  assessmentId String
+  classId      String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  class        Class      @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@id([assessmentId, classId])
+  @@index([classId], map: "assessment_assigned_classes_classId_fkey")
+  @@map("assessment_assigned_classes")
+}
+
+model AssessmentAssignedStudent {
+  assessmentId String
+  studentId    String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student      User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@id([assessmentId, studentId])
+  @@index([studentId], map: "assessment_assigned_students_studentId_fkey")
+  @@map("assessment_assigned_students")
+}
+
+model Submission {
+  id           String           @id @default(cuid())
+  assessmentId String
+  studentId    String
+  status       SubmissionStatus @default(IN_PROGRESS)
+  score        Int              @default(0)
+  totalMarks   Int              @default(0)
+  startedAt    DateTime         @default(now())
+  submittedAt  DateTime?
+  timeTakenSec Int              @default(0)
+  answers      Answer[]
+  assessment   Assessment       @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student      User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, studentId])
+  @@index([studentId])
+  @@index([assessmentId])
+  @@index([status])
+  @@map("submissions")
+}
+
+model Answer {
+  id              String     @id @default(cuid())
+  submissionId    String
+  questionId      String
+  selectedOption  Int?
+  selectedBoolean Boolean?
+  textAnswer      String?    @db.Text
+  isCorrect       Boolean?
+  marksAwarded    Int        @default(0)
+  timeMs          Int?
+  selectedOptions String     @db.LongText
+  question        Question   @relation(fields: [questionId], references: [id])
+  submission      Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, questionId])
+  @@index([submissionId])
+  @@index([questionId])
+  @@map("answers")
+}
+
+model Quiz {
+  id                 String                @id @default(cuid())
+  title              String
+  description        String?               @db.Text
+  quizType           QuizType              @default(PRACTICE)
+  publicationId      String?
+  boardId            String?
+  seriesId           String?
+  classId            String?
+  subjectId          String?
+  bookId             String?
+  questionSelection  QuestionSelection     @default(MANUAL)
+  totalQuestions     Int                   @default(0)
+  totalMarks         Int                   @default(0)
+  marksPerQuestion   Float                 @default(1)
+  negativeMarking    Boolean               @default(false)
+  negativeMarksValue Float                 @default(0)
+  duration           Int                   @default(0)
+  startDatetime      DateTime?
+  endDatetime        DateTime?
+  passingMarks       Int                   @default(0)
+  maxAttempts        Int?
+  shuffleQuestions   Boolean               @default(false)
+  shuffleOptions     Boolean               @default(false)
+  showResultAfter    ShowResultAfter       @default(IMMEDIATELY)
+  showExplanation    Boolean               @default(true)
+  certificateEnabled Boolean               @default(false)
+  leaderboardEnabled Boolean               @default(true)
+  instructions       String?               @db.Text
+  bannerImageUrl     String?
+  language           String?               @default("English")
+  status             QuizStatus            @default(DRAFT)
+  createdById        String
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  leaderboard        Leaderboard[]
+  questionUploads    QuestionUpload[]
+  assignedClasses    QuizAssignedClass[]
+  assignedStudents   QuizAssignedStudent[]
+  attempts           QuizAttempt[]
+  chapters           QuizChapter[]
+  questions          QuizQuestion[]
+  board              Board?                @relation(fields: [boardId], references: [id])
+  book               Book?                 @relation(fields: [bookId], references: [id])
+  class              Class?                @relation(fields: [classId], references: [id])
+  createdBy          User                  @relation("QuizCreatedBy", fields: [createdById], references: [id])
+  publication        Publication?          @relation(fields: [publicationId], references: [id])
+  series             Series?               @relation(fields: [seriesId], references: [id])
+  subject            Subject?              @relation(fields: [subjectId], references: [id])
+
+  @@index([createdById])
+  @@index([status])
+  @@index([publicationId])
+  @@index([classId])
+  @@index([boardId], map: "quizzes_boardId_fkey")
+  @@index([bookId], map: "quizzes_bookId_fkey")
+  @@index([seriesId], map: "quizzes_seriesId_fkey")
+  @@index([subjectId], map: "quizzes_subjectId_fkey")
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id               String   @id @default(cuid())
+  quizId           String
+  questionId       String
+  sortOrder        Int      @default(0)
+  marksOverride    Float?
+  negMarksOverride Float?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  question         Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  quiz             Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@unique([quizId, questionId])
+  @@index([quizId])
+  @@index([questionId])
+  @@map("quiz_questions")
+}
+
+model QuizChapter {
+  quizId    String
+  chapterId String
+  chapter   Chapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  quiz      Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@id([quizId, chapterId])
+  @@index([chapterId], map: "quiz_chapters_chapterId_fkey")
+  @@map("quiz_chapters")
+}
+
+model QuizAssignedClass {
+  quizId  String
+  classId String
+  class   Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  quiz    Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@id([quizId, classId])
+  @@index([classId], map: "quiz_assigned_classes_classId_fkey")
+  @@map("quiz_assigned_classes")
+}
+
+model QuizAssignedStudent {
+  quizId    String
+  studentId String
+  quiz      Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@id([quizId, studentId])
+  @@index([studentId], map: "quiz_assigned_students_studentId_fkey")
+  @@map("quiz_assigned_students")
+}
+
+model QuizAttempt {
+  id             String          @id @default(cuid())
+  quizId         String
+  studentId      String
+  attemptNumber  Int
+  startTime      DateTime        @default(now())
+  endTime        DateTime?
+  timeTakenSec   Int             @default(0)
+  score          Float           @default(0)
+  correctAnswers Int             @default(0)
+  wrongAnswers   Int             @default(0)
+  skipped        Int             @default(0)
+  percentage     Float           @default(0)
+  rank           Int?
+  isPassed       Boolean?
+  certificateUrl String?
+  isSubmitted    Boolean         @default(false)
+  status         AttemptStatus   @default(IN_PROGRESS)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  answers        AttemptAnswer[]
+  leaderboard    Leaderboard?
+  quiz           Quiz            @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  student        User            @relation("StudentAttempts", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([quizId, studentId, attemptNumber])
+  @@index([quizId])
+  @@index([studentId])
+  @@index([status])
+  @@map("quiz_attempts")
+}
+
+model AttemptAnswer {
+  id              String      @id @default(cuid())
+  attemptId       String
+  questionId      String
+  selectedOption  String?
+  selectedOptions String      @db.LongText
+  textAnswer      String?     @db.Text
+  isCorrect       Boolean?
+  marksAwarded    Float       @default(0)
+  timeSpentSec    Int?
+  isSkipped       Boolean     @default(false)
+  isMarkedReview  Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  attempt         QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question        Question    @relation(fields: [questionId], references: [id])
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@index([questionId])
+  @@map("attempt_answers")
+}
+
+model Leaderboard {
+  id           String      @id @default(cuid())
+  quizId       String
+  studentId    String
+  attemptId    String      @unique
+  score        Float       @default(0)
+  rank         Int?
+  percentage   Float       @default(0)
+  timeTakenSec Int         @default(0)
+  attemptDate  DateTime
+  badge        BadgeType?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  attempt      QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  quiz         Quiz        @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  student      User        @relation("StudentLeaderboard", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([quizId, studentId])
+  @@index([quizId])
+  @@index([studentId])
+  @@map("leaderboard")
+}
+
+model Otp {
+  id            String   @id @default(cuid())
+  mobileOrEmail String
+  otpCode       String
+  otpType       OtpType
+  expiresAt     DateTime
+  isVerified    Boolean  @default(false)
+  attemptCount  Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([mobileOrEmail])
+  @@index([otpType])
+  @@map("otps")
+}
+
+model Notification {
+  id          String             @id @default(cuid())
+  title       String
+  message     String             @db.Text
+  type        NotificationType   @default(GENERAL)
+  target      NotificationTarget @default(ALL)
+  targetIds   String             @db.LongText
+  scheduledAt DateTime?
+  isSent      Boolean            @default(false)
+  sentAt      DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([type])
+  @@index([isSent])
+  @@map("notifications")
+}
+
+model QuestionUpload {
+  id           String       @id @default(cuid())
+  uploadedById String
+  quizId       String?
+  assessmentId String?
+  uploadStatus UploadStatus @default(PENDING)
+  totalRows    Int          @default(0)
+  rowsImported Int          @default(0)
+  rowsFailed   Int          @default(0)
+  errorLog     String?      @db.LongText
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  assessment   Assessment?  @relation(fields: [assessmentId], references: [id])
+  quiz         Quiz?        @relation(fields: [quizId], references: [id])
+  uploadedBy   User         @relation("UploaderQuestions", fields: [uploadedById], references: [id])
+
+  @@index([uploadedById])
+  @@index([quizId])
+  @@index([assessmentId])
+  @@map("question_uploads")
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   @db.Text
+  category  String   @default("general")
+  label     String   @default("")
+  type      String   @default("string")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@map("settings")
+}
+
+enum Role {
+  SUPER_ADMIN
+  PUBLICATION_ADMIN
+  CONTENT_MANAGER
+  TEACHER
+  STUDENT
+}
+
+enum UserStatus {
+  ACTIVE
+  PENDING
+  INACTIVE
+}
+
+enum QuestionType {
+  MCQ_SINGLE
+  MCQ_MULTIPLE
+  TRUE_FALSE
+  FILL_IN_BLANK
+  MATCH_THE_COLUMN
+  DESCRIPTIVE
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum AssessmentType {
+  OLYMPIAD
+  CHAPTER_TEST
+  MOCK_TEST
+  PRACTICE
+  ASSIGNMENT
+}
+
+enum AssessmentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum QuestionSelection {
+  MANUAL
+  AUTO_RANDOM
+  AUTO_LEVEL
+}
+
+enum ShowResultAfter {
+  IMMEDIATELY
+  AFTER_END_DATE
+  MANUALLY
+}
+
+enum QuizType {
+  PRACTICE
+  OLYMPIAD
+  CHAPTER_TEST
+  MOCK_TEST
+  LIVE_QUIZ
+  ASSIGNMENT
+}
+
+enum QuizStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SubmissionStatus {
+  IN_PROGRESS
+  SUBMITTED
+  GRADED
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  ABANDONED
+}
+
+enum OtpType {
+  REGISTRATION
+  LOGIN
+  PASSWORD_RESET
+  PHONE_VERIFY
+}
+
+enum NotificationType {
+  GENERAL
+  QUIZ
+  RESULT
+  CERTIFICATE
+  REMINDER
+}
+
+enum NotificationTarget {
+  ALL
+  STUDENTS
+  TEACHERS
+  CLASS
+  SPECIFIC
+}
+
+enum UploadStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum BadgeType {
+  GOLD
+  SILVER
+  BRONZE
+  PARTICIPATION
+}

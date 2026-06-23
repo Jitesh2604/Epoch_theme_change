@@ -1,0 +1,16 @@
+node_modules
+dist
+.env
+.env.local
+.env.*.local
+*.log
+logs
+coverage
+.DS_Store
+
+# Prisma
+prisma/migrations/dev.db*
+
+# Upload temp
+uploads
+tmp
