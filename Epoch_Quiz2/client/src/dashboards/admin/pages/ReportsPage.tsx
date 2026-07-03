@@ -11,18 +11,10 @@ import { useSubmissions } from '../../../hooks/useSubmissions';
 import { useDashboardStats } from '../../../hooks/useDashboard';
 import { useAssessments } from '../../../hooks/useAssessments';
 import { useTeachers, useStudents } from '../../../hooks/useUsers';
+import { exportCsv } from '../../../lib/csv';
 
 type Tab = 'overview' | 'assessments' | 'students' | 'teachers';
 type Range = '7d' | '30d' | '90d' | 'all';
-
-function exportCsv(filename: string, rows: string[][], headers: string[]) {
-  const lines = [headers, ...rows].map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','));
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
-}
 
 function cutoffDate(range: Range): Date | null {
   if (range === 'all') return null;

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Download, Award } from 'lucide-react';
-import { PageHeader, Card, Button, SearchInput, Select, Badge, ProgressBar, Table, Skeleton } from '../../shared/ui';
+import { PageHeader, Card, Button, SearchInput, Select, Badge, ProgressBar, Table, Skeleton, useToasts } from '../../shared/ui';
 import { useSubmissions } from '../../../hooks/useSubmissions';
+import { exportCsv } from '../../../lib/csv';
 
 export function ResultsPage() {
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const { push, node } = useToasts();
 
   const { data, loading, error, refetch } = useSubmissions({
     limit: 40,
@@ -18,13 +20,23 @@ export function ResultsPage() {
     return matchQ && matchStatus;
   });
 
+  const handleExport = () => {
+    if (rows.length === 0) { push({ kind: 'info', title: 'Nothing to export' }); return; }
+    exportCsv(
+      'results.csv',
+      rows.map(s => [s.student?.name ?? '', s.assessment.title, s.assessment.subject?.name ?? '', String(s.score), String(s.totalMarks), String(s.percent), s.status]),
+      ['Student', 'Assessment', 'Subject', 'Score', 'Total', 'Percent (%)', 'Status'],
+    );
+  };
+
   return (
     <>
+      {node}
       <PageHeader
         eyebrow="Teacher · Results"
         title="Student Results"
         subtitle="All submissions across your assessments."
-        actions={<Button variant="outline" icon={Download}>Export</Button>}
+        actions={<Button variant="outline" icon={Download} onClick={handleExport}>Export</Button>}
       />
 
       <Card className="p-4 mb-5">

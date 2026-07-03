@@ -1,11 +1,15 @@
 import { useMemo, useState } from 'react';
 import { Mail, MoreVertical, UserPlus, Download } from 'lucide-react';
-import { PageHeader, Card, Button, SearchInput, Select, Badge, Avatar, Table, ProgressBar, Skeleton } from '../../shared/ui';
+import { PageHeader, Card, Button, SearchInput, Select, Badge, Avatar, Table, ProgressBar, Skeleton, useToasts } from '../../shared/ui';
 import { useStudents } from '../../../hooks/useUsers';
+import { exportCsv } from '../../../lib/csv';
+import { CreateUserModal } from './CreateUserModal';
 
 export function StudentsPage() {
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [createOpen, setCreateOpen] = useState(false);
+  const { push, node } = useToasts();
 
   const { data, loading, error, refetch } = useStudents({
     search: q || undefined,
@@ -14,16 +18,26 @@ export function StudentsPage() {
 
   const rows = useMemo(() => data?.items ?? [], [data]);
 
+  const handleExport = () => {
+    if (rows.length === 0) { push({ kind: 'info', title: 'Nothing to export' }); return; }
+    exportCsv(
+      'students.csv',
+      rows.map(s => [s.name, s.email, s.schoolName ?? '', String(s.attempted ?? 0), String(s.avgScore ?? 0), s.rank ? `#${s.rank}` : '', s.status]),
+      ['Name', 'Email', 'School', 'Attempted', 'Avg Score (%)', 'Rank', 'Status'],
+    );
+  };
+
   return (
     <>
+      {node}
       <PageHeader
         eyebrow="People · Students"
         title="Students"
         subtitle="View, search, and manage every student enrolled on the platform."
         actions={
           <>
-            <Button variant="outline" icon={Download}>Export</Button>
-            <Button icon={UserPlus}>Add student</Button>
+            <Button variant="outline" icon={Download} onClick={handleExport}>Export</Button>
+            <Button icon={UserPlus} onClick={() => setCreateOpen(true)}>Add student</Button>
           </>
         }
       />
@@ -110,6 +124,14 @@ export function StudentsPage() {
           />
         )}
       </Card>
+
+      <CreateUserModal
+        open={createOpen}
+        role="STUDENT"
+        onClose={() => setCreateOpen(false)}
+        onCreated={refetch}
+        push={push}
+      />
     </>
   );
 }

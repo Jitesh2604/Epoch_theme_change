@@ -1,11 +1,15 @@
 import { useMemo, useState } from 'react';
 import { Mail, MoreVertical, UserPlus, Download } from 'lucide-react';
-import { PageHeader, Card, Button, SearchInput, Select, Badge, Avatar, Table, Skeleton } from '../../shared/ui';
+import { PageHeader, Card, Button, SearchInput, Select, Badge, Avatar, Table, Skeleton, useToasts } from '../../shared/ui';
 import { useTeachers } from '../../../hooks/useUsers';
+import { exportCsv } from '../../../lib/csv';
+import { CreateUserModal } from './CreateUserModal';
 
 export function TeachersPage() {
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [createOpen, setCreateOpen] = useState(false);
+  const { push, node } = useToasts();
 
   const { data, loading, error, refetch } = useTeachers({
     search: q || undefined,
@@ -14,16 +18,26 @@ export function TeachersPage() {
 
   const rows = useMemo(() => data?.items ?? [], [data]);
 
+  const handleExport = () => {
+    if (rows.length === 0) { push({ kind: 'info', title: 'Nothing to export' }); return; }
+    exportCsv(
+      'teachers.csv',
+      rows.map(t => [t.name, t.email, t.schoolName ?? '', String(t.assessments ?? 0), t.status]),
+      ['Name', 'Email', 'School', 'Assessments', 'Status'],
+    );
+  };
+
   return (
     <>
+      {node}
       <PageHeader
         eyebrow="People · Teachers"
         title="Teachers"
         subtitle="View and manage all teachers registered on the platform."
         actions={
           <>
-            <Button variant="outline" icon={Download}>Export</Button>
-            <Button icon={UserPlus}>Invite teacher</Button>
+            <Button variant="outline" icon={Download} onClick={handleExport}>Export</Button>
+            <Button icon={UserPlus} onClick={() => setCreateOpen(true)}>Invite teacher</Button>
           </>
         }
       />
@@ -95,6 +109,14 @@ export function TeachersPage() {
           />
         )}
       </Card>
+
+      <CreateUserModal
+        open={createOpen}
+        role="TEACHER"
+        onClose={() => setCreateOpen(false)}
+        onCreated={refetch}
+        push={push}
+      />
     </>
   );
 }
