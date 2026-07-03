@@ -1,5 +1,6 @@
 import { Router } from '../core/router';
 import { rateLimit } from '../core/middleware/rate-limiter';
+import { isProd } from '../config/env';
 import { AuthController } from '../controllers/auth.controller';
 import { authenticate } from '../middlewares/authenticate';
 import { validate } from '../middlewares/validate';
@@ -15,9 +16,11 @@ import {
 const router = new Router();
 
 // Tight per-IP limiter on credential endpoints to slow brute-force.
+// Kept strict in production only; relaxed in dev/test so local work and the
+// E2E suite (which performs many logins) aren't throttled.
 const authLimiter = rateLimit({
   windowMs:        15 * 60 * 1000,
-  max:             30,
+  max:             isProd ? 30 : 10_000,
   standardHeaders: true,
   message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many attempts, try again later' } },
 });

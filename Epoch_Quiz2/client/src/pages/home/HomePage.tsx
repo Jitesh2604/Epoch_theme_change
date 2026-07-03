@@ -5,6 +5,7 @@ import { Footer } from '../../components/layout/Footer';
 import { QUIZ_CATEGORIES, HERO_SLIDES } from '../../lib/data';
 import { usePracticeSubjects } from '../../hooks/usePracticeQuiz';
 import { CategoryGridSkeleton, CategoryGridEmpty } from '../../components/quiz/CategoryGridStates';
+import { getAuth } from '../../dashboards/shared/auth';
 import { useT } from '../../lib/i18n';
 
 interface HomePageProps {
@@ -17,6 +18,10 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
   const t = useT();
   const { data: subjects, loading, error } = usePracticeSubjects();
   const hasQuestions = !!subjects && subjects.length > 0;
+  // The subjects endpoint requires auth. For logged-out visitors we always show
+  // the static category cards (marketing) — never the "DB is empty" state, which
+  // would be misleading (they simply aren't signed in).
+  const authed = !!getAuth();
 
   useEffect(() => {
     const timer = setInterval(() => setSlide(s => (s + 1) % HERO_SLIDES.length), 6000);
@@ -68,11 +73,11 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
             <div className="eyebrow"><span className="dot"></span>{t('home.jumpIn')}</div>
             <h2>{t('home.pickCategoryAndStart')}</h2>
           </div>
-          {loading && <CategoryGridSkeleton cardStyle={tweaks.catCardStyle} count={QUIZ_CATEGORIES.length} />}
+          {authed && loading && <CategoryGridSkeleton cardStyle={tweaks.catCardStyle} count={QUIZ_CATEGORIES.length} />}
 
-          {!loading && (error || !hasQuestions) && <CategoryGridEmpty />}
+          {authed && !loading && (error || !hasQuestions) && <CategoryGridEmpty />}
 
-          {!loading && !error && hasQuestions && (
+          {(!authed || (!loading && !error && hasQuestions)) && (
             <div className="cat-grid" data-card-style={tweaks.catCardStyle}>
               {QUIZ_CATEGORIES.map((c, i) => (
                 <button key={c.id} className="cat-card" onClick={() => navigate(`play/${c.id}`)}>

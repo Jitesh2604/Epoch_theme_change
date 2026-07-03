@@ -1,6 +1,5 @@
 import React from 'react';
 import type { NavigateFn } from '../../types';
-import { Icon } from '../ui/Icon';
 import { useT } from '../../lib/i18n';
 
 interface FooterProps {
@@ -26,13 +25,6 @@ export const Footer: React.FC<FooterProps> = ({ navigate }) => {
           <p style={{ fontSize: 13, color: 'var(--fg-2)', maxWidth: 320 }}>
             {t('footer.description')}
           </p>
-          <div className="socials" style={{ marginTop: 16 }}>
-            {(['twitter','github','linkedin','mail'] as const).map(s => (
-              <a key={s} href="#" className="social" onClick={(e) => e.preventDefault()}>
-                <Icon name={s} size={16} />
-              </a>
-            ))}
-          </div>
         </div>
 
         <div className="foot-col">
@@ -46,15 +38,11 @@ export const Footer: React.FC<FooterProps> = ({ navigate }) => {
           <h5>{t('footer.company')}</h5>
           <button onClick={() => navigate('about')}>{t('footer.aboutUs')}</button>
           <button onClick={() => navigate('contact')}>{t('footer.contactUs')}</button>
-          <a href="#" onClick={(e) => e.preventDefault()}>{t('footer.careers')}</a>
-          <a href="#" onClick={(e) => e.preventDefault()}>{t('footer.pressKit')}</a>
         </div>
         <div className="foot-col">
           <h5>{t('footer.legal')}</h5>
           <button onClick={() => navigate('privacy')}>{t('footer.privacyPolicy')}</button>
           <button onClick={() => navigate('terms')}>{t('footer.termsConditions')}</button>
-          <a href="#" onClick={(e) => e.preventDefault()}>{t('footer.cookieSettings')}</a>
-          <a href="#" onClick={(e) => e.preventDefault()}>{t('footer.security')}</a>
         </div>
       </div>
       <div className="foot-bottom">

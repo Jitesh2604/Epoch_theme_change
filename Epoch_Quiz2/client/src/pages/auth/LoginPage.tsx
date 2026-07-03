@@ -44,7 +44,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
       }
 
       showToast(`Welcome back, ${user.name}!`, 'success');
-      window.location.href = uiRole === 'student' ? '/#/home' : `/${uiRole}`;
+      window.location.href = `/${uiRole}`;
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Login failed. Please try again.';
       setErrors({ password: msg });

@@ -51,7 +51,9 @@ export function createApp(): Application {
   app.use(
     rateLimit({
       windowMs:        env.RATE_LIMIT_WINDOW_MS,
-      max:             env.RATE_LIMIT_MAX,
+      // Enforce the configured cap in production only; dev/test (incl. the E2E
+      // suite, which fires many requests) run effectively unthrottled.
+      max:             isProd ? env.RATE_LIMIT_MAX : 1_000_000,
       standardHeaders: true,
       message: {
         success: false,

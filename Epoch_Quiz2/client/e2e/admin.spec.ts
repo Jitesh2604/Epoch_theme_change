@@ -11,6 +11,10 @@ async function loginAdmin(page: any) {
   await page.fill('input[type="password"]', ADMIN.password);
   await page.click('button[type="submit"]');
   await page.waitForURL('**/admin**', { timeout: 10_000 });
+  // Wait for the dashboard shell to finish booting (session refresh settles)
+  // before any subsequent hard navigation, so single-use refresh tokens
+  // aren't consumed mid-flight.
+  await page.waitForSelector('aside', { timeout: 10_000 });
 }
 
 test.describe('Admin Dashboard', () => {
@@ -24,47 +28,50 @@ test.describe('Admin Dashboard', () => {
   });
 
   test('Teachers page renders table', async ({ page }) => {
-    await page.click('text=Teachers');
+    await page.getByRole('link', { name: 'Teachers', exact: true }).click();
     await page.waitForURL('**/admin/teachers', { timeout: 5_000 });
-    await expect(page.locator('text=Teachers')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Teachers' })).toBeVisible();
   });
 
   test('Students page renders table', async ({ page }) => {
-    await page.click('text=Students');
+    await page.getByRole('link', { name: 'Students', exact: true }).click();
     await page.waitForURL('**/admin/students', { timeout: 5_000 });
-    await expect(page.locator('text=Students')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Students' })).toBeVisible();
   });
 
   test('Assessments page renders', async ({ page }) => {
-    await page.click('text=Assessments');
+    await page.getByRole('link', { name: 'Assessments', exact: true }).click();
     await page.waitForURL('**/admin/assessments', { timeout: 5_000 });
     await expect(page.locator('text=Assessment Management')).toBeVisible();
   });
 
   test('Reports page renders tabs', async ({ page }) => {
-    await page.click('text=Reports');
+    await page.getByRole('link', { name: 'Reports & Analytics', exact: true }).click();
     await page.waitForURL('**/admin/reports', { timeout: 5_000 });
-    await expect(page.locator('text=Reports & Analytics')).toBeVisible();
-    await expect(page.locator('text=Overview')).toBeVisible();
-    await expect(page.locator('text=Students')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Reports & Analytics' })).toBeVisible();
+    await expect(page.locator('main').getByText('Overview', { exact: true })).toBeVisible();
   });
 
   test('Settings page renders tabs', async ({ page }) => {
-    await page.goto('/admin/settings');
-    await expect(page.locator('text=Platform Settings')).toBeVisible({ timeout: 5_000 });
-    await expect(page.locator('text=General')).toBeVisible();
-    await expect(page.locator('text=Security')).toBeVisible();
+    await page.getByRole('link', { name: 'Settings', exact: true }).click();
+    await page.waitForURL('**/admin/settings', { timeout: 5_000 });
+    await expect(page.getByRole('heading', { name: 'Platform Settings' })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('button', { name: 'General' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Security' })).toBeVisible();
   });
 
   test('Settings can switch tabs', async ({ page }) => {
-    await page.goto('/admin/settings');
-    await page.click('text=Security');
-    await expect(page.locator('text=security.')).toBeVisible({ timeout: 3_000 });
+    await page.getByRole('link', { name: 'Settings', exact: true }).click();
+    await page.waitForURL('**/admin/settings', { timeout: 5_000 });
+    const securityTab = page.getByRole('button', { name: 'Security' });
+    await securityTab.click();
+    // Active tab gets the brand background — proves the tab actually switched.
+    await expect(securityTab).toHaveClass(/bg-brand/, { timeout: 3_000 });
   });
 
   test('Question Bank renders questions list', async ({ page }) => {
-    await page.click('text=Question Bank');
+    await page.getByRole('link', { name: 'Question Bank', exact: true }).click();
     await page.waitForURL('**/admin/question-bank', { timeout: 5_000 });
-    await expect(page.locator('text=Question Bank')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Question Bank' })).toBeVisible();
   });
 });

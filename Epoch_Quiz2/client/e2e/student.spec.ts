@@ -14,32 +14,32 @@ test.describe('Student Dashboard', () => {
   });
 
   test('My Assessments page renders', async ({ page }) => {
-    await page.click('text=My Assessments');
+    await page.getByRole('link', { name: 'My Assessments', exact: true }).click();
     await page.waitForURL('**/student/assessments', { timeout: 5_000 });
-    await expect(page.locator('text=My Assessments')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'My Assessments' })).toBeVisible();
   });
 
   test('Results page renders', async ({ page }) => {
-    await page.click('text=Results');
+    await page.getByRole('link', { name: 'Results', exact: true }).click();
     await page.waitForURL('**/student/results', { timeout: 5_000 });
-    await expect(page.locator('text=Results')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Results' }).first()).toBeVisible();
   });
 
   test('Leaderboard page renders', async ({ page }) => {
-    await page.click('text=Leaderboard');
+    await page.getByRole('link', { name: 'Leaderboard', exact: true }).click();
     await page.waitForURL('**/student/leaderboard', { timeout: 5_000 });
-    await expect(page.locator('text=Leaderboard')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Leaderboard' }).first()).toBeVisible();
   });
 
   test('Join Assessment page has 6-digit code input', async ({ page }) => {
-    await page.click('text=Join Assessment');
+    await page.getByRole('link', { name: 'Join Assessment', exact: true }).click();
     await page.waitForURL('**/student/join', { timeout: 5_000 });
     const inputs = page.locator('input[maxlength="1"]');
     await expect(inputs).toHaveCount(6, { timeout: 3_000 });
   });
 
   test('Notifications page shows notification list (no admin buttons)', async ({ page }) => {
-    await page.click('text=Notifications');
+    await page.getByRole('link', { name: 'Notifications', exact: true }).click();
     await page.waitForURL('**/student/notifications', { timeout: 5_000 });
     // Student page should NOT have "New notification" button
     const newBtn = page.locator('text=New notification');

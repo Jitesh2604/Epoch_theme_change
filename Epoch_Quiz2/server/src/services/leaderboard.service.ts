@@ -9,6 +9,9 @@ import type {
 } from '../validators/leaderboard.validator';
 
 const COUNTABLE_SQL = `status IN ('${SubmissionStatus.SUBMITTED}', '${SubmissionStatus.GRADED}')`;
+// Qualified variant for queries that JOIN `assessments` (which also has a
+// `status` column) — an unqualified `status` there is ambiguous in MySQL.
+const COUNTABLE_S_SQL = `s.${COUNTABLE_SQL}`;
 
 function pct(score: number, total: number): number {
   if (total <= 0) return 0;
@@ -113,7 +116,7 @@ export const LeaderboardService = {
               SUM(s.totalMarks) AS totalPossible,
               COUNT(*)          AS attempted
        FROM submissions s ${subjectJoin}
-       WHERE ${COUNTABLE_SQL} ${subjectCond}
+       WHERE ${COUNTABLE_S_SQL} ${subjectCond}
        GROUP BY s.studentId`,
       subjectParam,
     );
@@ -207,14 +210,14 @@ export const LeaderboardService = {
       const [assessmentsCount, mySubmissions, mySubmissionAgg] = await Promise.all([
         q1<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM assessments WHERE createdById = ?', [actor.id]),
         q1<{ cnt: number }>(
-          `SELECT COUNT(*) AS cnt FROM submissions s JOIN assessments a ON a.id = s.assessmentId WHERE a.createdById = ? AND ${COUNTABLE_SQL}`,
+          `SELECT COUNT(*) AS cnt FROM submissions s JOIN assessments a ON a.id = s.assessmentId WHERE a.createdById = ? AND ${COUNTABLE_S_SQL}`,
           [actor.id],
         ),
         q1<{ avgScore: number; avgTime: number; totalScore: number; totalMarks: number }>(
           `SELECT AVG(s.score) AS avgScore, AVG(s.timeTakenSec) AS avgTime,
                   SUM(s.score) AS totalScore, SUM(s.totalMarks) AS totalMarks
            FROM submissions s JOIN assessments a ON a.id = s.assessmentId
-           WHERE a.createdById = ? AND ${COUNTABLE_SQL}`,
+           WHERE a.createdById = ? AND ${COUNTABLE_S_SQL}`,
           [actor.id],
         ),
       ]);
