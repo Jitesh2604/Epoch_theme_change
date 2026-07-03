@@ -40,7 +40,35 @@ const SELECT_QUESTION = `
 
 const IDX_TO_LETTER = ['A', 'B', 'C', 'D'] as const;
 
-function buildOptionFields(options: string[]): Record<string, string | null> {
+interface OptionFields {
+  optionA: string | null; optionB: string | null;
+  optionC: string | null; optionD: string | null;
+}
+
+/**
+ * Columns written by an INSERT of a new question, excluding `correctOptions`
+ * and `tags`, which are NOT NULL and are supplied separately via the trailing
+ * `COALESCE(?, '[]')` columns so they always default to a valid JSON array.
+ */
+interface QuestionInsertFields {
+  id: string;
+  type: QuestionType;
+  prompt: string;
+  marks: number;
+  difficulty: string;
+  subjectId: string | null;
+  createdById: string;
+  optionA?: string | null;
+  optionB?: string | null;
+  optionC?: string | null;
+  optionD?: string | null;
+  correctAnswer?: string | null;
+  correctBoolean?: number;
+  matchPairs?: string;
+  modelAnswer?: string | null;
+}
+
+function buildOptionFields(options: string[]): OptionFields {
   return {
     optionA: options[0] ?? null, optionB: options[1] ?? null,
     optionC: options[2] ?? null, optionD: options[3] ?? null,
@@ -132,19 +160,24 @@ export const QuestionService = {
     if (input.subjectId) await ensureSubjectExists(input.subjectId);
 
     const id = newId();
-    const base = {
+    const base: QuestionInsertFields = {
       id, type: input.type, prompt: input.prompt,
       marks: input.marks, difficulty: input.difficulty,
-      tags: toJson(input.tags ?? []),
       subjectId: input.subjectId ?? null,
       createdById: actor.id,
     };
 
-    let extra: Record<string, unknown> = {};
+    // `correctOptions` and `tags` are appended separately (see the trailing
+    // COALESCE columns below); everything else is spread into `fields`.
+    let extra: Partial<QuestionInsertFields> = {};
+    let correctOptions: string | null = null;
+    const tags = toJson(input.tags ?? []);
+
     if (input.type === QuestionType.MCQ_SINGLE) {
       extra = { ...buildOptionFields(input.options), correctAnswer: IDX_TO_LETTER[input.correctOption] ?? null };
     } else if (input.type === QuestionType.MCQ_MULTIPLE) {
-      extra = { ...buildOptionFields(input.options), correctOptions: toJson(input.correctOptions.map((i: number) => IDX_TO_LETTER[i]).filter(Boolean)) };
+      extra = buildOptionFields(input.options);
+      correctOptions = toJson(input.correctOptions.map((i: number) => IDX_TO_LETTER[i]).filter(Boolean));
     } else if (input.type === QuestionType.TRUE_FALSE) {
       extra = { correctBoolean: input.correctBoolean ? 1 : 0, correctAnswer: input.correctBoolean ? 'TRUE' : 'FALSE' };
     } else if (input.type === QuestionType.FILL_IN_BLANK) {
@@ -152,16 +185,16 @@ export const QuestionService = {
     } else if (input.type === QuestionType.MATCH_THE_COLUMN) {
       extra = { matchPairs: toJson(input.matchPairs) };
     } else if (input.type === QuestionType.DESCRIPTIVE) {
-      extra = { modelAnswer: (input as { modelAnswer?: string }).modelAnswer ?? null };
+      extra = { modelAnswer: input.modelAnswer ?? null };
     }
 
-    const fields = { ...base, ...extra };
+    const fields: QuestionInsertFields = { ...base, ...extra };
     const cols   = Object.keys(fields).join(', ');
     const pmarks = Object.keys(fields).map(() => '?').join(', ');
     await run(
       `INSERT INTO questions (${cols}, correctOptions, tags, status, language, negativeMarks, createdAt, updatedAt)
        VALUES (${pmarks}, COALESCE(?, '[]'), COALESCE(?, '[]'), 'ACTIVE', 'ENGLISH', 0, NOW(), NOW())`,
-      [...Object.values(fields), fields.correctOptions ?? null, fields.tags],
+      [...Object.values(fields), correctOptions, tags],
     );
 
     const created = await q1<DbQuestion>(`${SELECT_QUESTION} WHERE q.id = ?`, [id]);
