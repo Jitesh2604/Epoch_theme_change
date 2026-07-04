@@ -110,22 +110,36 @@ export function Sidebar({
       </nav>
 
       <div className="border-t border-line px-2.5 py-2.5 space-y-0.5">
-        {footerItems?.map(item => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2 text-[12.5px] font-medium font-body transition-all ${
-                isActive
-                  ? 'bg-brand-soft text-fg1'
-                  : 'text-fg3 hover:text-fg1 hover:bg-[rgba(53,64,36,0.04)]'
-              }`
-            }
-          >
-            <item.icon size={16} className="text-fg3 flex-shrink-0" />
-            {!collapsed && <span>{item.label}</span>}
-          </NavLink>
-        ))}
+        {footerItems?.map(item => {
+          // External / cross-app links (e.g. back to the marketing Home page,
+          // which lives in a separate hash-routed app) must be real anchors so
+          // they do a full navigation instead of resolving inside this router.
+          const footerCls = 'flex items-center gap-3 rounded-lg px-3 py-2 text-[12.5px] font-medium font-body text-fg3 hover:text-fg1 hover:bg-[rgba(53,64,36,0.04)] transition-all';
+          if (item.href) {
+            return (
+              <a key={item.to} href={item.href} className={footerCls}>
+                <item.icon size={16} className="text-fg3 flex-shrink-0" />
+                {!collapsed && <span>{item.label}</span>}
+              </a>
+            );
+          }
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-lg px-3 py-2 text-[12.5px] font-medium font-body transition-all ${
+                  isActive
+                    ? 'bg-brand-soft text-fg1'
+                    : 'text-fg3 hover:text-fg1 hover:bg-[rgba(53,64,36,0.04)]'
+                }`
+              }
+            >
+              <item.icon size={16} className="text-fg3 flex-shrink-0" />
+              {!collapsed && <span>{item.label}</span>}
+            </NavLink>
+          );
+        })}
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="hidden lg:flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[12px] font-medium font-body text-fg4 hover:text-fg2 hover:bg-[rgba(53,64,36,0.04)] transition"

@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { q1, run, newId, tx, cr } from '../lib/db';
+import { q, q1, run, newId, tx, cr } from '../lib/db';
 import { Role, UserStatus, OtpType } from '../lib/enums';
 import { ApiError } from '../utils/ApiError';
 import { hashPassword, comparePassword } from '../utils/password';
@@ -213,13 +213,24 @@ export const AuthService = {
 
     const [teacherProfile, studentProfile] = await Promise.all([
       q1('SELECT * FROM teacher_profiles WHERE userId = ?', [userId]),
-      q1('SELECT * FROM student_profiles WHERE userId = ?',  [userId]),
+      q1<{ id: string }>('SELECT * FROM student_profiles WHERE userId = ?',  [userId]),
     ]);
+
+    let studentWithSubjects: Record<string, unknown> | null = studentProfile as Record<string, unknown> | null;
+    if (studentProfile) {
+      const subjects = await q<{ id: string; name: string; slug: string }>(
+        `SELECT s.id, s.name, s.slug FROM student_subjects ss
+         JOIN subjects s ON s.id = ss.subjectId
+         WHERE ss.studentProfileId = ? ORDER BY s.name`,
+        [studentProfile.id],
+      );
+      studentWithSubjects = { ...studentProfile, subjects };
+    }
 
     return {
       ...toPublicUser(user),
       ...(teacherProfile ? { teacherProfile } : {}),
-      ...(studentProfile ? { studentProfile } : {}),
+      ...(studentWithSubjects ? { studentProfile: studentWithSubjects } : {}),
     };
   },
 };

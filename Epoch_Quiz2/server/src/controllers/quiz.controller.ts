@@ -5,6 +5,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ApiError } from '../utils/ApiError';
 import type {
   StartPracticeInput,
+  StartOlympiadInput,
   SaveAttemptAnswerInput,
   SubmitAttemptInput,
 } from '../validators/quiz.validator';
@@ -21,6 +22,18 @@ export const QuizController = {
     if (!req.user) throw ApiError.unauthorized();
     const result = await QuizService.startPractice(req.user.id, req.body as StartPracticeInput);
     ApiResponse.created(res, result, 'Practice session started');
+  }),
+
+  startOlympiad: asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user) throw ApiError.unauthorized();
+    const result = await QuizService.startOlympiad(req.user.id, req.body as StartOlympiadInput);
+    ApiResponse.created(res, result, 'Olympiad started');
+  }),
+
+  olympiadAttempts: asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user) throw ApiError.unauthorized();
+    const data = await QuizService.getOlympiadAttempts(req.user.id);
+    ApiResponse.ok(res, data);
   }),
 
   getAttempt: asyncHandler(async (req: Request, res: Response) => {

@@ -13,6 +13,7 @@ import {
   updateAssessmentSchema,
   listAssessmentsQuerySchema,
   assessmentIdParamsSchema,
+  assignAssessmentSchema,
 } from '../validators/assessment.validator';
 import {
   attachQuestionsSchema,
@@ -82,6 +83,22 @@ router.post(
   authorize(Role.TEACHER, ...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
   AssessmentController.archive,
+);
+
+// ── assignment (assign to classes / students) ─────────────────
+router.get(
+  '/:id/assignments',
+  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  validate(assessmentIdParamsSchema, 'params'),
+  AssessmentController.getAssignments,
+);
+
+router.post(
+  '/:id/assign',
+  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  validate(assessmentIdParamsSchema, 'params'),
+  validate(assignAssessmentSchema),
+  AssessmentController.assign,
 );
 
 // ── nested: /assessments/:id/questions (TEACHER / ADMIN only) ─

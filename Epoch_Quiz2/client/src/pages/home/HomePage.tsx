@@ -2,10 +2,8 @@ import React, { useState, useEffect } from 'react';
 import type { NavigateFn, Tweaks } from '../../types';
 import { Icon } from '../../components/ui/Icon';
 import { Footer } from '../../components/layout/Footer';
-import { QUIZ_CATEGORIES, HERO_SLIDES } from '../../lib/data';
-import { usePracticeSubjects } from '../../hooks/usePracticeQuiz';
-import { CategoryGridSkeleton, CategoryGridEmpty } from '../../components/quiz/CategoryGridStates';
-import { getAuth } from '../../dashboards/shared/auth';
+import { HERO_SLIDES } from '../../lib/data';
+import { SubjectCategoryGrid } from '../../components/quiz/SubjectCategoryGrid';
 import { useT } from '../../lib/i18n';
 
 interface HomePageProps {
@@ -16,12 +14,6 @@ interface HomePageProps {
 export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
   const [slide, setSlide] = useState(0);
   const t = useT();
-  const { data: subjects, loading, error } = usePracticeSubjects();
-  const hasQuestions = !!subjects && subjects.length > 0;
-  // The subjects endpoint requires auth. For logged-out visitors we always show
-  // the static category cards (marketing) — never the "DB is empty" state, which
-  // would be misleading (they simply aren't signed in).
-  const authed = !!getAuth();
 
   useEffect(() => {
     const timer = setInterval(() => setSlide(s => (s + 1) % HERO_SLIDES.length), 6000);
@@ -73,23 +65,10 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
             <div className="eyebrow"><span className="dot"></span>{t('home.jumpIn')}</div>
             <h2>{t('home.pickCategoryAndStart')}</h2>
           </div>
-          {authed && loading && <CategoryGridSkeleton cardStyle={tweaks.catCardStyle} count={QUIZ_CATEGORIES.length} />}
 
-          {authed && !loading && (error || !hasQuestions) && <CategoryGridEmpty />}
-
-          {(!authed || (!loading && !error && hasQuestions)) && (
-            <div className="cat-grid" data-card-style={tweaks.catCardStyle}>
-              {QUIZ_CATEGORIES.map((c, i) => (
-                <button key={c.id} className="cat-card" onClick={() => navigate(`play/${c.id}`)}>
-                  {tweaks.catCardStyle === 'numbered' && <span className="cat-num">{String(i + 1).padStart(2, '0')} —</span>}
-                  <div className="cat-ico"><Icon name={c.icon} size={20} /></div>
-                  <h3>{c.title}</h3>
-                  <p>{c.blurb}</p>
-                  <span className="cat-arrow"><Icon name="arrowUpRight" size={18} /></span>
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Same dynamic Categories grid as the Quiz Play page — shared component,
+              driven by the Subjects API. New subjects appear here automatically. */}
+          <SubjectCategoryGrid navigate={navigate} cardStyle={tweaks.catCardStyle} />
         </div>
       </section>
 

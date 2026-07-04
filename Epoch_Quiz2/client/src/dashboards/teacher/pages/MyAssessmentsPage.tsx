@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FilePlus2, Clock, Users, ClipboardList, CheckCircle2, Eye,
-  BookMarked, Star, Calendar, Hash,
+  BookMarked, Star, Calendar, Hash, UserPlus,
 } from 'lucide-react';
 import { PageHeader, Card, Button, SearchInput, Select, Badge, EmptyState, Skeleton } from '../../shared/ui';
 import { useAssessments, assessmentApi } from '../../../hooks/useAssessments';
 import { useToasts } from '../../shared/ui';
+import { AssignAssessmentModal } from './AssignAssessmentModal';
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -21,6 +22,7 @@ export function MyAssessmentsPage() {
     status: status !== 'all' ? status : undefined,
   });
   const { push, node } = useToasts();
+  const [assignFor, setAssignFor] = useState<{ id: string; title: string } | null>(null);
   const rows = data?.items ?? [];
 
   const handlePublish = async (id: string, title: string) => {
@@ -51,6 +53,16 @@ export function MyAssessmentsPage() {
   return (
     <>
       {node}
+      {assignFor && (
+        <AssignAssessmentModal
+          assessmentId={assignFor.id}
+          title={assignFor.title}
+          open={!!assignFor}
+          onClose={() => setAssignFor(null)}
+          onDone={refetch}
+          push={push}
+        />
+      )}
       <PageHeader
         eyebrow="Teacher · Assessments"
         title="My Assessments"
@@ -165,6 +177,14 @@ export function MyAssessmentsPage() {
                 >
                   Questions
                 </Button>
+                {a.status !== 'ARCHIVED' && (
+                  <Button
+                    variant="soft" size="sm" icon={UserPlus}
+                    onClick={() => setAssignFor({ id: a.id, title: a.title })}
+                  >
+                    Assign
+                  </Button>
+                )}
                 {a.status === 'DRAFT' && (
                   <Button size="sm" icon={CheckCircle2} className="flex-1"
                     onClick={() => handlePublish(a.id, a.title)}>

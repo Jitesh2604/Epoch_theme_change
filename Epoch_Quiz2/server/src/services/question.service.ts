@@ -25,7 +25,9 @@ interface DbQuestion {
   explanation: string | null; explanationImageUrl: string | null;
   modelAnswer: string | null; matchPairs: string | null; tags: string;
   marks: number; negativeMarks: number; difficulty: string; language: string;
-  status: string; subjectId: string | null; createdById: string;
+  status: string; subjectId: string | null; classId: string | null;
+  chapterId: string | null; bookId: string | null; educationBoard: string | null;
+  createdById: string;
   createdAt: Date; updatedAt: Date;
   subjectName: string | null; subjectSlug: string | null;
   creatorName: string | null; creatorEmail: string | null;
@@ -57,6 +59,10 @@ interface QuestionInsertFields {
   marks: number;
   difficulty: string;
   subjectId: string | null;
+  classId: string | null;
+  chapterId: string | null;
+  bookId: string | null;
+  educationBoard: string | null;
   createdById: string;
   optionA?: string | null;
   optionB?: string | null;
@@ -108,6 +114,10 @@ function toPublic(row: DbQuestion) {
     tags,
     status:         row.status,
     subject:        row.subjectId ? { id: row.subjectId, name: row.subjectName, slug: row.subjectSlug } : null,
+    classId:        row.classId,
+    chapterId:      row.chapterId,
+    bookId:         row.bookId,
+    educationBoard: row.educationBoard,
     createdBy:      { id: row.createdById, name: row.creatorName, email: row.creatorEmail },
     createdAt:      row.createdAt,
     updatedAt:      row.updatedAt,
@@ -119,6 +129,18 @@ function toPublic(row: DbQuestion) {
 async function ensureSubjectExists(subjectId: string): Promise<void> {
   const s = await q1<{ id: string }>('SELECT id FROM subjects WHERE id = ?', [subjectId]);
   if (!s) throw ApiError.badRequest(`Subject not found: ${subjectId}`);
+}
+
+async function ensureExists(table: 'classes' | 'chapters' | 'books', id: string, label: string): Promise<void> {
+  const r = await q1<{ id: string }>(`SELECT id FROM ${table} WHERE id = ?`, [id]);
+  if (!r) throw ApiError.badRequest(`${label} not found: ${id}`);
+}
+
+/** Validate any academic FKs supplied on a question payload. */
+async function validateAcademicFks(input: { classId?: string | null; chapterId?: string | null; bookId?: string | null }): Promise<void> {
+  if (input.classId)   await ensureExists('classes',  input.classId,   'Class');
+  if (input.chapterId) await ensureExists('chapters', input.chapterId, 'Chapter');
+  if (input.bookId)    await ensureExists('books',    input.bookId,    'Book');
 }
 
 async function loadQuestionOwned(id: string, actor: Actor, mode: 'read' | 'write'): Promise<DbQuestion> {
@@ -158,12 +180,17 @@ export const QuestionService = {
       throw ApiError.forbidden('Only teachers can create questions');
     }
     if (input.subjectId) await ensureSubjectExists(input.subjectId);
+    await validateAcademicFks(input);
 
     const id = newId();
     const base: QuestionInsertFields = {
       id, type: input.type, prompt: input.prompt,
       marks: input.marks, difficulty: input.difficulty,
       subjectId: input.subjectId ?? null,
+      classId:   input.classId   ?? null,
+      chapterId: input.chapterId ?? null,
+      bookId:    input.bookId    ?? null,
+      educationBoard: input.educationBoard ?? null,
       createdById: actor.id,
     };
 
@@ -248,6 +275,7 @@ export const QuestionService = {
   async update(actor: Actor, id: string, input: UpdateQuestionInput) {
     const existing = await loadQuestionOwned(id, actor, 'write');
     if (input.subjectId) await ensureSubjectExists(input.subjectId);
+    await validateAcademicFks(input);
 
     const sets: string[] = ['updatedAt = NOW()'];
     const params: unknown[] = [];
@@ -257,6 +285,10 @@ export const QuestionService = {
     if (input.difficulty !== undefined) { sets.push('difficulty = ?'); params.push(input.difficulty); }
     if (input.tags       !== undefined) { sets.push('tags = ?');       params.push(toJson(input.tags)); }
     if (input.subjectId  !== undefined) { sets.push('subjectId = ?');  params.push(input.subjectId); }
+    if (input.classId    !== undefined) { sets.push('classId = ?');    params.push(input.classId); }
+    if (input.chapterId  !== undefined) { sets.push('chapterId = ?');  params.push(input.chapterId); }
+    if (input.bookId     !== undefined) { sets.push('bookId = ?');     params.push(input.bookId); }
+    if (input.educationBoard !== undefined) { sets.push('educationBoard = ?'); params.push(input.educationBoard); }
 
     if (existing.type === QuestionType.MCQ_SINGLE && input.options !== undefined) {
       const f = buildOptionFields(input.options);
@@ -384,7 +416,7 @@ export const QuestionService = {
 
       for (const it of toAttach) {
         await cr(conn,
-          'INSERT INTO assessment_questions (id, assessmentId, questionId, `order`, marksOverride, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, NOW(), NOW())',
+          'INSERT INTO assessment_questions (id, assessmentId, questionId, `order`, marksOverride) VALUES (?, ?, ?, ?, ?)',
           [newId(), assessmentId, it.questionId, nextOrder++, it.marksOverride],
         );
         attached++;
@@ -410,7 +442,7 @@ export const QuestionService = {
         'SELECT id FROM assessment_questions WHERE assessmentId = ? ORDER BY `order` ASC', [assessmentId],
       );
       for (let i = 0; i < remaining.length; i++) {
-        await cr(conn, 'UPDATE assessment_questions SET `order` = ?, updatedAt = NOW() WHERE id = ?', [i + 1, remaining[i].id]);
+        await cr(conn, 'UPDATE assessment_questions SET `order` = ? WHERE id = ?', [i + 1, remaining[i].id]);
       }
       await recalcTotalMarks(assessmentId, conn);
     });
@@ -425,14 +457,14 @@ export const QuestionService = {
     );
     if (!row) throw ApiError.notFound('Question is not attached to this assessment');
 
-    const sets: string[] = ['updatedAt = NOW()'];
+    const sets: string[] = [];
     const params: unknown[] = [];
     if (input.marks !== undefined) { sets.push('marksOverride = ?'); params.push(input.marks); }
     if (input.order !== undefined) { sets.push('`order` = ?');      params.push(input.order); }
     params.push(row.id);
 
     await tx(async (conn: PoolConnection) => {
-      await cr(conn, `UPDATE assessment_questions SET ${sets.join(', ')} WHERE id = ?`, params);
+      if (sets.length) await cr(conn, `UPDATE assessment_questions SET ${sets.join(', ')} WHERE id = ?`, params);
       if (input.marks !== undefined) await recalcTotalMarks(assessmentId, conn);
     });
 
@@ -464,10 +496,10 @@ export const QuestionService = {
     await tx(async (conn: PoolConnection) => {
       const BASE = current.length + 10_000;
       for (let i = 0; i < current.length; i++) {
-        await cr(conn, 'UPDATE assessment_questions SET `order` = ?, updatedAt = NOW() WHERE id = ?', [BASE + i, current[i].id]);
+        await cr(conn, 'UPDATE assessment_questions SET `order` = ? WHERE id = ?', [BASE + i, current[i].id]);
       }
       for (const item of input.order) {
-        await cr(conn, 'UPDATE assessment_questions SET `order` = ?, updatedAt = NOW() WHERE id = ?', [item.order, byQid.get(item.questionId)!]);
+        await cr(conn, 'UPDATE assessment_questions SET `order` = ? WHERE id = ?', [item.order, byQid.get(item.questionId)!]);
       }
     });
   },

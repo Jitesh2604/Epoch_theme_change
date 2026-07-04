@@ -48,6 +48,8 @@ model Board {
   studentProfiles StudentProfile[]
   teacherProfiles TeacherProfile[]
 
+  externalId String? @unique
+
   @@index([publicationId])
   @@map("boards")
 }
@@ -64,6 +66,8 @@ model Series {
   publication     Publication?     @relation(fields: [publicationId], references: [id])
   studentProfiles StudentProfile[]
   teacherSeries   TeacherSeries[]
+
+  externalId String? @unique
 
   @@index([publicationId])
   @@map("series")
@@ -84,6 +88,7 @@ model Class {
   quizzes                   Quiz[]
   studentProfiles           StudentProfile[]
   teacherClasses            TeacherClass[]
+  externalId                String?                   @unique
 
   @@map("classes")
 }
@@ -93,6 +98,7 @@ model Subject {
   name            String           @unique
   slug            String           @unique
   serial          String?
+  kind            String           @default("SUBJECT")
   status          UserStatus       @default(ACTIVE)
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
@@ -101,6 +107,8 @@ model Subject {
   questions       Question[]
   quizzes         Quiz[]
   teacherSubjects TeacherSubject[]
+  studentSubjects StudentSubject[]
+  externalId      String?          @unique
 
   @@map("subjects")
 }
@@ -134,6 +142,9 @@ model Book {
   @@index([boardId])
   @@index([seriesId])
   @@index([classId])
+  externalId      String?   @unique
+  sourceUpdatedAt DateTime?
+
   @@index([subjectId])
   @@map("books")
 }
@@ -150,6 +161,9 @@ model Chapter {
   book               Book?               @relation(fields: [bookId], references: [id])
   questions          Question[]
   quizChapters       QuizChapter[]
+
+  externalId      String?   @unique
+  sourceUpdatedAt DateTime?
 
   @@index([bookId])
   @@map("chapters")
@@ -203,7 +217,7 @@ model TeacherProfile {
   state          String?
   city           String?
   zip            String?
-  imageUrl       String?
+  imageUrl       String?          @db.MediumText
   bio            String?          @db.Text
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
@@ -235,10 +249,11 @@ model StudentProfile {
   state          String?
   city           String?
   zip            String?
-  imageUrl       String?
+  imageUrl       String?       @db.MediumText
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   books          StudentBook[]
+  subjects       StudentSubject[]
   board          Board?        @relation(fields: [boardId], references: [id])
   class          Class?        @relation(fields: [classId], references: [id])
   series         Series?       @relation(fields: [seriesId], references: [id])
@@ -319,18 +334,29 @@ model TeacherBook {
   @@map("teacher_books")
 }
 
+model StudentSubject {
+  studentProfileId String
+  subjectId        String
+  subject          Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  studentProfile   StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+
+  @@id([studentProfileId, subjectId])
+  @@index([subjectId], map: "student_subjects_subjectId_fkey")
+  @@map("student_subjects")
+}
+
 model Question {
   id                  String               @id @default(cuid())
   type                QuestionType
   prompt              String               @db.Text
   promptImageUrl      String?
-  optionA             String?
+  optionA             String?              @db.Text
   optionAImageUrl     String?
-  optionB             String?
+  optionB             String?              @db.Text
   optionBImageUrl     String?
-  optionC             String?
+  optionC             String?              @db.Text
   optionCImageUrl     String?
-  optionD             String?
+  optionD             String?              @db.Text
   optionDImageUrl     String?
   correctAnswer       String?
   correctOptions      String               @db.LongText
@@ -343,6 +369,7 @@ model Question {
   negativeMarks       Float                @default(0)
   difficulty          Difficulty           @default(MEDIUM)
   language            String?              @default("English")
+  educationBoard      String?
   tags                String               @db.LongText
   status              UserStatus           @default(ACTIVE)
   bookId              String?
@@ -368,6 +395,9 @@ model Question {
   @@index([difficulty])
   @@index([bookId])
   @@index([chapterId])
+  externalId      String?   @unique
+  sourceUpdatedAt DateTime?
+
   @@index([classId])
   @@map("questions")
 }
@@ -774,6 +804,26 @@ model Setting {
 
   @@index([category])
   @@map("settings")
+}
+
+model ContentSyncLog {
+  id          String   @id @default(cuid())
+  status      String   @default("RUNNING") // RUNNING | SUCCESS | FAILED
+  trigger     String   @default("MANUAL")  // MANUAL | SCHEDULED
+  startedAt   DateTime @default(now())
+  finishedAt  DateTime?
+  durationMs  Int?
+  inserted    Int      @default(0)
+  updated     Int      @default(0)
+  skipped     Int      @default(0)
+  failed      Int      @default(0)
+  stats       String   @db.LongText          // per-entity counts (JSON)
+  error       String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([status])
+  @@index([startedAt])
+  @@map("content_sync_logs")
 }
 
 enum Role {

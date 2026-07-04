@@ -4,6 +4,7 @@ import type { PoolConnection } from 'mysql2/promise';
 import { ApiError } from '../utils/ApiError';
 import type {
   StartPracticeInput,
+  StartOlympiadInput,
   SaveAttemptAnswerInput,
   SubmitAttemptInput,
 } from '../validators/quiz.validator';
@@ -119,6 +120,60 @@ async function getOrCreatePracticeQuiz(subjectId: string, fallbackUserId: string
   return quizId;
 }
 
+/** Gets or lazy-creates the shared per-class Olympiad quiz record. */
+async function getOrCreateOlympiadQuiz(classId: string | null, fallbackUserId: string): Promise<string> {
+  const existing = await q1<{ id: string }>(
+    "SELECT id FROM quizzes WHERE quizType = 'OLYMPIAD' AND classId <=> ? LIMIT 1",
+    [classId],
+  );
+  if (existing) return existing.id;
+
+  const admin = await q1<{ id: string }>(
+    "SELECT id FROM users WHERE role IN ('SUPER_ADMIN','PUBLICATION_ADMIN') ORDER BY createdAt ASC LIMIT 1",
+  );
+  const cls = classId ? await q1<{ name: string }>('SELECT name FROM classes WHERE id = ?', [classId]) : null;
+
+  const quizId = newId();
+  await run(
+    `INSERT INTO quizzes (id, title, quizType, questionSelection, classId, status, createdById, leaderboardEnabled, duration, createdAt, updatedAt)
+     VALUES (?, ?, 'OLYMPIAD', 'AUTO_RANDOM', ?, 'PUBLISHED', ?, 1, 0, NOW(), NOW())`,
+    [quizId, `Olympiad${cls ? ` · ${cls.name}` : ''}`, classId, admin?.id ?? fallbackUserId],
+  );
+  return quizId;
+}
+
+interface StudentAcademic { profileId: string | null; classId: string | null; educationBoard: string | null }
+
+/** The academic context used to scope a student's quizzes. */
+async function readStudentProfile(studentId: string): Promise<StudentAcademic> {
+  const row = await q1<{ id: string; classId: string | null; educationBoard: string | null }>(
+    'SELECT id, classId, educationBoard FROM student_profiles WHERE userId = ?', [studentId],
+  );
+  return { profileId: row?.id ?? null, classId: row?.classId ?? null, educationBoard: row?.educationBoard ?? null };
+}
+
+/**
+ * Scope clause used by both practice and olympiad: a question matches if it is
+ * the student's own class/board OR untagged (global). It is NEVER from another
+ * class or board.
+ */
+function classBoardFilter(classId: string | null, board: string | null): { cond: string; params: unknown[] } {
+  let cond = '';
+  const params: unknown[] = [];
+  if (classId) { cond += ' AND (classId = ? OR classId IS NULL)';              params.push(classId); }
+  if (board)   { cond += ' AND (educationBoard = ? OR educationBoard IS NULL)'; params.push(board); }
+  return { cond, params };
+}
+
+/** Olympiad questions-per-subject: DB-configurable via settings, default 5. */
+async function getOlympiadPerSubject(): Promise<number> {
+  const row = await q1<{ value: string }>(
+    "SELECT value FROM settings WHERE `key` = 'olympiad.questionsPerSubject' LIMIT 1",
+  );
+  const n = row ? parseInt(row.value, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 5;
+}
+
 // ── Build result from a completed attempt ─────────────────────────────
 
 async function buildResult(attemptId: string) {
@@ -187,6 +242,36 @@ async function buildResult(attemptId: string) {
 
 // ── Service ───────────────────────────────────────────────────────────
 
+/**
+ * Create a new quiz attempt for (quizId, studentId). The attempt number is
+ * MAX(existing)+1, which is not atomic — if a student triggers "start" twice in
+ * quick succession (double-click / duplicate request) both requests can pick the
+ * same number and collide on the unique key. We retry a few times on the
+ * duplicate-key error so start never fails for that reason.
+ */
+async function createQuizAttempt(quizId: string, studentId: string): Promise<{ attemptId: string; attemptNumber: number }> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const last = await q1<{ attemptNumber: number }>(
+      'SELECT attemptNumber FROM quiz_attempts WHERE quizId = ? AND studentId = ? ORDER BY attemptNumber DESC LIMIT 1',
+      [quizId, studentId],
+    );
+    const attemptNumber = (last?.attemptNumber ?? 0) + 1;
+    const attemptId = newId();
+    try {
+      await run(
+        `INSERT INTO quiz_attempts (id, quizId, studentId, attemptNumber, startTime, status, score, correctAnswers, wrongAnswers, skipped, percentage, timeTakenSec, isSubmitted, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, NOW(), 'IN_PROGRESS', 0, 0, 0, 0, 0, 0, 0, NOW(), NOW())`,
+        [attemptId, quizId, studentId, attemptNumber],
+      );
+      return { attemptId, attemptNumber };
+    } catch (err) {
+      if ((err as { code?: string }).code === 'ER_DUP_ENTRY' && attempt < 4) continue;
+      throw err;
+    }
+  }
+  throw new Error('Could not allocate a quiz attempt number');
+}
+
 export const QuizService = {
   async getSubjectsWithQuestions() {
     const typePlaceholders = GRADABLE_TYPES.map(() => '?').join(',');
@@ -216,38 +301,36 @@ export const QuizService = {
   },
 
   async startPractice(studentId: string, input: StartPracticeInput) {
-    const subject = await q1<{ id: string; name: string; slug: string }>(
-      'SELECT id, name, slug FROM subjects WHERE id = ?', [input.subjectId],
+    const subject = await q1<{ id: string; name: string; slug: string; kind: string }>(
+      'SELECT id, name, slug, kind FROM subjects WHERE id = ?', [input.subjectId],
     );
     if (!subject) throw ApiError.notFound('Subject not found');
+    if (subject.kind !== 'SUBJECT') {
+      throw ApiError.badRequest('This category is an Olympiad mode — use the Olympiad flow, not subject practice.');
+    }
+
+    // Scope to the student's class AND board (never other classes/boards).
+    const profile = await readStudentProfile(studentId);
+    const { cond: scopeCond, params: scopeParams } = classBoardFilter(profile.classId, profile.educationBoard);
 
     const typePlaceholders = GRADABLE_TYPES.map(() => '?').join(',');
-    const diffCond = input.difficulty ? ' AND difficulty = ?' : '';
-    const diffParam = input.difficulty ? [input.difficulty] : [];
+    const diffCond   = input.difficulty ? ' AND difficulty = ?' : '';
+    const diffParam  = input.difficulty ? [input.difficulty] : [];
+    const chapCond   = input.chapterId ? ' AND chapterId = ?' : '';
+    const chapParam  = input.chapterId ? [input.chapterId] : [];
 
     const allQuestions = await q<DbQuestion>(
       `SELECT * FROM questions
-       WHERE subjectId = ? AND status = 'ACTIVE' AND type IN (${typePlaceholders})${diffCond}`,
-      [input.subjectId, ...GRADABLE_TYPES, ...diffParam],
+       WHERE subjectId = ? AND status = 'ACTIVE' AND type IN (${typePlaceholders})${scopeCond}${diffCond}${chapCond}`,
+      [input.subjectId, ...GRADABLE_TYPES, ...scopeParams, ...diffParam, ...chapParam],
     );
 
-    if (!allQuestions.length) throw ApiError.badRequest('No questions available for this subject / difficulty');
+    if (!allQuestions.length) throw ApiError.badRequest('No questions available for this subject / class / board / difficulty');
 
     const selected   = shuffleArray(allQuestions).slice(0, input.questionCount);
     const quizId     = await getOrCreatePracticeQuiz(input.subjectId, studentId);
 
-    const last = await q1<{ attemptNumber: number }>(
-      'SELECT attemptNumber FROM quiz_attempts WHERE quizId = ? AND studentId = ? ORDER BY attemptNumber DESC LIMIT 1',
-      [quizId, studentId],
-    );
-    const attemptNumber = (last?.attemptNumber ?? 0) + 1;
-    const attemptId     = newId();
-
-    await run(
-      `INSERT INTO quiz_attempts (id, quizId, studentId, attemptNumber, startTime, status, score, correctAnswers, wrongAnswers, skipped, percentage, timeTakenSec, isSubmitted, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, NOW(), 'IN_PROGRESS', 0, 0, 0, 0, 0, 0, 0, NOW(), NOW())`,
-      [attemptId, quizId, studentId, attemptNumber],
-    );
+    const { attemptId, attemptNumber } = await createQuizAttempt(quizId, studentId);
 
     // Pre-create skipped answer stubs for all selected questions
     for (const sq of selected) {
@@ -452,5 +535,104 @@ export const QuizService = {
         isMarkedReview:  Boolean(a.isMarkedReview),
       })),
     };
+  },
+
+  // ── Olympiad: mixed quiz across the student's selected subjects ──────────
+  async startOlympiad(studentId: string, input: StartOlympiadInput) {
+    const profile = await readStudentProfile(studentId);
+
+    const subjects = await q<{ id: string; name: string; slug: string }>(
+      `SELECT s.id, s.name, s.slug FROM student_subjects ss
+       JOIN subjects s ON s.id = ss.subjectId
+       WHERE ss.studentProfileId = ? AND s.kind = 'SUBJECT' AND s.status = 'ACTIVE'
+       ORDER BY s.name`,
+      [profile.profileId ?? '__none__'],
+    );
+    if (!subjects.length) {
+      throw ApiError.badRequest('Add your subjects in your profile to start an Olympiad.');
+    }
+
+    const perSubject = input.perSubject ?? await getOlympiadPerSubject();
+    const { cond: scopeCond, params: scopeParams } = classBoardFilter(profile.classId, profile.educationBoard);
+    const typePlaceholders = GRADABLE_TYPES.map(() => '?').join(',');
+
+    // Balanced pull: up to `perSubject` random questions from each subject,
+    // strictly within the student's class + board.
+    const picked: DbQuestion[] = [];
+    const distribution: { subjectId: string; subject: string; count: number }[] = [];
+    for (const subj of subjects) {
+      const rows = await q<DbQuestion>(
+        `SELECT * FROM questions
+         WHERE subjectId = ? AND status = 'ACTIVE' AND type IN (${typePlaceholders})${scopeCond}
+         ORDER BY RAND() LIMIT ?`,
+        [subj.id, ...GRADABLE_TYPES, ...scopeParams, perSubject],
+      );
+      picked.push(...rows);
+      distribution.push({ subjectId: subj.id, subject: subj.name, count: rows.length });
+    }
+    if (!picked.length) {
+      throw ApiError.badRequest('No questions available for your class/board in your selected subjects yet.');
+    }
+
+    const selected = shuffleArray(picked);
+    const quizId   = await getOrCreateOlympiadQuiz(profile.classId, studentId);
+
+    const { attemptId, attemptNumber } = await createQuizAttempt(quizId, studentId);
+    for (const sq of selected) {
+      await run(
+        `INSERT INTO attempt_answers (id, attemptId, questionId, selectedOptions, isSkipped, isMarkedReview, marksAwarded, createdAt, updatedAt)
+         VALUES (?, ?, ?, '[]', 1, 0, 0, NOW(), NOW())`,
+        [newId(), attemptId, sq.id],
+      );
+    }
+
+    return {
+      attemptId,
+      attemptNumber,
+      quizId,
+      mode:          'OLYMPIAD',
+      subject:       { id: 'olympiad', name: 'Practice Olympiad', slug: 'practice-olympiad' },
+      difficulty:    null,
+      perSubject,
+      distribution,
+      questionCount: selected.length,
+      totalMarks:    selected.reduce((s, sq) => s + sq.marks, 0),
+      startTime:     new Date(),
+      questions:     selected.map((sq, i) => sanitizeQuestion(sq, i + 1)),
+    };
+  },
+
+  // ── Olympiad: the logged-in student's own attempt history ───────────────
+  async getOlympiadAttempts(studentId: string) {
+    const rows = await q<{
+      attemptId: string; attemptNumber: number; status: string; score: number;
+      percentage: number; correctAnswers: number; wrongAnswers: number; skipped: number;
+      timeTakenSec: number; startTime: Date; endTime: Date | null; quizTitle: string; questionCount: number;
+    }>(
+      `SELECT qa.id AS attemptId, qa.attemptNumber, qa.status, qa.score, qa.percentage,
+              qa.correctAnswers, qa.wrongAnswers, qa.skipped, qa.timeTakenSec,
+              qa.startTime, qa.endTime, q.title AS quizTitle,
+              (SELECT COUNT(*) FROM attempt_answers aa WHERE aa.attemptId = qa.id) AS questionCount
+       FROM quiz_attempts qa
+       JOIN quizzes q ON q.id = qa.quizId
+       WHERE qa.studentId = ? AND q.quizType = 'OLYMPIAD'
+       ORDER BY qa.startTime DESC`,
+      [studentId],
+    );
+    return rows.map(r => ({
+      attemptId:      r.attemptId,
+      attemptNumber:  r.attemptNumber,
+      status:         r.status,
+      score:          r.score,
+      percentage:     r.percentage,
+      correctAnswers: r.correctAnswers,
+      wrongAnswers:   r.wrongAnswers,
+      skipped:        r.skipped,
+      timeTakenSec:   r.timeTakenSec,
+      startTime:      r.startTime,
+      endTime:        r.endTime,
+      quizTitle:      r.quizTitle,
+      questionCount:  Number(r.questionCount),
+    }));
   },
 };

@@ -8,6 +8,7 @@ import { loadUser, updateProfile, toUIRole } from '../../lib/authStore';
 import { ApiError } from '../../lib/api';
 import type { ProfileUpdateData } from '../../lib/authStore';
 import { catalogPresets, useClasses, useTeacherByCode } from '../../hooks/useCatalog';
+import { useRealSubjects } from '../../hooks/useSubjects';
 
 interface Props { navigate: NavigateFn; }
 
@@ -40,6 +41,7 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
   const [dob,         setDob]         = useState('');
   const [schoolName,  setSchoolName]  = useState('');
   const [classId,     setClassId]     = useState('');
+  const [subjectIds,  setSubjectIds]  = useState<string[]>([]);
   const [educationBoard, setEducationBoard] = useState('');
   const [stateBoard,  setStateBoard]  = useState('');
   const [teacherCode, setTeacherCode] = useState('');
@@ -55,6 +57,10 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
 
   // Grade levels (Class 1–12) from the catalog.
   const classes = useClasses();
+  // Studiable subjects (excludes the Olympiad "mode" rows) — chosen by the student.
+  const subjects = useRealSubjects();
+  const toggleSubject = (id: string) =>
+    setSubjectIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   // Live teacher-code lookup → preview the academic context the student inherits.
   const teacher = useTeacherByCode(teacherCode);
@@ -79,6 +85,7 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
     reqText('zip', zip);
     reqText('address', address);
     if (classOptions.length && !classId) errs.classId = 'Please select your class.';
+    if ((subjects.data?.length ?? 0) > 0 && subjectIds.length === 0) errs.subjects = 'Select at least one subject.';
     if (!educationBoard) errs.educationBoard = 'Please select your education board.';
     if (educationBoard === 'STATE_BOARD' && !stateBoard.trim()) errs.stateBoard = 'Please confirm your state board.';
     // Teacher code is optional, but if entered it must resolve to a real teacher.
@@ -105,6 +112,7 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
         dob:         dob || null,
         schoolName:  schoolName.trim() || null,
         classId:     classId || null,
+        subjectIds,
         educationBoard: educationBoard || null,
         stateBoard:  educationBoard === 'STATE_BOARD' ? (stateBoard.trim() || null) : null,
         teacherCode: teacherCode.trim() || null,
@@ -167,6 +175,41 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
               options={classOptions} icon="user" placeholder="— Select your class —"
               error={errors.classId} hint="Your current grade / class (1st–12th)."
             />
+
+            {/* Subjects — select every subject you study. Drives both Subject
+                Practice and the mixed Practice Olympiad. */}
+            <div className="auth-field">
+              <div className="auth-field-header">
+                <label className="auth-label">Subjects</label>
+                <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>{subjectIds.length} selected</span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {(subjects.data ?? []).map(s => {
+                  const on = subjectIds.includes(s.id);
+                  return (
+                    <button
+                      type="button"
+                      key={s.id}
+                      onClick={() => toggleSubject(s.id)}
+                      style={{
+                        fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                        borderRadius: 999, padding: '6px 12px',
+                        border: `1px solid ${on ? 'var(--brand)' : 'var(--border-1)'}`,
+                        background: on ? 'var(--brand)' : 'var(--surface-1)',
+                        color: on ? 'var(--brand-ink, #fff)' : 'var(--fg-2)',
+                      }}
+                    >
+                      {on ? '✓ ' : ''}{s.name}
+                    </button>
+                  );
+                })}
+                {!subjects.loading && !(subjects.data?.length) && (
+                  <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>No subjects available yet.</span>
+                )}
+              </div>
+              {errors.subjects && <span className="auth-error">{errors.subjects}</span>}
+            </div>
+
             <EducationBoardField
               value={educationBoard} onChange={setEducationBoard}
               stateBoard={stateBoard} onStateBoardChange={setStateBoard}

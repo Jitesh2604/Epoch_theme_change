@@ -7,6 +7,7 @@ import type {
   CreateAssessmentInput,
   UpdateAssessmentInput,
   ListAssessmentsQuery,
+  AssignAssessmentInput,
 } from '../validators/assessment.validator';
 
 function actorFrom(req: Request): Actor {
@@ -58,5 +59,15 @@ export const AssessmentController = {
   archive: asyncHandler(async (req: Request, res: Response) => {
     const a = await AssessmentService.archive(actorFrom(req), p(req, 'id'));
     ApiResponse.ok(res, a, 'Assessment archived');
+  }),
+
+  assign: asyncHandler(async (req: Request, res: Response) => {
+    const a = await AssessmentService.assign(actorFrom(req), p(req, 'id'), req.body as AssignAssessmentInput);
+    ApiResponse.ok(res, a, 'Assessment assignment updated');
+  }),
+
+  getAssignments: asyncHandler(async (req: Request, res: Response) => {
+    const a = await AssessmentService.getAssignments(actorFrom(req), p(req, 'id'));
+    ApiResponse.ok(res, a);
   }),
 };

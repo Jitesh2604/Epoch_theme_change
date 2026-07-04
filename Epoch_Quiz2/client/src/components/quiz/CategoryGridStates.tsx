@@ -28,15 +28,15 @@ export const CategoryGridError: React.FC<{ navigate: NavigateFn; backLabel: stri
   </div>
 );
 
-/** Shown when the question database has no content yet. */
+/** Shown when there are no subjects/categories yet. */
 export const CategoryGridEmpty: React.FC = () => (
   <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--fg-3)' }}>
-    <Icon name="database" size={36} style={{ marginBottom: 16, opacity: 0.35 } as React.CSSProperties} />
+    <Icon name="bookOpen" size={36} style={{ marginBottom: 16, opacity: 0.35 } as React.CSSProperties} />
     <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--fg-2)', marginBottom: 6 }}>
-      Question DB is empty
+      No categories yet
     </p>
     <p style={{ fontSize: 13, maxWidth: 340, margin: '0 auto' }}>
-      No questions have been added to the database yet. Ask your teacher or admin to upload questions first.
+      No subjects have been added yet. Once an admin adds a subject, it will appear here automatically.
     </p>
   </div>
 );

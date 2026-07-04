@@ -18,6 +18,9 @@ export interface Question {
   difficulty: 'EASY' | 'MEDIUM' | 'HARD';
   tags: string[];
   subject: { id: string; name: string; slug: string } | null;
+  classId: string | null;
+  chapterId: string | null;
+  bookId: string | null;
   createdBy: { id: string; name: string; email: string };
   createdAt: string;
   updatedAt: string;
@@ -73,12 +76,16 @@ export const questionApi = {
     difficulty?: string;
     tags?: string[];
     subjectId?: string | null;
+    classId?: string | null;
+    chapterId?: string | null;
+    bookId?: string | null;
   }) => api.post<Question>('/questions', data),
 
   update: (id: string, data: Partial<{
     prompt: string; options: string[]; correctOption: number;
     correctBoolean: boolean; modelAnswer: string;
     marks: number; difficulty: string; tags: string[]; subjectId: string | null;
+    classId: string | null; chapterId: string | null; bookId: string | null;
   }>) => api.patch<Question>(`/questions/${id}`, data),
 
   remove: (id: string) => api.delete(`/questions/${id}`),

@@ -14,6 +14,8 @@ import notificationRoutes from './notification.routes';
 import dashboardRoutes    from './dashboard.routes';
 import quizRoutes         from './quiz.routes';
 import settingsRoutes     from './settings.routes';
+import contactRoutes      from './contact.routes';
+import contentRoutes      from './content.routes';
 
 const router = new Router();
 
@@ -41,5 +43,7 @@ router.use('/notifications', notificationRoutes);
 router.use('/dashboard',     dashboardRoutes);
 router.use('/quizzes',       quizRoutes);
 router.use('/settings',      settingsRoutes);
+router.use('/contact',       contactRoutes);
+router.use('/admin/content', contentRoutes);
 
 export default router;

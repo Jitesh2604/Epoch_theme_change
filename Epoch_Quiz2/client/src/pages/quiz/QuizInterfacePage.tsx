@@ -41,7 +41,9 @@ export const QuizInterfacePage: React.FC<QuizInterfacePageProps> = ({
   navigate, catId, subId, level, tweaks, sfx, setQuizResult,
 }) => {
   const t = useT();
-  const cat = QUIZ_CATEGORIES.find(c => c.id === catId);
+  // catId is the subject slug from the dynamic Categories page; fall back so any
+  // subject works, not only the static ones.
+  const cat = QUIZ_CATEGORIES.find(c => c.id === catId) ?? { id: catId, title: t('nav.quizPlay'), blurb: '' };
   const lvl = LEVELS.find(l => l.id === level);
 
   const [session, setSession]           = useState<PracticeAttemptData | null>(null);

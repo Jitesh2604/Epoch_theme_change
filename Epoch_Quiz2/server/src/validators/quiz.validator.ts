@@ -4,7 +4,13 @@ import { Difficulty } from '../lib/enums';
 export const startPracticeSchema = z.object({
   subjectId:     z.string().min(1, 'Subject is required'),
   difficulty:    z.nativeEnum(Difficulty).optional(),
+  chapterId:     z.string().min(1).optional(),
   questionCount: z.number().int().min(5).max(30).default(10),
+});
+
+export const startOlympiadSchema = z.object({
+  // Optional override of the DB-configured questions-per-subject distribution.
+  perSubject: z.number().int().min(1).max(20).optional(),
 });
 
 export const saveAttemptAnswerSchema = z.object({
@@ -26,5 +32,6 @@ export const attemptIdParamsSchema = z.object({
 });
 
 export type StartPracticeInput    = z.infer<typeof startPracticeSchema>;
+export type StartOlympiadInput    = z.infer<typeof startOlympiadSchema>;
 export type SaveAttemptAnswerInput = z.infer<typeof saveAttemptAnswerSchema>;
 export type SubmitAttemptInput    = z.infer<typeof submitAttemptSchema>;

@@ -92,11 +92,42 @@ export function usePracticeSubjects() {
   return useAsync<PracticeSubject[]>(() => api.get('/quizzes/subjects'), []);
 }
 
+// ── Olympiad ──────────────────────────────────────────────────────
+
+export interface OlympiadAttemptData extends PracticeAttemptData {
+  mode: 'OLYMPIAD';
+  perSubject: number;
+  distribution: { subjectId: string; subject: string; count: number }[];
+}
+
+export interface OlympiadAttemptSummary {
+  attemptId:      string;
+  attemptNumber:  number;
+  status:         'IN_PROGRESS' | 'SUBMITTED' | 'ABANDONED';
+  score:          number;
+  percentage:     number;
+  correctAnswers: number;
+  wrongAnswers:   number;
+  skipped:        number;
+  timeTakenSec:   number;
+  startTime:      string;
+  endTime:        string | null;
+  quizTitle:      string;
+  questionCount:  number;
+}
+
+export function useOlympiadAttempts() {
+  return useAsync<OlympiadAttemptSummary[]>(() => api.get('/quizzes/olympiad/attempts'), []);
+}
+
 // ── API methods ───────────────────────────────────────────────────
 
 export const practiceApi = {
-  start: (data: { subjectId: string; difficulty?: string; questionCount?: number }) =>
+  start: (data: { subjectId: string; difficulty?: string; chapterId?: string; questionCount?: number }) =>
     api.post<PracticeAttemptData>('/quizzes/practice/start', data),
+
+  startOlympiad: (data: { perSubject?: number } = {}) =>
+    api.post<OlympiadAttemptData>('/quizzes/olympiad/start', data),
 
   saveAnswer: (
     attemptId: string,

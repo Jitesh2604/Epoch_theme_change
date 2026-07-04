@@ -78,7 +78,55 @@ function baseTemplate(title: string, body: string): string {
 
 export interface SendResult { ok: boolean; error?: string }
 
+/** Escape user-supplied text before embedding it in the HTML email body. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 export const EmailService = {
+  /**
+   * Deliver a "Contact us" message to the configured CONTACT_TO address.
+   * Unlike the reset/welcome mails this is NOT fail-silent: if SMTP is not
+   * configured or the send fails, it returns { ok:false } so the API can report
+   * a real error to the user (no fake success).
+   */
+  async sendContactMessage(input: { name: string; email: string; subject: string; message: string }): Promise<SendResult> {
+    const transport = getTransport();
+    if (!transport) {
+      logger.error('[email] Contact message not sent — SMTP is not configured.');
+      return { ok: false, error: 'Email service is not configured. Please try again later.' };
+    }
+
+    const to = env.CONTACT_TO;
+    const html = baseTemplate(
+      `New contact message: ${escapeHtml(input.subject)}`,
+      `<h1>New contact message</h1>
+       <p><strong>Name:</strong> ${escapeHtml(input.name)}</p>
+       <p><strong>Email:</strong> ${escapeHtml(input.email)}</p>
+       <p><strong>Subject:</strong> ${escapeHtml(input.subject)}</p>
+       <hr class="divider" />
+       <p style="white-space:pre-wrap">${escapeHtml(input.message)}</p>`,
+    );
+
+    try {
+      await transport.sendMail({
+        from:    env.EMAIL_FROM,
+        to,
+        replyTo: input.email,
+        subject: `[Contact] ${input.subject}`,
+        html,
+        text:    `New contact message\n\nName: ${input.name}\nEmail: ${input.email}\nSubject: ${input.subject}\n\n${input.message}`,
+      });
+      logger.info(`[email] Contact message from ${input.email} delivered to ${to}`);
+      return { ok: true };
+    } catch (err: any) {
+      logger.error(`[email] Failed to send contact message: ${err.message}`);
+      return { ok: false, error: 'Could not send your message. Please try again later.' };
+    }
+  },
+
   /**
    * Send password-reset email.
    * Returns { ok: true } whether or not SMTP is configured (fail-silent so

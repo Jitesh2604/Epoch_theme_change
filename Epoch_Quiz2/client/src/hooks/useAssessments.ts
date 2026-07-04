@@ -40,13 +40,22 @@ export function useAssessment(id: string) {
   return useAsync<Assessment>(() => api.get(`/assessments/${id}`), [id]);
 }
 
+export interface AssessmentAssignments {
+  classes:  Array<{ id: string; name: string }>;
+  students: Array<{ id: string; name: string; email: string }>;
+}
+
 export const assessmentApi = {
-  create:    (data: { title: string; description?: string; duration: number; subjectId?: string; passingMarks?: number }) =>
+  create:    (data: { title: string; description?: string; duration: number; subjectId?: string; classId?: string; passingMarks?: number; assignedClassIds?: string[]; assignedStudentIds?: string[] }) =>
                api.post<Assessment>('/assessments', data),
-  update:    (id: string, data: Partial<{ title: string; description: string; duration: number; subjectId: string; passingMarks: number }>) =>
+  update:    (id: string, data: Partial<{ title: string; description: string; duration: number; subjectId: string; classId: string; passingMarks: number }>) =>
                api.patch<Assessment>(`/assessments/${id}`, data),
   remove:    (id: string) => api.delete(`/assessments/${id}`),
   publish:   (id: string) => api.post<Assessment>(`/assessments/${id}/publish`),
   unpublish: (id: string) => api.post<Assessment>(`/assessments/${id}/unpublish`),
   archive:   (id: string) => api.post<Assessment>(`/assessments/${id}/archive`),
+  // Assignment (replace-set): pass classIds and/or studentIds
+  assign:         (id: string, data: { classIds?: string[]; studentIds?: string[] }) =>
+                    api.post<AssessmentAssignments>(`/assessments/${id}/assign`, data),
+  getAssignments: (id: string) => api.get<AssessmentAssignments>(`/assessments/${id}/assignments`),
 };

@@ -10,6 +10,15 @@ const tagsSchema       = z.array(z.string().trim().min(1).max(40)).max(20);
 const subjectIdSchema  = z.string().min(1).optional().nullable();
 const optionsSchema    = z.array(z.string().trim().min(1).max(500)).min(2, 'At least 2 options').max(8);
 
+// Academic taxonomy shared by every question type. classId/chapterId/bookId are
+// real FK columns on `questions`; all optional so existing callers keep working.
+const academicFields = {
+  classId:        z.string().min(1).optional().nullable(),
+  chapterId:      z.string().min(1).optional().nullable(),
+  bookId:         z.string().min(1).optional().nullable(),
+  educationBoard: z.string().trim().min(1).max(120).optional().nullable(),
+};
+
 // ── CREATE — discriminated union by `type` ───────────────────
 
 const mcqSingleCreateSchema = z.object({
@@ -76,14 +85,16 @@ const descCreateSchema = z.object({
   subjectId:   subjectIdSchema,
 });
 
-export const createQuestionSchema = z.discriminatedUnion('type', [
-  mcqSingleCreateSchema,
-  mcqMultipleCreateSchema,
-  tfCreateSchema,
-  fillInBlankCreateSchema,
-  matchColumnCreateSchema,
-  descCreateSchema,
-]);
+export const createQuestionSchema = z
+  .discriminatedUnion('type', [
+    mcqSingleCreateSchema,
+    mcqMultipleCreateSchema,
+    tfCreateSchema,
+    fillInBlankCreateSchema,
+    matchColumnCreateSchema,
+    descCreateSchema,
+  ])
+  .and(z.object(academicFields));
 
 // ── UPDATE — partial; type-specific fields validated in service ─
 export const updateQuestionSchema = z
@@ -93,6 +104,7 @@ export const updateQuestionSchema = z
     difficulty:     difficultySchema.optional(),
     tags:           tagsSchema.optional(),
     subjectId:      subjectIdSchema,
+    ...academicFields,
 
     // MCQ-only
     options:        optionsSchema.optional(),

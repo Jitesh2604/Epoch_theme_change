@@ -9,6 +9,8 @@ import { QuizPlayPage } from './pages/quiz/QuizPlayPage';
 import { CategoryPage } from './pages/quiz/CategoryPage';
 import { LevelSelectPage } from './pages/quiz/LevelSelectPage';
 import { QuizInterfacePage } from './pages/quiz/QuizInterfacePage';
+import { OlympiadPlayPage } from './pages/quiz/OlympiadPlayPage';
+import { OlympiadHistoryPage } from './pages/quiz/OlympiadHistoryPage';
 import { ResultPage } from './pages/quiz/ResultPage';
 import { InstructionPage } from './pages/static/InstructionPage';
 import { StaticPage } from './pages/static/StaticPage';
@@ -122,6 +124,14 @@ export default function App() {
       page = <ResultPage navigate={navigate} result={quizResult} catId={parts[1]} subId={parts[2]} />;
     } else {
       page = <QuizPlayPage navigate={navigate} tweaks={tweaks} />;
+    }
+  } else if (top === 'olympiad') {
+    if (!getAuth()) {
+      page = <PlayGate targetRoute={route} />;
+    } else if (parts[1] === 'history') {
+      page = <OlympiadHistoryPage navigate={navigate} />;
+    } else {
+      page = <OlympiadPlayPage navigate={navigate} />;
     }
   } else if (top === 'instruction') {
     page = <InstructionPage navigate={navigate} />;

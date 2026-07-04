@@ -4,6 +4,14 @@ import { Icon } from '../../components/ui/Icon';
 import { showToast } from '../../components/ui/Toast';
 import { Footer } from '../../components/layout/Footer';
 import { PageHead } from '../../components/layout/PageHead';
+import { api, ApiError } from '../../lib/api';
+
+// The single source of truth for contact details shown on the page.
+const CONTACT = {
+  email: 'mayank@epochstudio.net',
+  phones: ['9711146828', '9818073878'],
+  address: ['H-962-C, Top Floor,', 'Street No. 10,', 'Sector 7, Dwarka,', 'Near Ramphal Chowk,', 'New Delhi - 110046'],
+};
 
 type StaticKind = 'about' | 'contact' | 'privacy' | 'terms';
 
@@ -33,14 +41,9 @@ export const StaticPage: React.FC<StaticPageProps> = ({ navigate, kind }) => {
     },
     contact: {
       eyebrow: 'Contact us',
-      title: "Let's talk.",
-      body: 'We answer every message within one working day. Pick the channel that suits you.',
-      sections: [
-        { h: 'Email',               p: 'hello@epoch.ai — for general questions, partnership enquiries, and bug reports.' },
-        { h: 'Editorial enquiries', p: "editorial@epoch.ai — if you'd like to license content, contribute questions, or join the editorial board." },
-        { h: 'Press',               p: 'press@epoch.ai — for media kits, founder availability, and embargoed releases.' },
-        { h: 'Office',              p: 'Epoch Inc. · 4th floor, 22 Mercer Street, London WC2H 9HD' },
-      ],
+      title: 'Get in touch.',
+      body: "Questions, feedback, or partnership enquiries — send us a note and we'll get back to you.",
+      sections: [],
     },
     privacy: {
       eyebrow: 'Privacy policy',
@@ -73,33 +76,95 @@ export const StaticPage: React.FC<StaticPageProps> = ({ navigate, kind }) => {
     <div className="page-enter">
       <PageHead eyebrow={c.eyebrow} title={c.title} body={c.body} />
       <section className="container" style={{ paddingBottom: 80 }}>
-        <div className="prose">
-          {c.sections.map((s, i) => (
-            <div key={i}><h2>{s.h}</h2><p>{s.p}</p></div>
-          ))}
-          {kind === 'contact' && (
-            <div style={{ marginTop: 32, padding: 24, background: 'var(--surface-1)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-xl)' }}>
-              <h2 style={{ margin: '0 0 12px' }}>Drop us a note</h2>
-              <ContactForm />
-            </div>
-          )}
-        </div>
+        {kind === 'contact' ? (
+          <ContactSection />
+        ) : (
+          <div className="prose">
+            {c.sections.map((s, i) => (
+              <div key={i}><h2>{s.h}</h2><p>{s.p}</p></div>
+            ))}
+          </div>
+        )}
       </section>
       <Footer navigate={navigate} />
     </div>
   );
 };
 
-const ContactForm: React.FC = () => {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [msg, setMsg] = useState('');
+// ── Contact section: info cards + working form ──────────────────────────────
 
-  const submit = (e: React.FormEvent) => {
+const InfoCard: React.FC<{ icon: string; title: string; children: React.ReactNode }> = ({ icon, title, children }) => (
+  <div className="feature">
+    <div className="f-ico"><Icon name={icon} size={20} /></div>
+    <h3>{title}</h3>
+    <div style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--fg-2)' }}>{children}</div>
+  </div>
+);
+
+const ContactSection: React.FC = () => (
+  <div style={{ display: 'grid', gap: 24 }}>
+    <div className="grid-3">
+      <InfoCard icon="mail" title="Email">
+        <a href={`mailto:${CONTACT.email}`} style={{ color: 'var(--brand, #354024)', wordBreak: 'break-all' }}>
+          {CONTACT.email}
+        </a>
+      </InfoCard>
+
+      <InfoCard icon="phone" title="Phone">
+        {CONTACT.phones.map(p => (
+          <div key={p}>
+            <a href={`tel:+91${p}`} style={{ color: 'var(--fg-1)' }}>{p}</a>
+          </div>
+        ))}
+      </InfoCard>
+
+      <InfoCard icon="mapPin" title="Office address">
+        {CONTACT.address.map((line, i) => <div key={i}>{line}</div>)}
+      </InfoCard>
+    </div>
+
+    <div style={{ padding: 24, background: 'var(--surface-1)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-xl)' }}>
+      <h2 style={{ margin: '0 0 4px' }}>Send us a message</h2>
+      <p style={{ margin: '0 0 18px', fontSize: 13.5, color: 'var(--fg-3)' }}>
+        Fill in the form and we'll get back to you.
+      </p>
+      <ContactForm />
+    </div>
+  </div>
+);
+
+const ContactForm: React.FC = () => {
+  const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
+  const [sending, setSending] = useState(false);
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email || !msg) { showToast('Fill in all three fields, please.', 'danger'); return; }
-    showToast("Sent. We'll reply within one working day.");
-    setName(''); setEmail(''); setMsg('');
+    const { name, email, subject, message } = form;
+    if (!name.trim() || !email.trim() || !subject.trim() || !message.trim()) {
+      showToast('Please fill in all fields.', 'danger');
+      return;
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) {
+      showToast('Please enter a valid email address.', 'danger');
+      return;
+    }
+
+    setSending(true);
+    try {
+      // Real backend send — throws on failure (no fake success).
+      await api.post('/contact', {
+        name: name.trim(), email: email.trim(), subject: subject.trim(), message: message.trim(),
+      });
+      showToast("Message sent — we'll get back to you soon.", 'success');
+      setForm({ name: '', email: '', subject: '', message: '' });
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Could not send your message. Please try again.';
+      showToast(msg, 'danger');
+    } finally {
+      setSending(false);
+    }
   };
 
   const inputStyle: React.CSSProperties = {
@@ -112,12 +177,20 @@ const ContactForm: React.FC = () => {
   return (
     <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <input style={inputStyle} placeholder="Your name" value={name} onChange={e => setName(e.target.value)} />
-        <input style={inputStyle} placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+        <input style={inputStyle} placeholder="Your name"   value={form.name}  onChange={set('name')} />
+        <input style={inputStyle} placeholder="Email"        value={form.email} onChange={set('email')} type="email" />
       </div>
-      <textarea style={{ ...inputStyle, minHeight: 120, resize: 'vertical' }} placeholder="What's on your mind?" value={msg} onChange={e => setMsg(e.target.value)} />
+      <input style={inputStyle} placeholder="Subject" value={form.subject} onChange={set('subject')} />
+      <textarea
+        style={{ ...inputStyle, minHeight: 130, resize: 'vertical' }}
+        placeholder="Your message…"
+        value={form.message}
+        onChange={set('message')}
+      />
       <div>
-        <button className="btn btn-primary" type="submit">Send message <Icon name="arrowRight" size={14} /></button>
+        <button className="btn btn-primary" type="submit" disabled={sending}>
+          {sending ? 'Sending…' : <>Send message <Icon name="arrowRight" size={14} /></>}
+        </button>
       </div>
     </form>
   );

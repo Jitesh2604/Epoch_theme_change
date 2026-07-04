@@ -356,6 +356,20 @@ export const UserService = {
           await run('INSERT IGNORE INTO student_books (studentProfileId, bookId) VALUES (?, ?)', [spFresh.id, bookId]);
         }
       }
+
+      // Student ↔ Subjects (many-to-many). Only real subjects (kind = SUBJECT)
+      // can be selected — the Olympiad "modes" are never studied subjects.
+      if (spFresh && input.subjectIds !== undefined) {
+        await run('DELETE FROM student_subjects WHERE studentProfileId = ?', [spFresh.id]);
+        if (input.subjectIds.length) {
+          const real = await q<{ id: string }>(
+            "SELECT id FROM subjects WHERE id IN (?) AND kind = 'SUBJECT'", [input.subjectIds],
+          );
+          for (const r of real) {
+            await run('INSERT IGNORE INTO student_subjects (studentProfileId, subjectId) VALUES (?, ?)', [spFresh.id, r.id]);
+          }
+        }
+      }
     }
 
     const updatedUser = await q1<DbUser>('SELECT * FROM users WHERE id = ?', [userId]);

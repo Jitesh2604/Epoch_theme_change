@@ -15,20 +15,12 @@ interface LevelSelectPageProps {
 
 export const LevelSelectPage: React.FC<LevelSelectPageProps> = ({ navigate, catId, subId }) => {
   const t = useT();
-  const cat = QUIZ_CATEGORIES.find(c => c.id === catId);
   const { data: subjects, loading } = usePracticeSubjects();
   const subject = subjects?.find(s => s.id === subId);
-
-  if (!cat) {
-    return (
-      <div className="container" style={{ padding: 80 }}>
-        <h2>{t('common.categoryNotFound')}</h2>
-        <button className="btn btn-ghost" style={{ marginTop: 16 }} onClick={() => navigate('play')}>
-          {t('common.backToQuizPlay')}
-        </button>
-      </div>
-    );
-  }
+  // catId is the subject slug (from the dynamic Categories page). Fall back to a
+  // derived category so the page works for any subject, not just static ones.
+  const cat = QUIZ_CATEGORIES.find(c => c.id === catId)
+    ?? { id: catId, title: subject?.name ?? t('nav.quizPlay'), blurb: '' };
 
   return (
     <div className="page-enter">
@@ -43,7 +35,7 @@ export const LevelSelectPage: React.FC<LevelSelectPageProps> = ({ navigate, catI
             </button>
             <span style={{ color: 'var(--fg-3)' }}> / </span>
             <button
-              onClick={() => navigate(`play/${cat.id}`)}
+              onClick={() => navigate('play')}
               style={{ background: 'transparent', border: 'none', color: 'var(--fg-3)', cursor: 'pointer', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', fontWeight: 600, padding: 0 }}
             >
               {cat.title}

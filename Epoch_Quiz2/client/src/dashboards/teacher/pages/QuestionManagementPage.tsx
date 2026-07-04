@@ -10,6 +10,9 @@ import { useAssessmentQuestions, questionApi } from '../../../hooks/useQuestions
 import { useAssessment, assessmentApi } from '../../../hooks/useAssessments';
 import type { Question } from '../../../hooks/useQuestions';
 import { QuestionBankPickerModal } from './QuestionBankPickerModal';
+import { useClasses } from '../../../hooks/useCatalog';
+import { useRealSubjects } from '../../../hooks/useSubjects';
+import { EDUCATION_BOARD_OPTIONS } from '../../../lib/educationBoards';
 
 type QuestionType = 'MCQ_SINGLE' | 'TRUE_FALSE' | 'DESCRIPTIVE';
 type AddMode = 'pick' | 'create' | null;
@@ -23,6 +26,10 @@ interface DraftQuestion {
   correctBool?: boolean;
   answer?: string;
   marks: number;
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+  subjectId: string;
+  classId: string;
+  educationBoard: string;
 }
 
 export function QuestionManagementPage() {
@@ -36,13 +43,22 @@ export function QuestionManagementPage() {
 
   const { data: assessment, refetch: refetchAssessment } = useAssessment(assessmentId!);
   const { data: questions, loading, refetch } = useAssessmentQuestions(assessmentId!);
+  const { data: classes } = useClasses();
+  const { data: subjects } = useRealSubjects();
 
   const [draft, setDraft] = useState<DraftQuestion | null>(null);
   const [addingQuestion, setAddingQuestion] = useState(false);
   const [previewQ, setPreviewQ] = useState<Question | null>(null);
 
   const startDraft = (type: QuestionType) => {
-    const base: DraftQuestion = { id: 'new', type, marks: 1, prompt: '' };
+    const base: DraftQuestion = {
+      id: 'new', type, marks: 1, prompt: '',
+      difficulty: 'MEDIUM',
+      // Inherit the assessment's subject by default; teacher can still change it.
+      subjectId: assessment?.subject?.id ?? '',
+      classId: '',
+      educationBoard: '',
+    };
     if (type === 'MCQ_SINGLE') { base.options = ['', '', '', '']; base.correctIndex = 0; }
     if (type === 'TRUE_FALSE') base.correctBool = true;
     if (type === 'DESCRIPTIVE') base.answer = '';
@@ -53,14 +69,20 @@ export function QuestionManagementPage() {
   const saveDraft = async () => {
     if (!draft || !assessmentId) return;
     if (!draft.prompt.trim()) { push({ kind: 'danger', title: 'Prompt is required' }); return; }
+    if (!draft.subjectId)      { push({ kind: 'danger', title: 'Subject is required' }); return; }
+    if (!draft.classId)        { push({ kind: 'danger', title: 'Class is required' }); return; }
+    if (!draft.educationBoard) { push({ kind: 'danger', title: 'Board is required' }); return; }
 
     setAddingQuestion(true);
     try {
       const payload: any = {
-        type:       draft.type,
-        prompt:     draft.prompt,
-        marks:      draft.marks,
-        difficulty: 'MEDIUM',
+        type:           draft.type,
+        prompt:         draft.prompt,
+        marks:          draft.marks,
+        difficulty:     draft.difficulty,
+        subjectId:      draft.subjectId,
+        classId:        draft.classId,
+        educationBoard: draft.educationBoard,
       };
 
       if (draft.type === 'MCQ_SINGLE') {
@@ -391,6 +413,38 @@ export function QuestionManagementPage() {
                 />
               )}
 
+              {/* Academic tagging — Subject, Class and Board are required so the
+                  question is scoped correctly for practice & olympiad. */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-3">
+                <DraftSelect
+                  label="Subject *" value={draft.subjectId}
+                  onChange={v => setDraft(d => d ? { ...d, subjectId: v } : d)}
+                  placeholder="Select subject"
+                  options={(subjects ?? []).map(s => ({ value: s.id, label: s.name }))}
+                />
+                <DraftSelect
+                  label="Class *" value={draft.classId}
+                  onChange={v => setDraft(d => d ? { ...d, classId: v } : d)}
+                  placeholder="Select class"
+                  options={(classes ?? []).map(c => ({ value: c.id, label: c.name }))}
+                />
+                <DraftSelect
+                  label="Board *" value={draft.educationBoard}
+                  onChange={v => setDraft(d => d ? { ...d, educationBoard: v } : d)}
+                  placeholder="Select board"
+                  options={EDUCATION_BOARD_OPTIONS.map(b => ({ value: b.value, label: b.label }))}
+                />
+                <DraftSelect
+                  label="Difficulty" value={draft.difficulty}
+                  onChange={v => setDraft(d => d ? { ...d, difficulty: v as DraftQuestion['difficulty'] } : d)}
+                  options={[
+                    { value: 'EASY', label: 'Easy' },
+                    { value: 'MEDIUM', label: 'Medium' },
+                    { value: 'HARD', label: 'Hard' },
+                  ]}
+                />
+              </div>
+
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
                   <label className="text-[12px] text-fg3">Marks:</label>
@@ -542,5 +596,29 @@ export function QuestionManagementPage() {
         onAdd={handleBankAdd}
       />
     </>
+  );
+}
+
+function DraftSelect({
+  label, value, onChange, options, placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-[11px] text-fg3 block mb-1">{label}</span>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full h-9 px-2 rounded-md bg-surface1 border border-line text-[12.5px] text-fg1 focus:outline-none focus:border-brand/40"
+      >
+        {placeholder && <option value="">{placeholder}</option>}
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </label>
   );
 }

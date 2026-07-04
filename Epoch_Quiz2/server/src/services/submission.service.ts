@@ -6,6 +6,7 @@ import { isAdminRole } from '../utils/roles';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
 import type { PoolConnection } from 'mysql2/promise';
 import type { Actor } from './assessment.service';
+import { assessmentVisibleToStudent } from './assessment.service';
 import type {
   SaveAnswerInput,
   SubmitAttemptInput,
@@ -239,13 +240,13 @@ async function finalizeSubmission(submissionId: string) {
 
       if (a) {
         await cr(conn,
-          'UPDATE answers SET isCorrect = ?, marksAwarded = ?, updatedAt = NOW() WHERE id = ?',
+          'UPDATE answers SET isCorrect = ?, marksAwarded = ? WHERE id = ?',
           [isCorrect, marksAwarded, a.id],
         );
       } else {
         await cr(conn,
-          `INSERT INTO answers (id, submissionId, questionId, selectedOptions, isCorrect, marksAwarded, createdAt, updatedAt)
-           VALUES (?, ?, ?, '[]', ?, 0, NOW(), NOW())`,
+          `INSERT INTO answers (id, submissionId, questionId, selectedOptions, isCorrect, marksAwarded)
+           VALUES (?, ?, ?, '[]', ?, 0)`,
           [newId(), submissionId, aq.qId, needsManual ? null : 0],
         );
       }
@@ -256,7 +257,7 @@ async function finalizeSubmission(submissionId: string) {
     const status       = hasUngradedDescriptive ? SubmissionStatus.SUBMITTED : SubmissionStatus.GRADED;
 
     await cr(conn,
-      'UPDATE submissions SET score = ?, submittedAt = ?, timeTakenSec = ?, status = ?, updatedAt = NOW() WHERE id = ?',
+      'UPDATE submissions SET score = ?, submittedAt = ?, timeTakenSec = ?, status = ? WHERE id = ?',
       [totalScore, submittedAt, timeTakenSec, status, submissionId],
     );
   });
@@ -277,7 +278,7 @@ async function recomputeSubmissionScore(conn: PoolConnection, submissionId: stri
       (a.qtype === QuestionType.DESCRIPTIVE || a.qtype === QuestionType.MATCH_THE_COLUMN) && a.isCorrect === null,
   );
   const status = stillUngraded ? SubmissionStatus.SUBMITTED : SubmissionStatus.GRADED;
-  await cr(conn, 'UPDATE submissions SET score = ?, status = ?, updatedAt = NOW() WHERE id = ?', [score, status, submissionId]);
+  await cr(conn, 'UPDATE submissions SET score = ?, status = ? WHERE id = ?', [score, status, submissionId]);
 }
 
 // ── service ───────────────────────────────────────────────────
@@ -298,6 +299,7 @@ export const SubmissionService = {
     );
     if (!assessment) throw ApiError.notFound('Assessment not found');
     if (assessment.status !== AssessmentStatus.PUBLISHED) throw ApiError.notFound('Assessment not found');
+    if (!(await assessmentVisibleToStudent(actor.id, assessmentId))) throw ApiError.notFound('Assessment not found');
 
     const aqs = await q<AssessmentQuestion>(SELECT_QUESTIONS, [assessmentId]);
     if (!aqs.length) throw ApiError.badRequest('This assessment has no questions yet');
@@ -315,7 +317,7 @@ export const SubmissionService = {
       const totalMarks = aqs.reduce((sum: number, aq: AssessmentQuestion) => sum + (aq.marksOverride ?? aq.marks), 0);
       const sid = newId();
       await run(
-        "INSERT INTO submissions (id, assessmentId, studentId, status, score, totalMarks, timeTakenSec, startedAt, createdAt, updatedAt) VALUES (?, ?, ?, 'IN_PROGRESS', 0, ?, 0, NOW(), NOW(), NOW())",
+        "INSERT INTO submissions (id, assessmentId, studentId, status, score, totalMarks, timeTakenSec, startedAt) VALUES (?, ?, ?, 'IN_PROGRESS', 0, ?, 0, NOW())",
         [sid, assessmentId, actor.id, totalMarks],
       );
       submission = await q1<{ id: string; status: string; startedAt: Date; totalMarks: number }>(
@@ -405,14 +407,14 @@ export const SubmissionService = {
     if (existing) {
       await run(
         `UPDATE answers SET selectedOption = ?, selectedOptions = ?, selectedBoolean = ?,
-         textAnswer = ?, timeMs = ?, isCorrect = ?, marksAwarded = ?, updatedAt = NOW() WHERE id = ?`,
+         textAnswer = ?, timeMs = ?, isCorrect = ?, marksAwarded = ? WHERE id = ?`,
         [input.selectedOption ?? null, toJson(selOpts), input.selectedBoolean ?? null,
          input.textAnswer ?? null, input.timeMs ?? null, isCorrect, marksAwarded, existing.id],
       );
     } else {
       await run(
-        `INSERT INTO answers (id, submissionId, questionId, selectedOption, selectedOptions, selectedBoolean, textAnswer, timeMs, isCorrect, marksAwarded, createdAt, updatedAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        `INSERT INTO answers (id, submissionId, questionId, selectedOption, selectedOptions, selectedBoolean, textAnswer, timeMs, isCorrect, marksAwarded)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [newId(), submissionId, input.questionId, input.selectedOption ?? null, toJson(selOpts),
          input.selectedBoolean ?? null, input.textAnswer ?? null, input.timeMs ?? null, isCorrect, marksAwarded],
       );
@@ -460,14 +462,14 @@ export const SubmissionService = {
         if (existing) {
           await run(
             `UPDATE answers SET selectedOption = ?, selectedOptions = ?, selectedBoolean = ?,
-             textAnswer = ?, timeMs = ?, isCorrect = ?, marksAwarded = ?, updatedAt = NOW() WHERE id = ?`,
+             textAnswer = ?, timeMs = ?, isCorrect = ?, marksAwarded = ? WHERE id = ?`,
             [a.selectedOption ?? null, toJson(selOpts), a.selectedBoolean ?? null,
              a.textAnswer ?? null, a.timeMs ?? null, isCorrect, marksAwarded, existing.id],
           );
         } else {
           await run(
-            `INSERT INTO answers (id, submissionId, questionId, selectedOption, selectedOptions, selectedBoolean, textAnswer, timeMs, isCorrect, marksAwarded, createdAt, updatedAt)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+            `INSERT INTO answers (id, submissionId, questionId, selectedOption, selectedOptions, selectedBoolean, textAnswer, timeMs, isCorrect, marksAwarded)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [newId(), submissionId, a.questionId, a.selectedOption ?? null, toJson(selOpts),
              a.selectedBoolean ?? null, a.textAnswer ?? null, a.timeMs ?? null, isCorrect, marksAwarded],
           );
@@ -609,7 +611,7 @@ export const SubmissionService = {
 
     await tx(async (conn: PoolConnection) => {
       await cr(conn,
-        'UPDATE answers SET marksAwarded = ?, isCorrect = ?, updatedAt = NOW() WHERE id = ?',
+        'UPDATE answers SET marksAwarded = ?, isCorrect = ? WHERE id = ?',
         [input.marksAwarded, input.isCorrect ?? input.marksAwarded > 0, answer.id],
       );
       await recomputeSubmissionScore(conn, submissionId);

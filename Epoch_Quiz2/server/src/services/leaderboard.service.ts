@@ -68,7 +68,7 @@ export const LeaderboardService = {
                 s.score, s.totalMarks, s.timeTakenSec, s.submittedAt, s.status
          FROM submissions s
          JOIN users u ON u.id = s.studentId
-         WHERE s.assessmentId = ? AND ${COUNTABLE_SQL}
+         WHERE s.assessmentId = ? AND ${COUNTABLE_S_SQL}
          ORDER BY s.score DESC, s.timeTakenSec ASC, s.submittedAt ASC
          LIMIT ? OFFSET ?`,
         [assessmentId, take, skip],

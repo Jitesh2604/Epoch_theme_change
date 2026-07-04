@@ -4,6 +4,7 @@ import { authenticate } from '../middlewares/authenticate';
 import { validate } from '../middlewares/validate';
 import {
   startPracticeSchema,
+  startOlympiadSchema,
   saveAttemptAnswerSchema,
   submitAttemptSchema,
   attemptIdParamsSchema,
@@ -21,6 +22,15 @@ router.post(
   validate(startPracticeSchema),
   QuizController.startPractice,
 );
+
+// ── Olympiad flow (mixed quiz + attempt history) ──────────────────
+router.post(
+  '/olympiad/start',
+  authenticate,
+  validate(startOlympiadSchema),
+  QuizController.startOlympiad,
+);
+router.get('/olympiad/attempts', authenticate, QuizController.olympiadAttempts);
 
 // ── Attempt lifecycle ─────────────────────────────────────────────
 router.get(

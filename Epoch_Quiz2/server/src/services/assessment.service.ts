@@ -1,4 +1,5 @@
-import { q, q1, run, newId } from '../lib/db';
+import { q, q1, run, newId, tx, cr } from '../lib/db';
+import type { PoolConnection } from 'mysql2/promise';
 import { AssessmentStatus, Role } from '../lib/enums';
 import { isAdminRole } from '../utils/roles';
 import { ApiError } from '../utils/ApiError';
@@ -7,6 +8,7 @@ import type {
   CreateAssessmentInput,
   UpdateAssessmentInput,
   ListAssessmentsQuery,
+  AssignAssessmentInput,
 } from '../validators/assessment.validator';
 
 export interface Actor {
@@ -61,6 +63,77 @@ async function ensureSubjectExists(subjectId: string): Promise<void> {
   if (!s) throw ApiError.badRequest(`Subject not found: ${subjectId}`);
 }
 
+async function ensureClassExists(classId: string): Promise<void> {
+  const c = await q1<{ id: string }>('SELECT id FROM classes WHERE id = ?', [classId]);
+  if (!c) throw ApiError.badRequest(`Class not found: ${classId}`);
+}
+
+/** A student's own class (null if the profile has none yet). */
+async function getStudentClassId(studentId: string): Promise<string | null> {
+  const row = await q1<{ classId: string | null }>(
+    'SELECT classId FROM student_profiles WHERE userId = ?', [studentId],
+  );
+  return row?.classId ?? null;
+}
+
+/**
+ * A published assessment is visible to a student only when it is assigned to
+ * them directly, or to a class they belong to. Unassigned/unpublished ones
+ * are invisible — students never see the whole published catalogue.
+ */
+export async function assessmentVisibleToStudent(studentId: string, assessmentId: string): Promise<boolean> {
+  const classId = await getStudentClassId(studentId);
+  const row = await q1<{ n: number }>(
+    `SELECT (
+       EXISTS(SELECT 1 FROM assessment_assigned_students WHERE assessmentId = ? AND studentId = ?)
+       OR ( ? IS NOT NULL AND EXISTS(SELECT 1 FROM assessment_assigned_classes WHERE assessmentId = ? AND classId = ?))
+     ) AS n`,
+    [assessmentId, studentId, classId, assessmentId, classId],
+  );
+  return Boolean(row?.n);
+}
+
+/**
+ * Replace-set the assignment rows for an assessment. Only the dimensions passed
+ * are touched (classIds and/or studentIds). Validates every id first.
+ */
+async function writeAssignments(
+  conn: PoolConnection,
+  assessmentId: string,
+  classIds?: string[],
+  studentIds?: string[],
+): Promise<void> {
+  if (classIds !== undefined) {
+    const unique = [...new Set(classIds)];
+    if (unique.length) {
+      const found = await q<{ id: string }>('SELECT id FROM classes WHERE id IN (?)', [unique]);
+      const foundSet = new Set(found.map(r => r.id));
+      const missing = unique.find(id => !foundSet.has(id));
+      if (missing) throw ApiError.badRequest(`Class not found: ${missing}`);
+    }
+    await cr(conn, 'DELETE FROM assessment_assigned_classes WHERE assessmentId = ?', [assessmentId]);
+    for (const classId of unique) {
+      await cr(conn, 'INSERT IGNORE INTO assessment_assigned_classes (assessmentId, classId) VALUES (?, ?)', [assessmentId, classId]);
+    }
+  }
+
+  if (studentIds !== undefined) {
+    const unique = [...new Set(studentIds)];
+    if (unique.length) {
+      const found = await q<{ id: string }>(
+        "SELECT id FROM users WHERE id IN (?) AND role = 'STUDENT'", [unique],
+      );
+      const foundSet = new Set(found.map(r => r.id));
+      const missing = unique.find(id => !foundSet.has(id));
+      if (missing) throw ApiError.badRequest(`Student not found: ${missing}`);
+    }
+    await cr(conn, 'DELETE FROM assessment_assigned_students WHERE assessmentId = ?', [assessmentId]);
+    for (const studentId of unique) {
+      await cr(conn, 'INSERT IGNORE INTO assessment_assigned_students (assessmentId, studentId) VALUES (?, ?)', [assessmentId, studentId]);
+    }
+  }
+}
+
 async function loadAuthorized(id: string, actor: Actor, mode: 'read' | 'write'): Promise<DbAssessment> {
   const a = await q1<DbAssessment>(`${SELECT_ASSESSMENT} WHERE a.id = ?`, [id]);
   if (!a) throw ApiError.notFound('Assessment not found');
@@ -75,6 +148,7 @@ async function loadAuthorized(id: string, actor: Actor, mode: 'read' | 'write'):
   // STUDENT
   if (mode === 'write') throw ApiError.forbidden('Students cannot modify assessments');
   if (a.status !== AssessmentStatus.PUBLISHED) throw ApiError.notFound('Assessment not found');
+  if (!(await assessmentVisibleToStudent(actor.id, id))) throw ApiError.notFound('Assessment not found');
   return a;
 }
 
@@ -86,16 +160,48 @@ export const AssessmentService = {
       throw ApiError.forbidden('Only teachers can create assessments');
     }
     if (input.subjectId) await ensureSubjectExists(input.subjectId);
+    if (input.classId)   await ensureClassExists(input.classId);
 
     const id = newId();
-    await run(
-      `INSERT INTO assessments (id, title, description, duration, totalMarks, passingMarks, status, subjectId, createdById, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, 0, ?, 'DRAFT', ?, ?, NOW(), NOW())`,
-      [id, input.title, input.description ?? null, input.duration, input.passingMarks ?? 0, input.subjectId ?? null, actor.id],
-    );
+    await tx(async (conn) => {
+      await cr(conn,
+        `INSERT INTO assessments (id, title, description, duration, totalMarks, passingMarks, status, subjectId, classId, createdById, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, 0, ?, 'DRAFT', ?, ?, ?, NOW(), NOW())`,
+        [id, input.title, input.description ?? null, input.duration, input.passingMarks ?? 0,
+         input.subjectId ?? null, input.classId ?? null, actor.id],
+      );
+      if (input.assignedClassIds !== undefined || input.assignedStudentIds !== undefined) {
+        await writeAssignments(conn, id, input.assignedClassIds, input.assignedStudentIds);
+      }
+    });
 
     const created = await q1<DbAssessment>(`${SELECT_ASSESSMENT} WHERE a.id = ?`, [id]);
     return toPublic(created!);
+  },
+
+  /** Replace-set the class/student assignment for an assessment (owner/admin only). */
+  async assign(actor: Actor, id: string, input: AssignAssessmentInput) {
+    await loadAuthorized(id, actor, 'write');
+    await tx(async (conn) => {
+      await writeAssignments(conn, id, input.classIds, input.studentIds);
+    });
+    return this.getAssignments(actor, id);
+  },
+
+  /** Current assignment (assigned classes + students) for teacher/admin UI. */
+  async getAssignments(actor: Actor, id: string) {
+    await loadAuthorized(id, actor, 'write');
+    const [classes, students] = await Promise.all([
+      q<{ id: string; name: string }>(
+        `SELECT c.id, c.name FROM assessment_assigned_classes ac
+         JOIN classes c ON c.id = ac.classId WHERE ac.assessmentId = ? ORDER BY c.serial, c.name`, [id],
+      ),
+      q<{ id: string; name: string; email: string }>(
+        `SELECT u.id, u.name, u.email FROM assessment_assigned_students asg
+         JOIN users u ON u.id = asg.studentId WHERE asg.assessmentId = ? ORDER BY u.name`, [id],
+      ),
+    ]);
+    return { classes, students };
   },
 
   async list(actor: Actor, query: ListAssessmentsQuery) {
@@ -113,7 +219,14 @@ export const AssessmentService = {
     if (actor.role === Role.TEACHER) {
       conds.push('a.createdById = ?'); params.push(actor.id);
     } else if (actor.role === Role.STUDENT) {
+      // Students only see PUBLISHED assessments assigned to them (directly or via their class).
+      const classId = await getStudentClassId(actor.id);
       conds.push("a.status = 'PUBLISHED'");
+      conds.push(`(
+        a.id IN (SELECT assessmentId FROM assessment_assigned_students WHERE studentId = ?)
+        OR (? IS NOT NULL AND a.id IN (SELECT assessmentId FROM assessment_assigned_classes WHERE classId = ?))
+      )`);
+      params.push(actor.id, classId, classId);
     } else if (isAdminRole(actor.role) && mine) {
       conds.push('a.createdById = ?'); params.push(actor.id);
     }
