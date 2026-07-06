@@ -1,0 +1,85 @@
+# Production deployment for Epoch Quiz.
+#
+#   web (nginx)  ── serves the built SPA and reverse-proxies /api → server
+#   server (node) ── API on :3000, runs `prisma migrate deploy` on start
+#   db (mysql)   ── persistent MySQL 8
+#
+# Usage:
+#   cp .env.production.example .env
+#   # edit .env — set real passwords + JWT secrets
+#   docker compose up -d --build
+#   docker compose run --rm server npm run seed          # first boot only
+#   open http://localhost         (or your domain)
+#
+# Everything is same-origin: the browser calls /api/v1/* on the same host,
+# nginx forwards it to the node service. No CORS needed in this topology.
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      MYSQL_DATABASE: ${DB_NAME:-epoch_quiz}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Not published to the host by default — only the app talks to it.
+    expose:
+      - "3306"
+
+  server:
+    build:
+      context: ./server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      API_PREFIX: /api/v1
+      DATABASE_URL: mysql://root:${DB_PASSWORD}@db:3306/${DB_NAME:-epoch_quiz}
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-epoch_quiz}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET in .env}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      BCRYPT_SALT_ROUNDS: ${BCRYPT_SALT_ROUNDS:-10}
+      # Same-origin: the browser never issues a cross-origin request, so this
+      # only needs your public origin as a defensive allow-list.
+      CORS_ORIGIN: ${APP_URL:-http://localhost}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-2000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      APP_URL: ${APP_URL:-http://localhost}
+      EMAIL_FROM: ${EMAIL_FROM:-Epoch Quiz <noreply@epochquiz.app>}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      CONTACT_TO: ${CONTACT_TO:-}
+      CONTENT_API_KEY: ${CONTENT_API_KEY:-}
+      CONTENT_SYNC_ENABLED: ${CONTENT_SYNC_ENABLED:-false}
+    expose:
+      - "3000"
+
+  web:
+    build:
+      context: ./client
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "${WEB_PORT:-80}:80"
+
+volumes:
+  db_data:

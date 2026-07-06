@@ -28,3 +28,6 @@ coverage/
 # Temp
 tmp/
 uploads/
+
+# Generated import reports
+import-report-*.json

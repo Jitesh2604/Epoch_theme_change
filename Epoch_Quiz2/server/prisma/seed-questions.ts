@@ -311,14 +311,20 @@ function buildCreateData(q: RawQuestion, creatorId: string) {
     optionDImageUrl: toStringOrNull(q.optionDImageUrl),
 
     correctAnswer: toStringOrNull(q.correctAnswer),
-    correctOptions: Array.isArray(q.correctOptions)
-      ? (q.correctOptions as string[]).map((o) => o.toUpperCase())
-      : [],
+    // correctOptions/matchPairs/tags are LongText columns storing JSON strings
+    // (see prisma/schema.prisma + the runtime toJson() helper in src/lib/db.ts).
+    correctOptions: JSON.stringify(
+      Array.isArray(q.correctOptions)
+        ? (q.correctOptions as string[]).map((o) => o.toUpperCase())
+        : [],
+    ),
     correctBoolean: typeof q.correctBoolean === 'boolean' ? q.correctBoolean : null,
     modelAnswer: toStringOrNull(q.modelAnswer),
 
     matchPairs:
-      Array.isArray(q.matchPairs) && q.matchPairs.length > 0 ? q.matchPairs : undefined,
+      Array.isArray(q.matchPairs) && q.matchPairs.length > 0
+        ? JSON.stringify(q.matchPairs)
+        : null,
 
     explanation: toStringOrNull(q.explanation),
     explanationImageUrl: toStringOrNull(q.explanationImageUrl),
@@ -327,7 +333,7 @@ function buildCreateData(q: RawQuestion, creatorId: string) {
     negativeMarks: toNegMarks(q.negativeMarks),
     difficulty: toDifficulty(q.difficulty),
     language: typeof q.language === 'string' && q.language.trim() ? q.language : 'English',
-    tags: Array.isArray(q.tags) ? q.tags : [],
+    tags: JSON.stringify(Array.isArray(q.tags) ? q.tags : []),
 
     createdById: creatorId,
   };
