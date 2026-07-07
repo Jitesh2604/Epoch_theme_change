@@ -1,6 +1,7 @@
-import { q, q1, run, newId, tx, cr, cq1, parseStrArr, toJson } from '../lib/db';
-import { QuestionType, AttemptStatus } from '../lib/enums';
-import type { PoolConnection } from 'mysql2/promise';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma';
+import { QuestionType, AttemptStatus, QuizType, QuizStatus } from '../lib/enums';
+import { parseStrArr, toJson } from '../utils/json';
 import { ApiError } from '../utils/ApiError';
 import type {
   StartPracticeInput,
@@ -11,20 +12,15 @@ import type {
 
 // ── Types ─────────────────────────────────────────────────────────────
 
-interface DbQuestion {
+/** Question fields needed to render/grade a quiz question. */
+interface QuizQuestion {
   id: string; type: QuestionType; prompt: string;
   optionA: string | null; optionB: string | null; optionC: string | null; optionD: string | null;
   correctAnswer: string | null; correctOptions: string; correctBoolean: boolean | null;
-  explanation: string | null; marks: number; negativeMarks: number;
-  difficulty: string; subjectId: string | null; status: string;
+  marks: number; difficulty: string;
 }
 
-interface DbAttemptAnswer {
-  id: string; attemptId: string; questionId: string;
-  selectedOption: string | null; selectedOptions: string;
-  textAnswer: string | null; isCorrect: boolean | null;
-  marksAwarded: number; isSkipped: boolean; isMarkedReview: boolean;
-}
+type GradableQuestion = Pick<QuizQuestion, 'type' | 'correctAnswer' | 'correctOptions' | 'correctBoolean' | 'marks'>;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -42,13 +38,13 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
-function getOptions(q: DbQuestion): { letter: string; text: string }[] {
+function getOptions(q: Pick<QuizQuestion, 'optionA' | 'optionB' | 'optionC' | 'optionD'>): { letter: string; text: string }[] {
   return ([['A', q.optionA], ['B', q.optionB], ['C', q.optionC], ['D', q.optionD]] as [string, string | null][])
     .filter(([, t]) => t)
     .map(([l, t]) => ({ letter: l, text: t! }));
 }
 
-function sanitizeQuestion(q: DbQuestion, order: number) {
+function sanitizeQuestion(q: QuizQuestion, order: number) {
   return {
     order,
     id:         q.id,
@@ -67,7 +63,7 @@ interface AnswerLike {
   isSkipped:       boolean;
 }
 
-function gradeOne(q: DbQuestion, ans: AnswerLike): { isCorrect: boolean | null; marksAwarded: number } {
+function gradeOne(q: GradableQuestion, ans: AnswerLike): { isCorrect: boolean | null; marksAwarded: number } {
   if (ans.isSkipped) return { isCorrect: null, marksAwarded: 0 };
 
   switch (q.type) {
@@ -100,76 +96,75 @@ function gradeOne(q: DbQuestion, ans: AnswerLike): { isCorrect: boolean | null; 
 
 /** Gets or lazy-creates the shared Practice Quiz record for a subject. */
 async function getOrCreatePracticeQuiz(subjectId: string, fallbackUserId: string): Promise<string> {
-  const existing = await q1<{ id: string }>(
-    "SELECT id FROM quizzes WHERE subjectId = ? AND quizType = 'PRACTICE' AND questionSelection = 'AUTO_RANDOM' LIMIT 1",
-    [subjectId],
-  );
+  const existing = await prisma.quiz.findFirst({
+    where: { subjectId, quizType: QuizType.PRACTICE, questionSelection: 'AUTO_RANDOM' }, select: { id: true },
+  });
   if (existing) return existing.id;
 
-  const admin = await q1<{ id: string }>(
-    "SELECT id FROM users WHERE role IN ('SUPER_ADMIN','PUBLICATION_ADMIN') ORDER BY createdAt ASC LIMIT 1",
-  );
-  const subject = await q1<{ name: string }>('SELECT name FROM subjects WHERE id = ?', [subjectId]);
+  const admin = await prisma.user.findFirst({
+    where: { role: { in: ['SUPER_ADMIN', 'PUBLICATION_ADMIN'] } }, orderBy: { createdAt: 'asc' }, select: { id: true },
+  });
+  const subject = await prisma.subject.findUnique({ where: { id: subjectId }, select: { name: true } });
 
-  const quizId = newId();
-  await run(
-    `INSERT INTO quizzes (id, title, quizType, questionSelection, subjectId, status, createdById, leaderboardEnabled, duration, createdAt, updatedAt)
-     VALUES (?, ?, 'PRACTICE', 'AUTO_RANDOM', ?, 'PUBLISHED', ?, 1, 0, NOW(), NOW())`,
-    [quizId, `Practice · ${subject?.name ?? subjectId}`, subjectId, admin?.id ?? fallbackUserId],
-  );
-  return quizId;
+  const quiz = await prisma.quiz.create({
+    data: {
+      title: `Practice · ${subject?.name ?? subjectId}`,
+      quizType: QuizType.PRACTICE, questionSelection: 'AUTO_RANDOM', subjectId,
+      status: QuizStatus.PUBLISHED, createdById: admin?.id ?? fallbackUserId, leaderboardEnabled: true, duration: 0,
+    },
+    select: { id: true },
+  });
+  return quiz.id;
 }
 
 /** Gets or lazy-creates the shared per-class Olympiad quiz record. */
 async function getOrCreateOlympiadQuiz(classId: string | null, fallbackUserId: string): Promise<string> {
-  const existing = await q1<{ id: string }>(
-    "SELECT id FROM quizzes WHERE quizType = 'OLYMPIAD' AND classId <=> ? LIMIT 1",
-    [classId],
-  );
+  const existing = await prisma.quiz.findFirst({
+    where: { quizType: QuizType.OLYMPIAD, classId }, select: { id: true },
+  });
   if (existing) return existing.id;
 
-  const admin = await q1<{ id: string }>(
-    "SELECT id FROM users WHERE role IN ('SUPER_ADMIN','PUBLICATION_ADMIN') ORDER BY createdAt ASC LIMIT 1",
-  );
-  const cls = classId ? await q1<{ name: string }>('SELECT name FROM classes WHERE id = ?', [classId]) : null;
+  const admin = await prisma.user.findFirst({
+    where: { role: { in: ['SUPER_ADMIN', 'PUBLICATION_ADMIN'] } }, orderBy: { createdAt: 'asc' }, select: { id: true },
+  });
+  const cls = classId ? await prisma.class.findUnique({ where: { id: classId }, select: { name: true } }) : null;
 
-  const quizId = newId();
-  await run(
-    `INSERT INTO quizzes (id, title, quizType, questionSelection, classId, status, createdById, leaderboardEnabled, duration, createdAt, updatedAt)
-     VALUES (?, ?, 'OLYMPIAD', 'AUTO_RANDOM', ?, 'PUBLISHED', ?, 1, 0, NOW(), NOW())`,
-    [quizId, `Olympiad${cls ? ` · ${cls.name}` : ''}`, classId, admin?.id ?? fallbackUserId],
-  );
-  return quizId;
+  const quiz = await prisma.quiz.create({
+    data: {
+      title: `Olympiad${cls ? ` · ${cls.name}` : ''}`,
+      quizType: QuizType.OLYMPIAD, questionSelection: 'AUTO_RANDOM', classId,
+      status: QuizStatus.PUBLISHED, createdById: admin?.id ?? fallbackUserId, leaderboardEnabled: true, duration: 0,
+    },
+    select: { id: true },
+  });
+  return quiz.id;
 }
 
 interface StudentAcademic { profileId: string | null; classId: string | null; educationBoard: string | null }
 
 /** The academic context used to scope a student's quizzes. */
 async function readStudentProfile(studentId: string): Promise<StudentAcademic> {
-  const row = await q1<{ id: string; classId: string | null; educationBoard: string | null }>(
-    'SELECT id, classId, educationBoard FROM student_profiles WHERE userId = ?', [studentId],
-  );
+  const row = await prisma.studentProfile.findUnique({
+    where: { userId: studentId }, select: { id: true, classId: true, educationBoard: true },
+  });
   return { profileId: row?.id ?? null, classId: row?.classId ?? null, educationBoard: row?.educationBoard ?? null };
 }
 
 /**
- * Scope clause used by both practice and olympiad: a question matches if it is
+ * Scope filter used by both practice and olympiad: a question matches if it is
  * the student's own class/board OR untagged (global). It is NEVER from another
  * class or board.
  */
-function classBoardFilter(classId: string | null, board: string | null): { cond: string; params: unknown[] } {
-  let cond = '';
-  const params: unknown[] = [];
-  if (classId) { cond += ' AND (classId = ? OR classId IS NULL)';              params.push(classId); }
-  if (board)   { cond += ' AND (educationBoard = ? OR educationBoard IS NULL)'; params.push(board); }
-  return { cond, params };
+function classBoardAnd(classId: string | null, board: string | null): Prisma.QuestionWhereInput[] {
+  const and: Prisma.QuestionWhereInput[] = [];
+  if (classId) and.push({ OR: [{ classId }, { classId: null }] });
+  if (board)   and.push({ OR: [{ educationBoard: board }, { educationBoard: null }] });
+  return and;
 }
 
 /** Olympiad questions-per-subject: DB-configurable via settings, default 5. */
 async function getOlympiadPerSubject(): Promise<number> {
-  const row = await q1<{ value: string }>(
-    "SELECT value FROM settings WHERE `key` = 'olympiad.questionsPerSubject' LIMIT 1",
-  );
+  const row = await prisma.setting.findUnique({ where: { key: 'olympiad.questionsPerSubject' }, select: { value: true } });
   const n = row ? parseInt(row.value, 10) : NaN;
   return Number.isFinite(n) && n > 0 ? n : 5;
 }
@@ -177,30 +172,24 @@ async function getOlympiadPerSubject(): Promise<number> {
 // ── Build result from a completed attempt ─────────────────────────────
 
 async function buildResult(attemptId: string) {
-  const attempt = await q1<{
-    id: string; score: number; percentage: number; correctAnswers: number;
-    wrongAnswers: number; skipped: number; timeTakenSec: number;
-  }>('SELECT * FROM quiz_attempts WHERE id = ?', [attemptId]);
+  const attempt = await prisma.quizAttempt.findUnique({ where: { id: attemptId } });
   if (!attempt) throw ApiError.notFound('Attempt not found');
 
-  const answers = await q<DbAttemptAnswer & {
-    prompt: string; marks: number; difficulty: string; explanation: string | null;
-    optionA: string | null; optionB: string | null; optionC: string | null; optionD: string | null;
-    correctAnswer: string | null; correctOptions: string; correctBoolean: boolean | null; qtype: string;
-  }>(
-    `SELECT aa.*,
-            q.prompt, q.marks, q.difficulty, q.explanation,
-            q.optionA, q.optionB, q.optionC, q.optionD,
-            q.correctAnswer, q.correctOptions, q.correctBoolean,
-            q.type AS qtype
-     FROM attempt_answers aa
-     JOIN questions q ON q.id = aa.questionId
-     WHERE aa.attemptId = ?
-     ORDER BY aa.createdAt ASC`,
-    [attemptId],
-  );
+  const answers = await prisma.attemptAnswer.findMany({
+    where: { attemptId },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      question: {
+        select: {
+          type: true, prompt: true, marks: true, difficulty: true, explanation: true,
+          optionA: true, optionB: true, optionC: true, optionD: true,
+          correctAnswer: true, correctOptions: true, correctBoolean: true,
+        },
+      },
+    },
+  });
 
-  const totalMarks = answers.reduce((s, a) => s + a.marks, 0);
+  const totalMarks = answers.reduce((s, a) => s + a.question.marks, 0);
 
   return {
     attemptId:      attempt.id,
@@ -223,18 +212,17 @@ async function buildResult(attemptId: string) {
         isSkipped:       Boolean(a.isSkipped),
       },
       correct: {
-        type:           a.qtype,
-        correctAnswer:  a.correctAnswer,
-        correctOptions: parseStrArr(a.correctOptions),
-        correctBoolean: a.correctBoolean,
+        type:           a.question.type,
+        correctAnswer:  a.question.correctAnswer,
+        correctOptions: parseStrArr(a.question.correctOptions),
+        correctBoolean: a.question.correctBoolean,
       },
       question: {
-        prompt:      a.prompt,
-        options:     ([['A', a.optionA], ['B', a.optionB], ['C', a.optionC], ['D', a.optionD]] as [string, string | null][])
-                       .filter(([, t]) => t).map(([l, t]) => ({ letter: l, text: t! })),
-        marks:       a.marks,
-        difficulty:  a.difficulty,
-        explanation: a.explanation,
+        prompt:      a.question.prompt,
+        options:     getOptions(a.question),
+        marks:       a.question.marks,
+        difficulty:  a.question.difficulty,
+        explanation: a.question.explanation,
       },
     })),
   };
@@ -244,28 +232,24 @@ async function buildResult(attemptId: string) {
 
 /**
  * Create a new quiz attempt for (quizId, studentId). The attempt number is
- * MAX(existing)+1, which is not atomic — if a student triggers "start" twice in
- * quick succession (double-click / duplicate request) both requests can pick the
- * same number and collide on the unique key. We retry a few times on the
- * duplicate-key error so start never fails for that reason.
+ * MAX(existing)+1, which is not atomic — concurrent "start" requests can pick
+ * the same number and collide on the unique key. We retry a few times on the
+ * duplicate-key error (P2002) so start never fails for that reason.
  */
 async function createQuizAttempt(quizId: string, studentId: string): Promise<{ attemptId: string; attemptNumber: number }> {
   for (let attempt = 0; attempt < 5; attempt++) {
-    const last = await q1<{ attemptNumber: number }>(
-      'SELECT attemptNumber FROM quiz_attempts WHERE quizId = ? AND studentId = ? ORDER BY attemptNumber DESC LIMIT 1',
-      [quizId, studentId],
-    );
+    const last = await prisma.quizAttempt.findFirst({
+      where: { quizId, studentId }, orderBy: { attemptNumber: 'desc' }, select: { attemptNumber: true },
+    });
     const attemptNumber = (last?.attemptNumber ?? 0) + 1;
-    const attemptId = newId();
     try {
-      await run(
-        `INSERT INTO quiz_attempts (id, quizId, studentId, attemptNumber, startTime, status, score, correctAnswers, wrongAnswers, skipped, percentage, timeTakenSec, isSubmitted, createdAt, updatedAt)
-         VALUES (?, ?, ?, ?, NOW(), 'IN_PROGRESS', 0, 0, 0, 0, 0, 0, 0, NOW(), NOW())`,
-        [attemptId, quizId, studentId, attemptNumber],
-      );
-      return { attemptId, attemptNumber };
+      const created = await prisma.quizAttempt.create({
+        data: { quizId, studentId, attemptNumber, status: AttemptStatus.IN_PROGRESS },
+        select: { id: true },
+      });
+      return { attemptId: created.id, attemptNumber };
     } catch (err) {
-      if ((err as { code?: string }).code === 'ER_DUP_ENTRY' && attempt < 4) continue;
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002' && attempt < 4) continue;
       throw err;
     }
   }
@@ -274,36 +258,32 @@ async function createQuizAttempt(quizId: string, studentId: string): Promise<{ a
 
 export const QuizService = {
   async getSubjectsWithQuestions() {
-    const typePlaceholders = GRADABLE_TYPES.map(() => '?').join(',');
-    const counts = await q<{ subjectId: string; difficulty: string; cnt: number }>(
-      `SELECT subjectId, difficulty, COUNT(*) AS cnt
-       FROM questions
-       WHERE status = 'ACTIVE' AND type IN (${typePlaceholders}) AND subjectId IS NOT NULL
-       GROUP BY subjectId, difficulty`,
-      GRADABLE_TYPES,
-    );
+    const counts = await prisma.question.groupBy({
+      by: ['subjectId', 'difficulty'],
+      where: { status: 'ACTIVE', type: { in: GRADABLE_TYPES }, subjectId: { not: null } },
+      _count: { _all: true },
+    });
 
-    const subjectIds = [...new Set(counts.map(c => c.subjectId))];
+    const subjectIds = [...new Set(counts.map(c => c.subjectId).filter((id): id is string => id != null))];
     if (!subjectIds.length) return [];
 
-    const subjects = await q<{ id: string; name: string; slug: string }>(
-      `SELECT id, name, slug FROM subjects WHERE id IN (?) AND status = 'ACTIVE' ORDER BY name ASC`,
-      [subjectIds],
-    );
+    const subjects = await prisma.subject.findMany({
+      where: { id: { in: subjectIds }, status: 'ACTIVE' }, orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true },
+    });
 
     return subjects.map(s => {
       const sc     = counts.filter(c => c.subjectId === s.id);
-      const easy   = sc.find(c => c.difficulty === 'EASY')?.cnt   ?? 0;
-      const medium = sc.find(c => c.difficulty === 'MEDIUM')?.cnt ?? 0;
-      const hard   = sc.find(c => c.difficulty === 'HARD')?.cnt   ?? 0;
-      return { ...s, questionCount: +easy + +medium + +hard, easyCount: +easy, mediumCount: +medium, hardCount: +hard };
+      const easy   = sc.find(c => c.difficulty === 'EASY')?._count._all   ?? 0;
+      const medium = sc.find(c => c.difficulty === 'MEDIUM')?._count._all ?? 0;
+      const hard   = sc.find(c => c.difficulty === 'HARD')?._count._all   ?? 0;
+      return { ...s, questionCount: easy + medium + hard, easyCount: easy, mediumCount: medium, hardCount: hard };
     });
   },
 
   async startPractice(studentId: string, input: StartPracticeInput) {
-    const subject = await q1<{ id: string; name: string; slug: string; kind: string }>(
-      'SELECT id, name, slug, kind FROM subjects WHERE id = ?', [input.subjectId],
-    );
+    const subject = await prisma.subject.findUnique({
+      where: { id: input.subjectId }, select: { id: true, name: true, slug: true, kind: true },
+    });
     if (!subject) throw ApiError.notFound('Subject not found');
     if (subject.kind !== 'SUBJECT') {
       throw ApiError.badRequest('This category is an Olympiad mode — use the Olympiad flow, not subject practice.');
@@ -311,35 +291,28 @@ export const QuizService = {
 
     // Scope to the student's class AND board (never other classes/boards).
     const profile = await readStudentProfile(studentId);
-    const { cond: scopeCond, params: scopeParams } = classBoardFilter(profile.classId, profile.educationBoard);
+    const scopeAnd = classBoardAnd(profile.classId, profile.educationBoard);
 
-    const typePlaceholders = GRADABLE_TYPES.map(() => '?').join(',');
-    const diffCond   = input.difficulty ? ' AND difficulty = ?' : '';
-    const diffParam  = input.difficulty ? [input.difficulty] : [];
-    const chapCond   = input.chapterId ? ' AND chapterId = ?' : '';
-    const chapParam  = input.chapterId ? [input.chapterId] : [];
-
-    const allQuestions = await q<DbQuestion>(
-      `SELECT * FROM questions
-       WHERE subjectId = ? AND status = 'ACTIVE' AND type IN (${typePlaceholders})${scopeCond}${diffCond}${chapCond}`,
-      [input.subjectId, ...GRADABLE_TYPES, ...scopeParams, ...diffParam, ...chapParam],
-    );
+    const allQuestions = await prisma.question.findMany({
+      where: {
+        subjectId: input.subjectId, status: 'ACTIVE', type: { in: GRADABLE_TYPES },
+        ...(input.difficulty && { difficulty: input.difficulty }),
+        ...(input.chapterId && { chapterId: input.chapterId }),
+        ...(scopeAnd.length && { AND: scopeAnd }),
+      },
+    });
 
     if (!allQuestions.length) throw ApiError.badRequest('No questions available for this subject / class / board / difficulty');
 
-    const selected   = shuffleArray(allQuestions).slice(0, input.questionCount);
-    const quizId     = await getOrCreatePracticeQuiz(input.subjectId, studentId);
+    const selected = shuffleArray(allQuestions).slice(0, input.questionCount);
+    const quizId   = await getOrCreatePracticeQuiz(input.subjectId, studentId);
 
     const { attemptId, attemptNumber } = await createQuizAttempt(quizId, studentId);
 
-    // Pre-create skipped answer stubs for all selected questions
-    for (const sq of selected) {
-      await run(
-        `INSERT INTO attempt_answers (id, attemptId, questionId, selectedOptions, isSkipped, isMarkedReview, marksAwarded, createdAt, updatedAt)
-         VALUES (?, ?, ?, '[]', 1, 0, 0, NOW(), NOW())`,
-        [newId(), attemptId, sq.id],
-      );
-    }
+    // Pre-create skipped answer stubs for all selected questions.
+    await prisma.attemptAnswer.createMany({
+      data: selected.map(sq => ({ attemptId, questionId: sq.id, selectedOptions: '[]', isSkipped: true, isMarkedReview: false, marksAwarded: 0 })),
+    });
 
     return {
       attemptId,
@@ -355,50 +328,33 @@ export const QuizService = {
   },
 
   async saveAnswer(attemptId: string, studentId: string, input: SaveAttemptAnswerInput) {
-    const attempt = await q1<{ studentId: string; status: string }>(
-      'SELECT studentId, status FROM quiz_attempts WHERE id = ?', [attemptId],
-    );
+    const attempt = await prisma.quizAttempt.findUnique({ where: { id: attemptId }, select: { studentId: true, status: true } });
     if (!attempt) throw ApiError.notFound('Attempt not found');
     if (attempt.studentId !== studentId) throw ApiError.forbidden('Not your attempt');
     if (attempt.status !== AttemptStatus.IN_PROGRESS) throw ApiError.badRequest('Attempt is already finalised');
 
-    const question = await q1<DbQuestion>('SELECT * FROM questions WHERE id = ?', [input.questionId]);
+    const question = await prisma.question.findUnique({ where: { id: input.questionId } });
     if (!question) throw ApiError.notFound('Question not found');
 
     const hasAnswer = !!input.selectedOption || !!(input.selectedOptions?.length) || !!input.textAnswer;
     const isSkipped = input.isSkipped ?? !hasAnswer;
 
-    const answerData = {
-      selectedOption:  input.selectedOption  ?? null,
-      selectedOptions: toJson(input.selectedOptions ?? []),
-      textAnswer:      input.textAnswer      ?? null,
-      timeSpentSec:    input.timeSpentSec    ?? null,
-      isSkipped:       isSkipped ? 1 : 0,
-      isMarkedReview:  input.isMarkedReview  ? 1 : 0,
-    };
+    const selectedOption  = input.selectedOption ?? null;
+    const selectedOptions = toJson(input.selectedOptions ?? []);
+    const textAnswer      = input.textAnswer ?? null;
+    const timeSpentSec    = input.timeSpentSec ?? null;
+    const isMarkedReview  = input.isMarkedReview ?? false;
 
     const { isCorrect, marksAwarded } = gradeOne(question, {
-      selectedOption:  answerData.selectedOption,
-      selectedOptions: input.selectedOptions ?? [],
-      textAnswer:      answerData.textAnswer,
-      isSkipped,
+      selectedOption, selectedOptions: input.selectedOptions ?? [], textAnswer, isSkipped,
     });
 
-    await run(
-      `INSERT INTO attempt_answers (id, attemptId, questionId, selectedOption, selectedOptions, textAnswer, timeSpentSec, isSkipped, isMarkedReview, isCorrect, marksAwarded, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-       ON DUPLICATE KEY UPDATE
-         selectedOption = VALUES(selectedOption), selectedOptions = VALUES(selectedOptions),
-         textAnswer = VALUES(textAnswer), timeSpentSec = VALUES(timeSpentSec),
-         isSkipped = VALUES(isSkipped), isMarkedReview = VALUES(isMarkedReview),
-         isCorrect = VALUES(isCorrect), marksAwarded = VALUES(marksAwarded), updatedAt = NOW()`,
-      [
-        newId(), attemptId, input.questionId,
-        answerData.selectedOption, answerData.selectedOptions, answerData.textAnswer,
-        answerData.timeSpentSec, answerData.isSkipped, answerData.isMarkedReview,
-        isCorrect, marksAwarded,
-      ],
-    );
+    const fields = { selectedOption, selectedOptions, textAnswer, timeSpentSec, isSkipped, isMarkedReview, isCorrect, marksAwarded };
+    await prisma.attemptAnswer.upsert({
+      where:  { attemptId_questionId: { attemptId, questionId: input.questionId } },
+      create: { attemptId, questionId: input.questionId, ...fields },
+      update: fields,
+    });
 
     return {
       ok: true, isCorrect, marksAwarded,
@@ -413,47 +369,35 @@ export const QuizService = {
   },
 
   async submitAttempt(attemptId: string, studentId: string, input: SubmitAttemptInput) {
-    const attempt = await q1<{ id: string; studentId: string; status: string; quizId: string; startTime: Date }>(
-      'SELECT id, studentId, status, quizId, startTime FROM quiz_attempts WHERE id = ?', [attemptId],
-    );
+    const attempt = await prisma.quizAttempt.findUnique({
+      where: { id: attemptId }, select: { id: true, studentId: true, status: true, quizId: true, startTime: true },
+    });
     if (!attempt) throw ApiError.notFound('Attempt not found');
     if (attempt.studentId !== studentId) throw ApiError.forbidden('Not your attempt');
 
     if (attempt.status === AttemptStatus.SUBMITTED) return buildResult(attemptId);
 
-    const answers = await q<DbAttemptAnswer & { marks: number; qtype: string; correctAnswer: string | null; correctOptions: string; correctBoolean: boolean | null }>(
-      `SELECT aa.*, q.marks, q.type AS qtype, q.correctAnswer, q.correctOptions, q.correctBoolean
-       FROM attempt_answers aa
-       JOIN questions q ON q.id = aa.questionId
-       WHERE aa.attemptId = ?`,
-      [attemptId],
-    );
+    const answers = await prisma.attemptAnswer.findMany({
+      where: { attemptId },
+      include: {
+        question: { select: { type: true, marks: true, correctAnswer: true, correctOptions: true, correctBoolean: true } },
+      },
+    });
 
     let score = 0, correct = 0, wrong = 0, skipped = 0;
 
-    await tx(async (conn: PoolConnection) => {
+    await prisma.$transaction(async (txc) => {
       for (const ans of answers) {
         const noAnswer = Boolean(ans.isSkipped) ||
           (!ans.selectedOption && !parseStrArr(ans.selectedOptions).length && !ans.textAnswer);
 
         if (noAnswer) {
           skipped++;
-          await cr(conn,
-            'UPDATE attempt_answers SET isSkipped = 1, isCorrect = NULL, marksAwarded = 0, updatedAt = NOW() WHERE id = ?',
-            [ans.id],
-          );
+          await txc.attemptAnswer.update({ where: { id: ans.id }, data: { isSkipped: true, isCorrect: null, marksAwarded: 0 } });
           continue;
         }
 
-        const question: DbQuestion = {
-          id: ans.questionId, type: ans.qtype as QuestionType,
-          prompt: '', promptImageUrl: null, optionA: null, optionB: null, optionC: null, optionD: null,
-          correctAnswer: ans.correctAnswer, correctOptions: ans.correctOptions,
-          correctBoolean: ans.correctBoolean, explanation: null,
-          marks: ans.marks, negativeMarks: 0, difficulty: '', subjectId: null, status: 'ACTIVE',
-        } as any;
-
-        const { isCorrect, marksAwarded } = gradeOne(question, {
+        const { isCorrect, marksAwarded } = gradeOne(ans.question, {
           selectedOption:  ans.selectedOption,
           selectedOptions: parseStrArr(ans.selectedOptions),
           textAnswer:      ans.textAnswer,
@@ -464,38 +408,32 @@ export const QuizService = {
         if (isCorrect === true) correct++;
         else if (isCorrect === false) wrong++;
 
-        await cr(conn,
-          'UPDATE attempt_answers SET isCorrect = ?, marksAwarded = ?, isSkipped = 0, updatedAt = NOW() WHERE id = ?',
-          [isCorrect, marksAwarded, ans.id],
-        );
+        await txc.attemptAnswer.update({ where: { id: ans.id }, data: { isCorrect, marksAwarded, isSkipped: false } });
       }
 
-      const totalMarks   = answers.reduce((s, a) => s + a.marks, 0);
+      const totalMarks   = answers.reduce((s, a) => s + a.question.marks, 0);
       const timeTakenSec = input.timeTakenSec ?? Math.floor((Date.now() - new Date(attempt.startTime).getTime()) / 1000);
       const percentage   = totalMarks > 0 ? Math.round((score / totalMarks) * 10000) / 100 : 0;
 
-      await cr(conn,
-        `UPDATE quiz_attempts SET status = 'SUBMITTED', score = ?, correctAnswers = ?, wrongAnswers = ?,
-         skipped = ?, percentage = ?, timeTakenSec = ?, endTime = NOW(), isSubmitted = 1, updatedAt = NOW()
-         WHERE id = ?`,
-        [score, correct, wrong, skipped, percentage, timeTakenSec, attemptId],
-      );
+      await txc.quizAttempt.update({
+        where: { id: attemptId },
+        data: {
+          status: AttemptStatus.SUBMITTED, score, correctAnswers: correct, wrongAnswers: wrong,
+          skipped, percentage, timeTakenSec, endTime: new Date(), isSubmitted: true,
+        },
+      });
 
-      // Upsert leaderboard — keep best score per (quiz, student)
-      const lbEntry = await cq1<{ score: number }>(conn,
-        'SELECT score FROM leaderboard WHERE quizId = ? AND studentId = ?',
-        [attempt.quizId, studentId],
-      );
+      // Upsert leaderboard — keep best score per (quiz, student).
+      const lbEntry = await txc.leaderboard.findUnique({
+        where: { quizId_studentId: { quizId: attempt.quizId, studentId } }, select: { score: true },
+      });
       if (!lbEntry || score > lbEntry.score) {
-        await cr(conn,
-          `INSERT INTO leaderboard (id, quizId, studentId, attemptId, score, percentage, timeTakenSec, attemptDate, createdAt, updatedAt)
-           VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())
-           ON DUPLICATE KEY UPDATE
-             attemptId = VALUES(attemptId), score = VALUES(score),
-             percentage = VALUES(percentage), timeTakenSec = VALUES(timeTakenSec),
-             attemptDate = NOW(), updatedAt = NOW()`,
-          [newId(), attempt.quizId, studentId, attemptId, score, percentage, input.timeTakenSec ?? 0],
-        );
+        const lbData = { attemptId, score, percentage, timeTakenSec: input.timeTakenSec ?? 0, attemptDate: new Date() };
+        await txc.leaderboard.upsert({
+          where:  { quizId_studentId: { quizId: attempt.quizId, studentId } },
+          create: { quizId: attempt.quizId, studentId, ...lbData },
+          update: lbData,
+        });
       }
     });
 
@@ -503,29 +441,33 @@ export const QuizService = {
   },
 
   async getAttempt(attemptId: string, studentId: string) {
-    const attempt = await q1<{ id: string; studentId: string; status: string; startTime: Date }>(
-      'SELECT id, studentId, status, startTime FROM quiz_attempts WHERE id = ?', [attemptId],
-    );
+    const attempt = await prisma.quizAttempt.findUnique({
+      where: { id: attemptId }, select: { id: true, studentId: true, status: true, startTime: true },
+    });
     if (!attempt) throw ApiError.notFound('Attempt not found');
     if (attempt.studentId !== studentId) throw ApiError.forbidden('Not your attempt');
 
     if (attempt.status === AttemptStatus.SUBMITTED) return buildResult(attemptId);
 
-    const answers = await q<DbAttemptAnswer & { prompt: string; marks: number; difficulty: string }>(
-      `SELECT aa.*, q.prompt, q.marks, q.difficulty, q.type AS qtype,
-              q.optionA, q.optionB, q.optionC, q.optionD
-       FROM attempt_answers aa
-       JOIN questions q ON q.id = aa.questionId
-       WHERE aa.attemptId = ?
-       ORDER BY aa.createdAt ASC`,
-      [attemptId],
-    );
+    const answers = await prisma.attemptAnswer.findMany({
+      where: { attemptId },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        question: {
+          select: {
+            id: true, type: true, prompt: true, marks: true, difficulty: true,
+            optionA: true, optionB: true, optionC: true, optionD: true,
+            correctAnswer: true, correctOptions: true, correctBoolean: true,
+          },
+        },
+      },
+    });
 
     return {
       attemptId: attempt.id,
       status:    attempt.status,
       startTime: attempt.startTime,
-      questions: answers.map((a, i) => sanitizeQuestion(a as unknown as DbQuestion, i + 1)),
+      questions: answers.map((a, i) => sanitizeQuestion(a.question, i + 1)),
       savedAnswers: answers.map(a => ({
         questionId:      a.questionId,
         selectedOption:  a.selectedOption,
@@ -541,34 +483,34 @@ export const QuizService = {
   async startOlympiad(studentId: string, input: StartOlympiadInput) {
     const profile = await readStudentProfile(studentId);
 
-    const subjects = await q<{ id: string; name: string; slug: string }>(
-      `SELECT s.id, s.name, s.slug FROM student_subjects ss
-       JOIN subjects s ON s.id = ss.subjectId
-       WHERE ss.studentProfileId = ? AND s.kind = 'SUBJECT' AND s.status = 'ACTIVE'
-       ORDER BY s.name`,
-      [profile.profileId ?? '__none__'],
-    );
+    const subjects = await prisma.subject.findMany({
+      where: {
+        kind: 'SUBJECT', status: 'ACTIVE',
+        studentSubjects: { some: { studentProfileId: profile.profileId ?? '__none__' } },
+      },
+      orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true },
+    });
     if (!subjects.length) {
       throw ApiError.badRequest('Add your subjects in your profile to start an Olympiad.');
     }
 
     const perSubject = input.perSubject ?? await getOlympiadPerSubject();
-    const { cond: scopeCond, params: scopeParams } = classBoardFilter(profile.classId, profile.educationBoard);
-    const typePlaceholders = GRADABLE_TYPES.map(() => '?').join(',');
+    const scopeAnd = classBoardAnd(profile.classId, profile.educationBoard);
 
     // Balanced pull: up to `perSubject` random questions from each subject,
     // strictly within the student's class + board.
-    const picked: DbQuestion[] = [];
+    const picked: QuizQuestion[] = [];
     const distribution: { subjectId: string; subject: string; count: number }[] = [];
     for (const subj of subjects) {
-      const rows = await q<DbQuestion>(
-        `SELECT * FROM questions
-         WHERE subjectId = ? AND status = 'ACTIVE' AND type IN (${typePlaceholders})${scopeCond}
-         ORDER BY RAND() LIMIT ?`,
-        [subj.id, ...GRADABLE_TYPES, ...scopeParams, perSubject],
-      );
-      picked.push(...rows);
-      distribution.push({ subjectId: subj.id, subject: subj.name, count: rows.length });
+      const rows = await prisma.question.findMany({
+        where: {
+          subjectId: subj.id, status: 'ACTIVE', type: { in: GRADABLE_TYPES },
+          ...(scopeAnd.length && { AND: scopeAnd }),
+        },
+      });
+      const pick = shuffleArray(rows).slice(0, perSubject);
+      picked.push(...pick);
+      distribution.push({ subjectId: subj.id, subject: subj.name, count: pick.length });
     }
     if (!picked.length) {
       throw ApiError.badRequest('No questions available for your class/board in your selected subjects yet.');
@@ -578,13 +520,9 @@ export const QuizService = {
     const quizId   = await getOrCreateOlympiadQuiz(profile.classId, studentId);
 
     const { attemptId, attemptNumber } = await createQuizAttempt(quizId, studentId);
-    for (const sq of selected) {
-      await run(
-        `INSERT INTO attempt_answers (id, attemptId, questionId, selectedOptions, isSkipped, isMarkedReview, marksAwarded, createdAt, updatedAt)
-         VALUES (?, ?, ?, '[]', 1, 0, 0, NOW(), NOW())`,
-        [newId(), attemptId, sq.id],
-      );
-    }
+    await prisma.attemptAnswer.createMany({
+      data: selected.map(sq => ({ attemptId, questionId: sq.id, selectedOptions: '[]', isSkipped: true, isMarkedReview: false, marksAwarded: 0 })),
+    });
 
     return {
       attemptId,
@@ -604,23 +542,13 @@ export const QuizService = {
 
   // ── Olympiad: the logged-in student's own attempt history ───────────────
   async getOlympiadAttempts(studentId: string) {
-    const rows = await q<{
-      attemptId: string; attemptNumber: number; status: string; score: number;
-      percentage: number; correctAnswers: number; wrongAnswers: number; skipped: number;
-      timeTakenSec: number; startTime: Date; endTime: Date | null; quizTitle: string; questionCount: number;
-    }>(
-      `SELECT qa.id AS attemptId, qa.attemptNumber, qa.status, qa.score, qa.percentage,
-              qa.correctAnswers, qa.wrongAnswers, qa.skipped, qa.timeTakenSec,
-              qa.startTime, qa.endTime, q.title AS quizTitle,
-              (SELECT COUNT(*) FROM attempt_answers aa WHERE aa.attemptId = qa.id) AS questionCount
-       FROM quiz_attempts qa
-       JOIN quizzes q ON q.id = qa.quizId
-       WHERE qa.studentId = ? AND q.quizType = 'OLYMPIAD'
-       ORDER BY qa.startTime DESC`,
-      [studentId],
-    );
+    const rows = await prisma.quizAttempt.findMany({
+      where: { studentId, quiz: { quizType: QuizType.OLYMPIAD } },
+      orderBy: { startTime: 'desc' },
+      include: { quiz: { select: { title: true } }, _count: { select: { answers: true } } },
+    });
     return rows.map(r => ({
-      attemptId:      r.attemptId,
+      attemptId:      r.id,
       attemptNumber:  r.attemptNumber,
       status:         r.status,
       score:          r.score,
@@ -631,8 +559,8 @@ export const QuizService = {
       timeTakenSec:   r.timeTakenSec,
       startTime:      r.startTime,
       endTime:        r.endTime,
-      quizTitle:      r.quizTitle,
-      questionCount:  Number(r.questionCount),
+      quizTitle:      r.quiz.title,
+      questionCount:  r._count.answers,
     }));
   },
 };

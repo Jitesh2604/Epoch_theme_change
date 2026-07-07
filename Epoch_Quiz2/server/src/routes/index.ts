@@ -1,6 +1,6 @@
 import { Router } from '../core/router';
 import { ApiResponse } from '../utils/ApiResponse';
-import { pool } from '../lib/db';
+import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../utils/asyncHandler';
 import authRoutes         from './auth.routes';
 import userRoutes         from './user.routes';
@@ -26,7 +26,7 @@ router.get('/health', (_req, res) => {
 router.get(
   '/health/db',
   asyncHandler(async (_req, res) => {
-    await pool.query('SELECT 1');
+    await prisma.$queryRaw`SELECT 1`;
     ApiResponse.ok(res, { database: 'connected' });
   })
 );

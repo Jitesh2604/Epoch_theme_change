@@ -1,7 +1,9 @@
-import { q, q1, run, newId, toJson } from '../lib/db';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { NotificationType, NotificationTarget } from '../lib/enums';
 import { ApiError } from '../utils/ApiError';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
+import { toJson } from '../utils/json';
 import type { Actor } from './assessment.service';
 
 export interface CreateNotificationInput {
@@ -15,51 +17,41 @@ export interface CreateNotificationInput {
 
 export const NotificationService = {
   async create(_actor: Actor, input: CreateNotificationInput) {
-    const id    = newId();
-    const type  = input.type    ?? NotificationType.GENERAL;
-    const target = input.target ?? NotificationTarget.ALL;
-    await run(
-      `INSERT INTO notifications (id, title, message, \`type\`, target, targetIds, scheduledAt, isSent, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())`,
-      [id, input.title, input.message, type, target, toJson(input.targetIds ?? []), input.scheduledAt ?? null],
-    );
-    return q1(
-      'SELECT * FROM notifications WHERE id = ?', [id],
-    );
+    return prisma.notification.create({
+      data: {
+        title:       input.title,
+        message:     input.message,
+        type:        input.type   ?? NotificationType.GENERAL,
+        target:      input.target ?? NotificationTarget.ALL,
+        targetIds:   toJson(input.targetIds ?? []),
+        scheduledAt: input.scheduledAt ?? null,
+        isSent:      false,
+      },
+    });
   },
 
   async list(_actor: Actor, query: { page?: number; limit?: number; type?: NotificationType }) {
     const { page = 1, limit = 20, type } = query;
     const { skip, take } = pageToSkipTake(page, limit);
 
-    const conds: string[] = [];
-    const params: unknown[] = [];
-    if (type) { conds.push('`type` = ?'); params.push(type); }
-    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+    const where: Prisma.NotificationWhereInput = { ...(type && { type }) };
 
-    const [items, countRows] = await Promise.all([
-      q(
-        `SELECT * FROM notifications ${where} ORDER BY createdAt DESC LIMIT ? OFFSET ?`,
-        [...params, take, skip],
-      ),
-      q<{ cnt: number }>(
-        `SELECT COUNT(*) AS cnt FROM notifications ${where}`,
-        params,
-      ),
+    const [items, total] = await Promise.all([
+      prisma.notification.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take }),
+      prisma.notification.count({ where }),
     ]);
-    const total = countRows[0]?.cnt ?? 0;
     return { items, meta: pageMeta(total, page, limit) };
   },
 
   async findById(_actor: Actor, id: string) {
-    const n = await q1('SELECT * FROM notifications WHERE id = ?', [id]);
+    const n = await prisma.notification.findUnique({ where: { id } });
     if (!n) throw ApiError.notFound('Notification not found');
     return n;
   },
 
   async remove(_actor: Actor, id: string) {
-    const n = await q1('SELECT id FROM notifications WHERE id = ?', [id]);
+    const n = await prisma.notification.findUnique({ where: { id }, select: { id: true } });
     if (!n) throw ApiError.notFound('Notification not found');
-    await run('DELETE FROM notifications WHERE id = ?', [id]);
+    await prisma.notification.delete({ where: { id } });
   },
 };

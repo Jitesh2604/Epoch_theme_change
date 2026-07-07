@@ -17,7 +17,8 @@
  */
 import * as XLSX from 'xlsx';
 import { Difficulty, QuestionType } from '../lib/enums';
-import { q, q1, tx, cr, cq1, newId, toJson } from '../lib/db';
+import { prisma } from '../lib/prisma';
+import { toJson } from '../utils/json';
 import { ApiError } from '../utils/ApiError';
 import { isAdminRole } from '../utils/roles';
 import { recalcTotalMarks } from './question.service';
@@ -260,10 +261,9 @@ export const ExcelService = {
 
     let target: { id: string; status: string } | null = null;
     if (opts.assessmentId) {
-      const a = await q1<{ id: string; status: string; createdById: string }>(
-        'SELECT id, status, createdById FROM assessments WHERE id = ?',
-        [opts.assessmentId],
-      );
+      const a = await prisma.assessment.findUnique({
+        where: { id: opts.assessmentId }, select: { id: true, status: true, createdById: true },
+      });
       if (!a) throw ApiError.badRequest('assessmentId does not exist');
       if (a.status === 'ARCHIVED') throw ApiError.badRequest('Cannot attach to an archived assessment');
       if (!isAdminRole(actor.role) && a.createdById !== actor.id) {
@@ -272,9 +272,7 @@ export const ExcelService = {
       target = { id: a.id, status: a.status };
     }
 
-    const subjectList = await q<{ id: string; name: string; slug: string }>(
-      'SELECT id, name, slug FROM subjects',
-    );
+    const subjectList = await prisma.subject.findMany({ select: { id: true, name: true, slug: true } });
     const subjectIndex = new Map<string, string>();
     for (const s of subjectList) {
       subjectIndex.set(s.name.toLowerCase().trim(), s.id);
@@ -288,45 +286,32 @@ export const ExcelService = {
     }
 
     const createdIds: string[] = [];
-    await tx(async (conn) => {
+    await prisma.$transaction(async (txc) => {
       for (const row of valid) {
-        const id = newId();
         const d = row.data;
-        await cr(
-          conn,
-          `INSERT INTO questions
-             (id, type, prompt, marks, difficulty, tags, subjectId,
-              optionA, optionB, optionC, optionD,
-              correctAnswer, correctBoolean, modelAnswer, createdById)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            id, d.type, d.prompt, d.marks, d.difficulty, toJson(d.tags),
-            d.subjectId ?? null,
-            d.optionA ?? null, d.optionB ?? null, d.optionC ?? null, d.optionD ?? null,
-            d.correctAnswer ?? null,
-            d.correctBoolean !== undefined ? (d.correctBoolean ? 1 : 0) : null,
-            d.modelAnswer ?? null,
-            actor.id,
-          ],
-        );
-        createdIds.push(id);
+        const created = await txc.question.create({
+          data: {
+            type: d.type, prompt: d.prompt, marks: d.marks, difficulty: d.difficulty,
+            tags: toJson(d.tags), correctOptions: '[]',
+            subjectId: d.subjectId ?? null,
+            optionA: d.optionA ?? null, optionB: d.optionB ?? null, optionC: d.optionC ?? null, optionD: d.optionD ?? null,
+            correctAnswer: d.correctAnswer ?? null,
+            correctBoolean: d.correctBoolean ?? null,
+            modelAnswer: d.modelAnswer ?? null,
+            createdById: actor.id,
+          },
+          select: { id: true },
+        });
+        createdIds.push(created.id);
       }
 
       if (target) {
-        const maxRow = await cq1<{ maxOrder: number }>(
-          conn,
-          'SELECT COALESCE(MAX(`order`), 0) AS maxOrder FROM assessment_questions WHERE assessmentId = ?',
-          [target.id],
-        );
-        let nextOrder = (maxRow?.maxOrder ?? 0) + 1;
-        for (const qid of createdIds) {
-          await cr(
-            conn,
-            'INSERT INTO assessment_questions (assessmentId, questionId, `order`) VALUES (?, ?, ?)',
-            [target.id, qid, nextOrder++],
-          );
-        }
-        await recalcTotalMarks(target.id, conn);
+        const maxAgg = await txc.assessmentQuestion.aggregate({ where: { assessmentId: target.id }, _max: { order: true } });
+        let nextOrder = (maxAgg._max.order ?? 0) + 1;
+        await txc.assessmentQuestion.createMany({
+          data: createdIds.map(qid => ({ assessmentId: target!.id, questionId: qid, order: nextOrder++ })),
+        });
+        await recalcTotalMarks(target.id, txc);
       }
     });
 

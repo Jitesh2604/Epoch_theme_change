@@ -1,7 +1,7 @@
 {
   "name": "epoch-quiz-server",
   "version": "1.0.0",
-  "description": "Epoch Quiz backend — Node.js + TypeScript + mysql2 + MySQL",
+  "description": "Epoch Quiz backend — Node.js + TypeScript + Prisma + MySQL",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -17,7 +17,6 @@
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
-    "mysql2": "^3.22.5",
     "nodemailer": "^8.0.10",
     "prisma": "^6.19.3",
     "winston": "^3.17.0",

@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { q, q1, run, newId, tx, cr } from '../lib/db';
+import { prisma } from '../lib/prisma';
 import { Role, UserStatus, OtpType } from '../lib/enums';
 import { ApiError } from '../utils/ApiError';
 import { hashPassword, comparePassword } from '../utils/password';
@@ -68,10 +68,10 @@ async function issueTokens(user: Pick<DbUser, 'id' | 'email' | 'role'>): Promise
   const tokenHash    = hashRefreshToken(refreshToken);
   const expiresAt    = new Date(Date.now() + parseDurationMs(env.JWT_REFRESH_EXPIRES_IN));
 
-  await run(
-    'INSERT INTO refresh_tokens (id, userId, tokenHash, expiresAt, createdAt) VALUES (?, ?, ?, ?, NOW())',
-    [jti, user.id, tokenHash, expiresAt],
-  );
+  // The stored id must equal the JWT's jti so `refresh` can look it up.
+  await prisma.refreshToken.create({
+    data: { id: jti, userId: user.id, tokenHash, expiresAt },
+  });
   return { accessToken, refreshToken };
 }
 
@@ -80,7 +80,7 @@ async function generateTeacherCode(): Promise<string> {
   for (let attempt = 0; attempt < 20; attempt++) {
     let code = '';
     for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
-    const existing = await q1('SELECT id FROM teacher_profiles WHERE teacherCode = ?', [code]);
+    const existing = await prisma.teacherProfile.findUnique({ where: { teacherCode: code }, select: { id: true } });
     if (!existing) return code;
   }
   throw ApiError.internal('Could not generate a unique teacher code. Please try again.');
@@ -88,47 +88,45 @@ async function generateTeacherCode(): Promise<string> {
 
 export const AuthService = {
   async register(input: RegisterInput): Promise<AuthResponse> {
-    const existing = await q1<DbUser>('SELECT id FROM users WHERE email = ?', [input.email]);
+    const existing = await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } });
     if (existing) throw ApiError.conflict('Email is already registered');
 
     if (input.mobileNo) {
-      const mobileExists = await q1('SELECT id FROM users WHERE mobileNo = ?', [input.mobileNo]);
+      const mobileExists = await prisma.user.findUnique({ where: { mobileNo: input.mobileNo }, select: { id: true } });
       if (mobileExists) throw ApiError.conflict('Mobile number is already registered');
     }
 
     const passwordHash = await hashPassword(input.password);
-    const userId       = newId();
     const avatarHue    = Math.floor(Math.random() * 360);
 
     let teacherCode: string | undefined;
     if (input.role === Role.TEACHER) teacherCode = await generateTeacherCode();
 
-    await run(
-      `INSERT INTO users (id, email, mobileNo, passwordHash, name, role, status, avatarHue, profileComplete, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())`,
-      [userId, input.email, input.mobileNo ?? null, passwordHash, input.name, input.role, UserStatus.ACTIVE, avatarHue],
-    );
+    const user = await prisma.user.create({
+      data: {
+        email:           input.email,
+        mobileNo:        input.mobileNo ?? null,
+        passwordHash,
+        name:            input.name,
+        role:            input.role,
+        status:          UserStatus.ACTIVE,
+        avatarHue,
+        profileComplete: false,
+        ...(input.role === Role.TEACHER
+          ? { teacherProfile: { create: { teacherCode } } }
+          : input.role === Role.STUDENT
+            ? { studentProfile: { create: {} } }
+            : {}),
+      },
+    });
 
-    if (input.role === Role.TEACHER) {
-      await run(
-        'INSERT INTO teacher_profiles (id, userId, teacherCode, createdAt, updatedAt) VALUES (?, ?, ?, NOW(), NOW())',
-        [newId(), userId, teacherCode],
-      );
-    } else if (input.role === Role.STUDENT) {
-      await run(
-        'INSERT INTO student_profiles (id, userId, createdAt, updatedAt) VALUES (?, ?, NOW(), NOW())',
-        [newId(), userId],
-      );
-    }
-
-    const user = await q1<DbUser>('SELECT * FROM users WHERE id = ?', [userId]);
-    const tokens = await issueTokens(user!);
-    EmailService.sendWelcome(user!.email, user!.name).catch(() => {});
-    return { user: toPublicUser(user!), ...tokens };
+    const tokens = await issueTokens(user);
+    EmailService.sendWelcome(user.email, user.name).catch(() => {});
+    return { user: toPublicUser(user), ...tokens };
   },
 
   async login(input: LoginInput): Promise<AuthResponse> {
-    const user = await q1<DbUser>('SELECT * FROM users WHERE email = ?', [input.email]);
+    const user = await prisma.user.findUnique({ where: { email: input.email } });
     if (!user) throw ApiError.unauthorized('Invalid email or password');
 
     if (user.status === UserStatus.INACTIVE) throw ApiError.forbidden('Account is inactive');
@@ -146,18 +144,16 @@ export const AuthService = {
     catch { throw ApiError.unauthorized('Invalid refresh token'); }
 
     const tokenHash = hashRefreshToken(refreshToken);
-    const stored = await q1<{
-      id: string; userId: string; tokenHash: string; revokedAt: Date | null; expiresAt: Date;
-    }>('SELECT * FROM refresh_tokens WHERE id = ?', [payload.jti]);
+    const stored = await prisma.refreshToken.findUnique({ where: { id: payload.jti } });
 
     if (!stored || stored.tokenHash !== tokenHash) throw ApiError.unauthorized('Refresh token not recognized');
     if (stored.revokedAt) throw ApiError.unauthorized('Refresh token has been revoked');
     if (stored.expiresAt < new Date()) throw ApiError.unauthorized('Refresh token has expired');
 
-    const user = await q1<DbUser>('SELECT * FROM users WHERE id = ?', [stored.userId]);
+    const user = await prisma.user.findUnique({ where: { id: stored.userId } });
     if (!user) throw ApiError.unauthorized('User no longer exists');
 
-    await run('UPDATE refresh_tokens SET revokedAt = NOW() WHERE id = ?', [stored.id]);
+    await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
     return issueTokens(user);
   },
 
@@ -165,65 +161,66 @@ export const AuthService = {
     let payload;
     try { payload = verifyRefreshToken(refreshToken); }
     catch { return; }
-    await run('UPDATE refresh_tokens SET revokedAt = NOW() WHERE id = ? AND revokedAt IS NULL', [payload.jti]);
+    await prisma.refreshToken.updateMany({
+      where: { id: payload.jti, revokedAt: null },
+      data:  { revokedAt: new Date() },
+    });
   },
 
   async forgotPassword(email: string): Promise<{ ok: true; resetToken?: string }> {
-    const user = await q1<DbUser>('SELECT * FROM users WHERE email = ?', [email]);
+    const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return { ok: true };
 
-    const token    = crypto.randomBytes(32).toString('hex');
+    const token     = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
-    await run(
-      "UPDATE otps SET isVerified = 1 WHERE mobileOrEmail = ? AND otpType = 'PASSWORD_RESET' AND isVerified = 0",
-      [email],
-    );
-    await run(
-      'INSERT INTO otps (id, mobileOrEmail, otpCode, otpType, expiresAt, isVerified, attemptCount, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, 0, 0, NOW(), NOW())',
-      [newId(), email, token, OtpType.PASSWORD_RESET, expiresAt],
-    );
+    await prisma.otp.updateMany({
+      where: { mobileOrEmail: email, otpType: OtpType.PASSWORD_RESET, isVerified: false },
+      data:  { isVerified: true },
+    });
+    await prisma.otp.create({
+      data: { mobileOrEmail: email, otpCode: token, otpType: OtpType.PASSWORD_RESET, expiresAt, isVerified: false, attemptCount: 0 },
+    });
 
     EmailService.sendPasswordReset(email, token, user.name).catch(() => {});
     return { ok: true, ...(isDev ? { resetToken: token } : {}) };
   },
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
-    const otp = await q1<{ id: string; mobileOrEmail: string }>(
-      "SELECT id, mobileOrEmail FROM otps WHERE otpCode = ? AND otpType = 'PASSWORD_RESET' AND isVerified = 0 AND expiresAt > NOW()",
-      [token],
-    );
+    const otp = await prisma.otp.findFirst({
+      where: { otpCode: token, otpType: OtpType.PASSWORD_RESET, isVerified: false, expiresAt: { gt: new Date() } },
+      select: { id: true, mobileOrEmail: true },
+    });
     if (!otp) throw ApiError.badRequest('Reset token is invalid or has expired.');
 
-    const user = await q1<DbUser>('SELECT * FROM users WHERE email = ?', [otp.mobileOrEmail]);
+    const user = await prisma.user.findUnique({ where: { email: otp.mobileOrEmail } });
     if (!user) throw ApiError.notFound('User not found');
 
     const passwordHash = await hashPassword(newPassword);
 
-    await tx(async conn => {
-      await cr(conn, 'UPDATE users SET passwordHash = ?, updatedAt = NOW() WHERE id = ?', [passwordHash, user.id]);
-      await cr(conn, 'UPDATE otps SET isVerified = 1, updatedAt = NOW() WHERE id = ?', [otp.id]);
-      await cr(conn, 'UPDATE refresh_tokens SET revokedAt = NOW() WHERE userId = ? AND revokedAt IS NULL', [user.id]);
-    });
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
+      prisma.otp.update({ where: { id: otp.id }, data: { isVerified: true } }),
+      prisma.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
   },
 
   async getMe(userId: string): Promise<PublicUser & { teacherProfile?: unknown; studentProfile?: unknown }> {
-    const user = await q1<DbUser>('SELECT * FROM users WHERE id = ?', [userId]);
+    const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw ApiError.notFound('User not found');
 
     const [teacherProfile, studentProfile] = await Promise.all([
-      q1('SELECT * FROM teacher_profiles WHERE userId = ?', [userId]),
-      q1<{ id: string }>('SELECT * FROM student_profiles WHERE userId = ?',  [userId]),
+      prisma.teacherProfile.findUnique({ where: { userId } }),
+      prisma.studentProfile.findUnique({ where: { userId } }),
     ]);
 
     let studentWithSubjects: Record<string, unknown> | null = studentProfile as Record<string, unknown> | null;
     if (studentProfile) {
-      const subjects = await q<{ id: string; name: string; slug: string }>(
-        `SELECT s.id, s.name, s.slug FROM student_subjects ss
-         JOIN subjects s ON s.id = ss.subjectId
-         WHERE ss.studentProfileId = ? ORDER BY s.name`,
-        [studentProfile.id],
-      );
+      const subjects = await prisma.subject.findMany({
+        where:   { studentSubjects: { some: { studentProfileId: studentProfile.id } } },
+        select:  { id: true, name: true, slug: true },
+        orderBy: { name: 'asc' },
+      });
       studentWithSubjects = { ...studentProfile, subjects };
     }
 

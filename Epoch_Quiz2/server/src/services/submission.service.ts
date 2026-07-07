@@ -1,10 +1,10 @@
-import { q, q1, run, newId, tx, cr, cq, parseStrArr, parseIntArr, toJson } from '../lib/db';
-
+import { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { AssessmentStatus, QuestionType, Role, SubmissionStatus } from '../lib/enums';
 import { ApiError } from '../utils/ApiError';
 import { isAdminRole } from '../utils/roles';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
-import type { PoolConnection } from 'mysql2/promise';
+import { parseStrArr, parseIntArr, toJson } from '../utils/json';
 import type { Actor } from './assessment.service';
 import { assessmentVisibleToStudent } from './assessment.service';
 import type {
@@ -42,6 +42,61 @@ interface LoadedSubmission {
   aCreatedById: string;
   subId: string | null; subName: string | null; subSlug: string | null;
   stName: string | null; stEmail: string | null;
+}
+
+// ── Prisma query shapes → flat DB types ────────────────────────
+
+const submissionSelect = {
+  id: true, studentId: true, assessmentId: true, status: true, score: true, totalMarks: true,
+  timeTakenSec: true, startedAt: true, submittedAt: true,
+  assessment: { select: { title: true, description: true, duration: true, passingMarks: true, createdById: true, subject: { select: { id: true, name: true, slug: true } } } },
+  student: { select: { name: true, email: true } },
+} satisfies Prisma.SubmissionSelect;
+
+function mapLoaded(s: Prisma.SubmissionGetPayload<{ select: typeof submissionSelect }>): LoadedSubmission {
+  return {
+    id: s.id, studentId: s.studentId, assessmentId: s.assessmentId, status: s.status,
+    score: s.score, totalMarks: s.totalMarks, timeTakenSec: s.timeTakenSec,
+    startedAt: s.startedAt, submittedAt: s.submittedAt,
+    aTitle: s.assessment.title, aDescription: s.assessment.description, aDuration: s.assessment.duration,
+    aPassing: s.assessment.passingMarks, aCreatedById: s.assessment.createdById,
+    subId: s.assessment.subject?.id ?? null, subName: s.assessment.subject?.name ?? null, subSlug: s.assessment.subject?.slug ?? null,
+    stName: s.student.name, stEmail: s.student.email,
+  };
+}
+
+async function loadSubmissionFlat(id: string): Promise<LoadedSubmission | null> {
+  const s = await prisma.submission.findUnique({ where: { id }, select: submissionSelect });
+  return s ? mapLoaded(s) : null;
+}
+
+const aqQuestionSelect = {
+  id: true, type: true, prompt: true, promptImageUrl: true,
+  optionA: true, optionB: true, optionC: true, optionD: true,
+  optionAImageUrl: true, optionBImageUrl: true, optionCImageUrl: true, optionDImageUrl: true,
+  matchPairs: true, marks: true, correctAnswer: true, correctOptions: true, correctBoolean: true,
+  explanation: true, explanationImageUrl: true, modelAnswer: true,
+} satisfies Prisma.QuestionSelect;
+
+async function loadAssessmentQuestions(assessmentId: string): Promise<AssessmentQuestion[]> {
+  const rows = await prisma.assessmentQuestion.findMany({
+    where: { assessmentId }, orderBy: { order: 'asc' },
+    select: { id: true, order: true, marksOverride: true, question: { select: aqQuestionSelect } },
+  });
+  return rows.map(r => ({
+    aqId: r.id, aqOrder: r.order, marksOverride: r.marksOverride,
+    qId: r.question.id, type: r.question.type, prompt: r.question.prompt, promptImageUrl: r.question.promptImageUrl,
+    optionA: r.question.optionA, optionB: r.question.optionB, optionC: r.question.optionC, optionD: r.question.optionD,
+    optionAImageUrl: r.question.optionAImageUrl, optionBImageUrl: r.question.optionBImageUrl,
+    optionCImageUrl: r.question.optionCImageUrl, optionDImageUrl: r.question.optionDImageUrl,
+    matchPairs: r.question.matchPairs, marks: r.question.marks,
+    correctAnswer: r.question.correctAnswer, correctOptions: r.question.correctOptions, correctBoolean: r.question.correctBoolean,
+    explanation: r.question.explanation, explanationImageUrl: r.question.explanationImageUrl, modelAnswer: r.question.modelAnswer,
+  }));
+}
+
+function loadAnswers(submissionId: string): Promise<DbAnswer[]> {
+  return prisma.answer.findMany({ where: { submissionId } });
 }
 
 // ── helpers ────────────────────────────────────────────────────
@@ -97,31 +152,6 @@ function gradeAnswer(
   return { isCorrect: null, marksAwarded: 0 };
 }
 
-const SELECT_QUESTIONS = `
-  SELECT aq.id AS aqId, aq.\`order\` AS aqOrder, aq.marksOverride,
-         q.id AS qId, q.type, q.prompt, q.promptImageUrl,
-         q.optionA, q.optionB, q.optionC, q.optionD,
-         q.optionAImageUrl, q.optionBImageUrl, q.optionCImageUrl, q.optionDImageUrl,
-         q.matchPairs, q.marks,
-         q.correctAnswer, q.correctOptions, q.correctBoolean,
-         q.explanation, q.explanationImageUrl, q.modelAnswer
-  FROM assessment_questions aq
-  JOIN questions q ON q.id = aq.questionId
-  WHERE aq.assessmentId = ?
-  ORDER BY aq.\`order\` ASC`;
-
-const SELECT_SUBMISSION = `
-  SELECT s.id, s.studentId, s.assessmentId, s.status, s.score, s.totalMarks,
-         s.timeTakenSec, s.startedAt, s.submittedAt,
-         a.title AS aTitle, a.description AS aDescription, a.duration AS aDuration,
-         a.passingMarks AS aPassing, a.createdById AS aCreatedById,
-         sub.id AS subId, sub.name AS subName, sub.slug AS subSlug,
-         u.name AS stName, u.email AS stEmail
-  FROM submissions s
-  JOIN assessments a ON a.id = s.assessmentId
-  LEFT JOIN subjects sub ON sub.id = a.subjectId
-  JOIN users u ON u.id = s.studentId`;
-
 function answerMap(answers: DbAnswer[]): Map<string, DbAnswer> {
   const m = new Map<string, DbAnswer>();
   for (const a of answers) m.set(a.questionId, a);
@@ -129,18 +159,14 @@ function answerMap(answers: DbAnswer[]): Map<string, DbAnswer> {
 }
 
 async function loadOwnInProgress(actor: Actor, submissionId: string) {
-  const s = await q1<{
-    id: string; studentId: string; assessmentId: string; status: string;
-    startedAt: Date; totalMarks: number; duration: number;
-  }>(
-    `SELECT s.id, s.studentId, s.assessmentId, s.status, s.startedAt, s.totalMarks, a.duration
-     FROM submissions s JOIN assessments a ON a.id = s.assessmentId WHERE s.id = ?`,
-    [submissionId],
-  );
+  const s = await prisma.submission.findUnique({
+    where: { id: submissionId },
+    select: { id: true, studentId: true, assessmentId: true, status: true, startedAt: true, totalMarks: true, assessment: { select: { duration: true } } },
+  });
   if (!s) throw ApiError.notFound('Submission not found');
   if (!isAdminRole(actor.role) && s.studentId !== actor.id) throw ApiError.forbidden('You can only modify your own attempt');
   if (s.status !== SubmissionStatus.IN_PROGRESS) throw ApiError.badRequest('This attempt is no longer in progress');
-  return s;
+  return { ...s, duration: s.assessment.duration };
 }
 
 function shapeSubmission(s: LoadedSubmission, aqs: AssessmentQuestion[], answers: DbAnswer[], revealAnswers: boolean) {
@@ -198,30 +224,27 @@ function shapeSubmission(s: LoadedSubmission, aqs: AssessmentQuestion[], answers
 }
 
 async function finalizeSubmission(submissionId: string) {
-  const s = await q1<LoadedSubmission>(`${SELECT_SUBMISSION} WHERE s.id = ?`, [submissionId]);
+  const s = await loadSubmissionFlat(submissionId);
   if (!s) throw ApiError.notFound('Submission not found');
 
-  const aqs = await q<AssessmentQuestion>(SELECT_QUESTIONS, [s.assessmentId]);
+  const aqs = await loadAssessmentQuestions(s.assessmentId);
 
   if (s.status !== SubmissionStatus.IN_PROGRESS) {
-    const answers = await q<DbAnswer>('SELECT * FROM answers WHERE submissionId = ?', [submissionId]);
+    const answers = await loadAnswers(submissionId);
     return shapeSubmission(s, aqs, answers, true);
   }
 
-  const existingAnswers = await q<DbAnswer>('SELECT * FROM answers WHERE submissionId = ?', [submissionId]);
+  const existingAnswers = await loadAnswers(submissionId);
   const byQ = answerMap(existingAnswers);
 
-  const effRows = await q<{ questionId: string; marksOverride: number | null }>(
-    'SELECT questionId, marksOverride FROM assessment_questions WHERE assessmentId = ?',
-    [s.assessmentId],
-  );
+  const effRows = await prisma.assessmentQuestion.findMany({ where: { assessmentId: s.assessmentId }, select: { questionId: true, marksOverride: true } });
   const effMap = new Map<string, number | null>();
   for (const r of effRows) effMap.set(r.questionId, r.marksOverride);
 
   let totalScore = 0;
   let hasUngradedDescriptive = false;
 
-  await tx(async (conn: PoolConnection) => {
+  await prisma.$transaction(async (txc) => {
     for (const aq of aqs) {
       const a           = byQ.get(aq.qId) ?? null;
       const marks       = effMap.get(aq.qId) ?? aq.marks;
@@ -239,16 +262,11 @@ async function finalizeSubmission(submissionId: string) {
       if (needsManual && a) hasUngradedDescriptive = true;
 
       if (a) {
-        await cr(conn,
-          'UPDATE answers SET isCorrect = ?, marksAwarded = ? WHERE id = ?',
-          [isCorrect, marksAwarded, a.id],
-        );
+        await txc.answer.update({ where: { id: a.id }, data: { isCorrect, marksAwarded } });
       } else {
-        await cr(conn,
-          `INSERT INTO answers (id, submissionId, questionId, selectedOptions, isCorrect, marksAwarded)
-           VALUES (?, ?, ?, '[]', ?, 0)`,
-          [newId(), submissionId, aq.qId, needsManual ? null : 0],
-        );
+        await txc.answer.create({
+          data: { submissionId, questionId: aq.qId, selectedOptions: '[]', isCorrect: needsManual ? null : false, marksAwarded: 0 },
+        });
       }
     }
 
@@ -256,29 +274,24 @@ async function finalizeSubmission(submissionId: string) {
     const timeTakenSec = Math.max(0, Math.floor((submittedAt.getTime() - new Date(s.startedAt).getTime()) / 1000));
     const status       = hasUngradedDescriptive ? SubmissionStatus.SUBMITTED : SubmissionStatus.GRADED;
 
-    await cr(conn,
-      'UPDATE submissions SET score = ?, submittedAt = ?, timeTakenSec = ?, status = ? WHERE id = ?',
-      [totalScore, submittedAt, timeTakenSec, status, submissionId],
-    );
+    await txc.submission.update({ where: { id: submissionId }, data: { score: totalScore, submittedAt, timeTakenSec, status } });
   });
 
-  const finalSub     = await q1<LoadedSubmission>(`${SELECT_SUBMISSION} WHERE s.id = ?`, [submissionId]);
-  const finalAnswers = await q<DbAnswer>('SELECT * FROM answers WHERE submissionId = ?', [submissionId]);
+  const finalSub     = await loadSubmissionFlat(submissionId);
+  const finalAnswers = await loadAnswers(submissionId);
   return shapeSubmission(finalSub!, aqs, finalAnswers, true);
 }
 
-async function recomputeSubmissionScore(conn: PoolConnection, submissionId: string): Promise<void> {
-  const rows = await cq<{ marksAwarded: number; qtype: string; isCorrect: boolean | null }>(conn,
-    'SELECT a.marksAwarded, q.type AS qtype, a.isCorrect FROM answers a JOIN questions q ON q.id = a.questionId WHERE a.submissionId = ?',
-    [submissionId],
-  );
-  const score = rows.reduce((sum: number, a: { marksAwarded: number }) => sum + a.marksAwarded, 0);
+async function recomputeSubmissionScore(txc: Prisma.TransactionClient, submissionId: string): Promise<void> {
+  const rows = await txc.answer.findMany({
+    where: { submissionId }, select: { marksAwarded: true, isCorrect: true, question: { select: { type: true } } },
+  });
+  const score = rows.reduce((sum, a) => sum + a.marksAwarded, 0);
   const stillUngraded = rows.some(
-    (a: { qtype: string; isCorrect: boolean | null }) =>
-      (a.qtype === QuestionType.DESCRIPTIVE || a.qtype === QuestionType.MATCH_THE_COLUMN) && a.isCorrect === null,
+    a => (a.question.type === QuestionType.DESCRIPTIVE || a.question.type === QuestionType.MATCH_THE_COLUMN) && a.isCorrect === null,
   );
   const status = stillUngraded ? SubmissionStatus.SUBMITTED : SubmissionStatus.GRADED;
-  await cr(conn, 'UPDATE submissions SET score = ?, status = ? WHERE id = ?', [score, status, submissionId]);
+  await txc.submission.update({ where: { id: submissionId }, data: { score, status } });
 }
 
 // ── service ───────────────────────────────────────────────────
@@ -287,56 +300,46 @@ export const SubmissionService = {
   async start(actor: Actor, assessmentId: string) {
     if (actor.role !== Role.STUDENT) throw ApiError.forbidden('Only students can start an assessment attempt');
 
-    const assessment = await q1<{
-      id: string; title: string; description: string | null; duration: number;
-      totalMarks: number; passingMarks: number; status: string;
-      subjectId: string | null; subjectName: string | null; subjectSlug: string | null;
-    }>(
-      `SELECT a.id, a.title, a.description, a.duration, a.totalMarks, a.passingMarks, a.status,
-              s.id AS subjectId, s.name AS subjectName, s.slug AS subjectSlug
-       FROM assessments a LEFT JOIN subjects s ON s.id = a.subjectId WHERE a.id = ?`,
-      [assessmentId],
-    );
+    const assessment = await prisma.assessment.findUnique({
+      where: { id: assessmentId },
+      select: { id: true, title: true, description: true, duration: true, totalMarks: true, passingMarks: true, status: true, subject: { select: { id: true, name: true, slug: true } } },
+    });
     if (!assessment) throw ApiError.notFound('Assessment not found');
     if (assessment.status !== AssessmentStatus.PUBLISHED) throw ApiError.notFound('Assessment not found');
     if (!(await assessmentVisibleToStudent(actor.id, assessmentId))) throw ApiError.notFound('Assessment not found');
 
-    const aqs = await q<AssessmentQuestion>(SELECT_QUESTIONS, [assessmentId]);
+    const aqs = await loadAssessmentQuestions(assessmentId);
     if (!aqs.length) throw ApiError.badRequest('This assessment has no questions yet');
 
-    let submission = await q1<{ id: string; status: string; startedAt: Date; totalMarks: number }>(
-      'SELECT id, status, startedAt, totalMarks FROM submissions WHERE assessmentId = ? AND studentId = ?',
-      [assessmentId, actor.id],
-    );
+    let submission = await prisma.submission.findUnique({
+      where: { assessmentId_studentId: { assessmentId, studentId: actor.id } },
+      select: { id: true, status: true, startedAt: true, totalMarks: true },
+    });
 
     if (submission && submission.status !== SubmissionStatus.IN_PROGRESS) {
       throw ApiError.conflict('You have already submitted this assessment');
     }
 
     if (!submission) {
-      const totalMarks = aqs.reduce((sum: number, aq: AssessmentQuestion) => sum + (aq.marksOverride ?? aq.marks), 0);
-      const sid = newId();
-      await run(
-        "INSERT INTO submissions (id, assessmentId, studentId, status, score, totalMarks, timeTakenSec, startedAt) VALUES (?, ?, ?, 'IN_PROGRESS', 0, ?, 0, NOW())",
-        [sid, assessmentId, actor.id, totalMarks],
-      );
-      submission = await q1<{ id: string; status: string; startedAt: Date; totalMarks: number }>(
-        'SELECT id, status, startedAt, totalMarks FROM submissions WHERE id = ?', [sid],
-      );
+      const totalMarks = aqs.reduce((sum, aq) => sum + (aq.marksOverride ?? aq.marks), 0);
+      submission = await prisma.submission.create({
+        data: { assessmentId, studentId: actor.id, status: SubmissionStatus.IN_PROGRESS, score: 0, totalMarks, timeTakenSec: 0 },
+        select: { id: true, status: true, startedAt: true, totalMarks: true },
+      });
     }
 
-    const { expiresAt, remainingSec } = durationLeft(submission!.startedAt, assessment.duration);
+    const { expiresAt, remainingSec } = durationLeft(submission.startedAt, assessment.duration);
     if (remainingSec === 0) {
-      const finalized = await finalizeSubmission(submission!.id);
+      const finalized = await finalizeSubmission(submission.id);
       return { autoSubmitted: true, submission: finalized };
     }
 
-    const savedAnswers = await q<Pick<DbAnswer, 'questionId' | 'selectedOption' | 'selectedOptions' | 'selectedBoolean' | 'textAnswer'>>(
-      'SELECT questionId, selectedOption, selectedOptions, selectedBoolean, textAnswer FROM answers WHERE submissionId = ?',
-      [submission!.id],
-    );
+    const savedAnswers = await prisma.answer.findMany({
+      where: { submissionId: submission.id },
+      select: { questionId: true, selectedOption: true, selectedOptions: true, selectedBoolean: true, textAnswer: true },
+    });
 
-    const questions = aqs.map((aq: AssessmentQuestion) => ({
+    const questions = aqs.map((aq) => ({
       order:          aq.aqOrder,
       questionId:     aq.qId,
       type:           aq.type,
@@ -349,7 +352,7 @@ export const SubmissionService = {
       marks:          aq.marksOverride ?? aq.marks,
     }));
 
-    const existing = savedAnswers.map((a: { questionId: string; selectedOption: number | null; selectedOptions: string; selectedBoolean: boolean | null; textAnswer: string | null }) => ({
+    const existing = savedAnswers.map((a) => ({
       questionId:      a.questionId,
       selectedOption:  a.selectedOption,
       selectedOptions: parseIntArr(a.selectedOptions),
@@ -359,13 +362,13 @@ export const SubmissionService = {
 
     return {
       submission: {
-        id: submission!.id, status: submission!.status, startedAt: submission!.startedAt,
-        expiresAt, remainingSec, totalMarks: submission!.totalMarks,
+        id: submission.id, status: submission.status, startedAt: submission.startedAt,
+        expiresAt, remainingSec, totalMarks: submission.totalMarks,
         assessment: {
           id: assessment.id, title: assessment.title, description: assessment.description,
           duration: assessment.duration,
-          subject: assessment.subjectId
-            ? { id: assessment.subjectId, name: assessment.subjectName, slug: assessment.subjectSlug }
+          subject: assessment.subject
+            ? { id: assessment.subject.id, name: assessment.subject.name, slug: assessment.subject.slug }
             : null,
         },
         questions,
@@ -382,18 +385,16 @@ export const SubmissionService = {
       throw ApiError.badRequest('Time is up — attempt was auto-submitted');
     }
 
-    const question = await q1<{ id: string; type: string; marks: number; correctAnswer: string | null; correctOptions: string; correctBoolean: boolean | null }>(
-      `SELECT q.id, q.type, q.marks, q.correctAnswer, q.correctOptions, q.correctBoolean
-       FROM questions q JOIN assessment_questions aq ON aq.questionId = q.id
-       WHERE q.id = ? AND aq.assessmentId = ?`,
-      [input.questionId, s.assessmentId],
-    );
+    const question = await prisma.question.findFirst({
+      where: { id: input.questionId, assessments: { some: { assessmentId: s.assessmentId } } },
+      select: { id: true, type: true, marks: true, correctAnswer: true, correctOptions: true, correctBoolean: true },
+    });
     if (!question) throw ApiError.badRequest('Question is not part of this assessment');
 
-    const effRow = await q1<{ marksOverride: number | null }>(
-      'SELECT marksOverride FROM assessment_questions WHERE assessmentId = ? AND questionId = ?',
-      [s.assessmentId, input.questionId],
-    );
+    const effRow = await prisma.assessmentQuestion.findUnique({
+      where: { assessmentId_questionId: { assessmentId: s.assessmentId, questionId: input.questionId } },
+      select: { marksOverride: true },
+    });
     const marks   = effRow?.marksOverride ?? question.marks;
     const selOpts = input.selectedOptions ?? [];
     const { isCorrect, marksAwarded } = gradeAnswer(
@@ -401,24 +402,19 @@ export const SubmissionService = {
       input.selectedOption ?? null, selOpts, input.selectedBoolean ?? null, input.textAnswer ?? null,
     );
 
-    const existing = await q1<{ id: string }>(
-      'SELECT id FROM answers WHERE submissionId = ? AND questionId = ?', [submissionId, input.questionId],
-    );
-    if (existing) {
-      await run(
-        `UPDATE answers SET selectedOption = ?, selectedOptions = ?, selectedBoolean = ?,
-         textAnswer = ?, timeMs = ?, isCorrect = ?, marksAwarded = ? WHERE id = ?`,
-        [input.selectedOption ?? null, toJson(selOpts), input.selectedBoolean ?? null,
-         input.textAnswer ?? null, input.timeMs ?? null, isCorrect, marksAwarded, existing.id],
-      );
-    } else {
-      await run(
-        `INSERT INTO answers (id, submissionId, questionId, selectedOption, selectedOptions, selectedBoolean, textAnswer, timeMs, isCorrect, marksAwarded)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [newId(), submissionId, input.questionId, input.selectedOption ?? null, toJson(selOpts),
-         input.selectedBoolean ?? null, input.textAnswer ?? null, input.timeMs ?? null, isCorrect, marksAwarded],
-      );
-    }
+    const fields = {
+      selectedOption:  input.selectedOption ?? null,
+      selectedOptions: toJson(selOpts),
+      selectedBoolean: input.selectedBoolean ?? null,
+      textAnswer:      input.textAnswer ?? null,
+      timeMs:          input.timeMs ?? null,
+      isCorrect, marksAwarded,
+    };
+    await prisma.answer.upsert({
+      where:  { submissionId_questionId: { submissionId, questionId: input.questionId } },
+      create: { submissionId, questionId: input.questionId, ...fields },
+      update: fields,
+    });
     return { ok: true };
   },
 
@@ -427,24 +423,22 @@ export const SubmissionService = {
 
     if (input.answers && input.answers.length > 0) {
       const qIds     = input.answers.map((a: SaveAnswerInput) => a.questionId);
-      const validQs  = await q<{ id: string }>(
-        `SELECT q.id FROM questions q JOIN assessment_questions aq ON aq.questionId = q.id
-         WHERE q.id IN (?) AND aq.assessmentId = ?`, [qIds, s.assessmentId],
-      );
-      const validIds = new Set(validQs.map((r: { id: string }) => r.id));
+      const validQs  = await prisma.question.findMany({
+        where: { id: { in: qIds }, assessments: { some: { assessmentId: s.assessmentId } } }, select: { id: true },
+      });
+      const validIds = new Set(validQs.map((r) => r.id));
       const unknown  = input.answers.find((a: SaveAnswerInput) => !validIds.has(a.questionId));
       if (unknown) throw ApiError.badRequest(`Question not in this assessment: ${unknown.questionId}`);
 
-      const effRows  = await q<{ questionId: string; marksOverride: number | null }>(
-        'SELECT questionId, marksOverride FROM assessment_questions WHERE assessmentId = ? AND questionId IN (?)',
-        [s.assessmentId, qIds],
-      );
+      const effRows  = await prisma.assessmentQuestion.findMany({
+        where: { assessmentId: s.assessmentId, questionId: { in: qIds } }, select: { questionId: true, marksOverride: true },
+      });
       const effMap   = new Map<string, number | null>();
       for (const r of effRows) effMap.set(r.questionId, r.marksOverride);
 
-      const qRows   = await q<{ id: string; type: string; marks: number; correctAnswer: string | null; correctOptions: string; correctBoolean: boolean | null }>(
-        'SELECT id, type, marks, correctAnswer, correctOptions, correctBoolean FROM questions WHERE id IN (?)', [qIds],
-      );
+      const qRows   = await prisma.question.findMany({
+        where: { id: { in: qIds } }, select: { id: true, type: true, marks: true, correctAnswer: true, correctOptions: true, correctBoolean: true },
+      });
       const qMap    = new Map<string, typeof qRows[number]>();
       for (const r of qRows) qMap.set(r.id, r);
 
@@ -456,31 +450,26 @@ export const SubmissionService = {
           question.type, marks, question.correctAnswer, question.correctOptions, question.correctBoolean,
           a.selectedOption ?? null, selOpts, a.selectedBoolean ?? null, a.textAnswer ?? null,
         );
-        const existing = await q1<{ id: string }>(
-          'SELECT id FROM answers WHERE submissionId = ? AND questionId = ?', [submissionId, a.questionId],
-        );
-        if (existing) {
-          await run(
-            `UPDATE answers SET selectedOption = ?, selectedOptions = ?, selectedBoolean = ?,
-             textAnswer = ?, timeMs = ?, isCorrect = ?, marksAwarded = ? WHERE id = ?`,
-            [a.selectedOption ?? null, toJson(selOpts), a.selectedBoolean ?? null,
-             a.textAnswer ?? null, a.timeMs ?? null, isCorrect, marksAwarded, existing.id],
-          );
-        } else {
-          await run(
-            `INSERT INTO answers (id, submissionId, questionId, selectedOption, selectedOptions, selectedBoolean, textAnswer, timeMs, isCorrect, marksAwarded)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [newId(), submissionId, a.questionId, a.selectedOption ?? null, toJson(selOpts),
-             a.selectedBoolean ?? null, a.textAnswer ?? null, a.timeMs ?? null, isCorrect, marksAwarded],
-          );
-        }
+        const fields = {
+          selectedOption:  a.selectedOption ?? null,
+          selectedOptions: toJson(selOpts),
+          selectedBoolean: a.selectedBoolean ?? null,
+          textAnswer:      a.textAnswer ?? null,
+          timeMs:          a.timeMs ?? null,
+          isCorrect, marksAwarded,
+        };
+        await prisma.answer.upsert({
+          where:  { submissionId_questionId: { submissionId, questionId: a.questionId } },
+          create: { submissionId, questionId: a.questionId, ...fields },
+          update: fields,
+        });
       }
     }
     return finalizeSubmission(submissionId);
   },
 
   async findById(actor: Actor, id: string) {
-    const s = await q1<LoadedSubmission>(`${SELECT_SUBMISSION} WHERE s.id = ?`, [id]);
+    const s = await loadSubmissionFlat(id);
     if (!s) throw ApiError.notFound('Submission not found');
 
     if (!isAdminRole(actor.role)) {
@@ -491,8 +480,8 @@ export const SubmissionService = {
       }
     }
 
-    const aqs     = await q<AssessmentQuestion>(SELECT_QUESTIONS, [s.assessmentId]);
-    const answers = await q<DbAnswer>('SELECT * FROM answers WHERE submissionId = ?', [id]);
+    const aqs     = await loadAssessmentQuestions(s.assessmentId);
+    const answers = await loadAnswers(id);
     return shapeSubmission(s, aqs, answers, s.status !== SubmissionStatus.IN_PROGRESS);
   },
 
@@ -500,126 +489,109 @@ export const SubmissionService = {
     if (actor.role !== Role.STUDENT) throw ApiError.forbidden('listMine is for students only');
     const { page, limit, status, assessmentId } = query;
 
-    const conds = ['s.studentId = ?'];
-    const params: unknown[] = [actor.id];
-    if (status)       { conds.push('s.status = ?');       params.push(status); }
-    if (assessmentId) { conds.push('s.assessmentId = ?'); params.push(assessmentId); }
-
-    const where = `WHERE ${conds.join(' AND ')}`;
+    const where: Prisma.SubmissionWhereInput = {
+      studentId: actor.id,
+      ...(status && { status }),
+      ...(assessmentId && { assessmentId }),
+    };
     const { skip, take } = pageToSkipTake(page, limit);
 
-    const [rows, countRows] = await Promise.all([
-      q<{ id: string; status: string; score: number; totalMarks: number; timeTakenSec: number | null; startedAt: Date; submittedAt: Date | null; aId: string; aTitle: string; subId: string | null; subName: string | null; subSlug: string | null }>(
-        `SELECT s.id, s.status, s.score, s.totalMarks, s.timeTakenSec, s.startedAt, s.submittedAt,
-                a.id AS aId, a.title AS aTitle, sub.id AS subId, sub.name AS subName, sub.slug AS subSlug
-         FROM submissions s JOIN assessments a ON a.id = s.assessmentId LEFT JOIN subjects sub ON sub.id = a.subjectId
-         ${where} ORDER BY s.startedAt DESC LIMIT ? OFFSET ?`,
-        [...params, take, skip],
-      ),
-      q<{ cnt: number }>(`SELECT COUNT(*) AS cnt FROM submissions s ${where}`, params),
+    const [rows, total] = await Promise.all([
+      prisma.submission.findMany({
+        where, orderBy: { startedAt: 'desc' }, skip, take,
+        select: { id: true, status: true, score: true, totalMarks: true, timeTakenSec: true, startedAt: true, submittedAt: true, assessment: { select: { id: true, title: true, subject: { select: { id: true, name: true, slug: true } } } } },
+      }),
+      prisma.submission.count({ where }),
     ]);
 
-    const items = rows.map((s: typeof rows[number]) => {
-      const score = Number(s.score ?? 0); const total = Number(s.totalMarks ?? 0);
+    const items = rows.map((s) => {
+      const score = s.score ?? 0; const totalMarks = s.totalMarks ?? 0;
       return {
-        id: s.id, status: s.status, score, totalMarks: total,
-        percent: total > 0 ? Math.round((score / total) * 10000) / 100 : 0,
+        id: s.id, status: s.status, score, totalMarks,
+        percent: totalMarks > 0 ? Math.round((score / totalMarks) * 10000) / 100 : 0,
         startedAt: s.startedAt, submittedAt: s.submittedAt, timeTakenSec: s.timeTakenSec,
-        assessment: { id: s.aId, title: s.aTitle, subject: s.subId ? { id: s.subId, name: s.subName, slug: s.subSlug } : null },
+        assessment: { id: s.assessment.id, title: s.assessment.title, subject: s.assessment.subject ? { id: s.assessment.subject.id, name: s.assessment.subject.name, slug: s.assessment.subject.slug } : null },
       };
     });
-    return { items, meta: pageMeta(countRows[0]?.cnt ?? 0, page, limit) };
+    return { items, meta: pageMeta(total, page, limit) };
   },
 
   async list(actor: Actor, query: ListSubmissionsQuery) {
     if (actor.role === Role.STUDENT) throw ApiError.forbidden('Students should use /submissions/me');
     const { page, limit, status, assessmentId, studentId } = query;
 
-    const conds: string[] = [];
-    const params: unknown[] = [];
-    if (status)       { conds.push('s.status = ?');       params.push(status); }
-    if (assessmentId) { conds.push('s.assessmentId = ?'); params.push(assessmentId); }
-    if (studentId)    { conds.push('s.studentId = ?');    params.push(studentId); }
-    if (actor.role === Role.TEACHER) { conds.push('a.createdById = ?'); params.push(actor.id); }
-
-    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+    const where: Prisma.SubmissionWhereInput = {
+      ...(status && { status }),
+      ...(assessmentId && { assessmentId }),
+      ...(studentId && { studentId }),
+      ...(actor.role === Role.TEACHER && { assessment: { createdById: actor.id } }),
+    };
     const { skip, take } = pageToSkipTake(page, limit);
 
-    const [rows, countRows] = await Promise.all([
-      q<{ id: string; status: string; score: number; totalMarks: number; timeTakenSec: number | null; startedAt: Date; submittedAt: Date | null; aId: string; aTitle: string; subId: string | null; subName: string | null; subSlug: string | null; stId: string; stName: string; stEmail: string }>(
-        `SELECT s.id, s.status, s.score, s.totalMarks, s.timeTakenSec, s.startedAt, s.submittedAt,
-                a.id AS aId, a.title AS aTitle, sub.id AS subId, sub.name AS subName, sub.slug AS subSlug,
-                u.id AS stId, u.name AS stName, u.email AS stEmail
-         FROM submissions s JOIN assessments a ON a.id = s.assessmentId
-         LEFT JOIN subjects sub ON sub.id = a.subjectId LEFT JOIN users u ON u.id = s.studentId
-         ${where} ORDER BY s.startedAt DESC LIMIT ? OFFSET ?`,
-        [...params, take, skip],
-      ),
-      q<{ cnt: number }>(
-        `SELECT COUNT(*) AS cnt FROM submissions s JOIN assessments a ON a.id = s.assessmentId ${where}`,
-        params,
-      ),
+    const [rows, total] = await Promise.all([
+      prisma.submission.findMany({
+        where, orderBy: { startedAt: 'desc' }, skip, take,
+        select: { id: true, status: true, score: true, totalMarks: true, timeTakenSec: true, startedAt: true, submittedAt: true, assessment: { select: { id: true, title: true, subject: { select: { id: true, name: true, slug: true } } } }, student: { select: { id: true, name: true, email: true } } },
+      }),
+      prisma.submission.count({ where }),
     ]);
 
-    const items = rows.map((s: typeof rows[number]) => {
-      const score = Number(s.score ?? 0); const total = Number(s.totalMarks ?? 0);
+    const items = rows.map((s) => {
+      const score = s.score ?? 0; const totalMarks = s.totalMarks ?? 0;
       return {
-        id: s.id, status: s.status, score, totalMarks: total,
-        percent: total > 0 ? Math.round((score / total) * 10000) / 100 : 0,
+        id: s.id, status: s.status, score, totalMarks,
+        percent: totalMarks > 0 ? Math.round((score / totalMarks) * 10000) / 100 : 0,
         startedAt: s.startedAt, submittedAt: s.submittedAt, timeTakenSec: s.timeTakenSec,
-        assessment: { id: s.aId, title: s.aTitle, subject: s.subId ? { id: s.subId, name: s.subName, slug: s.subSlug } : null },
-        student: { id: s.stId, name: s.stName, email: s.stEmail },
+        assessment: { id: s.assessment.id, title: s.assessment.title, subject: s.assessment.subject ? { id: s.assessment.subject.id, name: s.assessment.subject.name, slug: s.assessment.subject.slug } : null },
+        student: { id: s.student.id, name: s.student.name, email: s.student.email },
       };
     });
-    return { items, meta: pageMeta(countRows[0]?.cnt ?? 0, page, limit) };
+    return { items, meta: pageMeta(total, page, limit) };
   },
 
   async grade(actor: Actor, submissionId: string, questionId: string, input: GradeAnswerInput) {
     if (actor.role !== Role.TEACHER && !isAdminRole(actor.role)) {
       throw ApiError.forbidden('Only teachers can grade');
     }
-    const submission = await q1<{ id: string; status: string; assessmentId: string; assessmentCreatedById: string }>(
-      `SELECT s.id, s.status, s.assessmentId, a.createdById AS assessmentCreatedById
-       FROM submissions s JOIN assessments a ON a.id = s.assessmentId WHERE s.id = ?`,
-      [submissionId],
-    );
+    const submission = await prisma.submission.findUnique({
+      where: { id: submissionId },
+      select: { id: true, status: true, assessmentId: true, assessment: { select: { createdById: true } } },
+    });
     if (!submission) throw ApiError.notFound('Submission not found');
-    if (actor.role === Role.TEACHER && submission.assessmentCreatedById !== actor.id) {
+    if (actor.role === Role.TEACHER && submission.assessment.createdById !== actor.id) {
       throw ApiError.forbidden('You can only grade submissions for your own assessments');
     }
     if (submission.status === SubmissionStatus.IN_PROGRESS) {
       throw ApiError.badRequest('Cannot grade a submission that is still in progress');
     }
 
-    const answer = await q1<{ id: string; questionType: string }>(
-      `SELECT a.id, q.type AS questionType FROM answers a JOIN questions q ON q.id = a.questionId
-       WHERE a.submissionId = ? AND a.questionId = ?`,
-      [submissionId, questionId],
-    );
+    const answer = await prisma.answer.findUnique({
+      where: { submissionId_questionId: { submissionId, questionId } },
+      select: { id: true, question: { select: { type: true } } },
+    });
     if (!answer) throw ApiError.notFound('Answer not found');
-    if (answer.questionType !== QuestionType.DESCRIPTIVE) {
+    if (answer.question.type !== QuestionType.DESCRIPTIVE) {
       throw ApiError.badRequest('Only descriptive answers require manual grading');
     }
 
-    const aq = await q1<{ marksOverride: number | null; qMarks: number }>(
-      `SELECT aq.marksOverride, q.marks AS qMarks FROM assessment_questions aq
-       JOIN questions q ON q.id = aq.questionId WHERE aq.assessmentId = ? AND aq.questionId = ?`,
-      [submission.assessmentId, questionId],
-    );
-    const effective = aq?.marksOverride ?? aq?.qMarks ?? 0;
+    const aq = await prisma.assessmentQuestion.findUnique({
+      where: { assessmentId_questionId: { assessmentId: submission.assessmentId, questionId } },
+      select: { marksOverride: true, question: { select: { marks: true } } },
+    });
+    const effective = aq?.marksOverride ?? aq?.question.marks ?? 0;
     if (input.marksAwarded > effective) throw ApiError.badRequest(`marksAwarded cannot exceed ${effective}`);
 
-    await tx(async (conn: PoolConnection) => {
-      await cr(conn,
-        'UPDATE answers SET marksAwarded = ?, isCorrect = ? WHERE id = ?',
-        [input.marksAwarded, input.isCorrect ?? input.marksAwarded > 0, answer.id],
-      );
-      await recomputeSubmissionScore(conn, submissionId);
+    await prisma.$transaction(async (txc) => {
+      await txc.answer.update({
+        where: { id: answer.id },
+        data: { marksAwarded: input.marksAwarded, isCorrect: input.isCorrect ?? input.marksAwarded > 0 },
+      });
+      await recomputeSubmissionScore(txc, submissionId);
     });
 
-    const finalSub = await q1<LoadedSubmission>(`${SELECT_SUBMISSION} WHERE s.id = ?`, [submissionId]);
-    const finalAqs = await q<AssessmentQuestion>(SELECT_QUESTIONS, [submission.assessmentId]);
-    const finalAns = await q<DbAnswer>('SELECT * FROM answers WHERE submissionId = ?', [submissionId]);
+    const finalSub = await loadSubmissionFlat(submissionId);
+    const finalAqs = await loadAssessmentQuestions(submission.assessmentId);
+    const finalAns = await loadAnswers(submissionId);
     return shapeSubmission(finalSub!, finalAqs, finalAns, true);
   },
 };

@@ -1,7 +1,7 @@
 import { createApp } from './app';
 import { env } from './config';
 import { logger } from './utils/logger';
-import { connectDatabase, disconnectDatabase } from './lib/db';
+import { connectDatabase, disconnectDatabase } from './lib/prisma';
 import { startContentScheduler, stopContentScheduler } from './lib/scheduler';
 
 async function bootstrap(): Promise<void> {

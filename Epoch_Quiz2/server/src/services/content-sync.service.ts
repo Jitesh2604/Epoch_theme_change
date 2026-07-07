@@ -15,9 +15,11 @@
  * Chapters are therefore derived from each question's embedded `chapter` object
  * (the /books/chapters endpoint requires a session token we don't have).
  */
-import { q, q1, run, newId, toJson } from '../lib/db';
+import { prisma } from '../lib/prisma';
+import { Difficulty } from '../lib/enums';
 import { logger } from '../utils/logger';
 import { env } from '../config';
+import { toJson } from '../utils/json';
 import { ContentService } from './content.service';
 import type { Book } from './content.service';
 
@@ -66,37 +68,49 @@ function slugify(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `subject-${Date.now()}`;
 }
 
+/** Coerce the API's free-form difficulty into the Difficulty enum (default MEDIUM). */
+function toDifficulty(level: string | null | undefined): Difficulty {
+  const v = String(level ?? '').toUpperCase().trim();
+  return v === 'EASY' || v === 'MEDIUM' || v === 'HARD' ? (v as Difficulty) : Difficulty.MEDIUM;
+}
+
 async function systemUserId(): Promise<string> {
-  const u = await q1<{ id: string }>(
-    "SELECT id FROM users WHERE role IN ('SUPER_ADMIN','PUBLICATION_ADMIN','CONTENT_MANAGER') ORDER BY createdAt ASC LIMIT 1",
-  );
+  const u = await prisma.user.findFirst({
+    where: { role: { in: ['SUPER_ADMIN', 'PUBLICATION_ADMIN', 'CONTENT_MANAGER'] } },
+    orderBy: { createdAt: 'asc' }, select: { id: true },
+  });
   if (!u) throw new Error('No admin/content-manager user exists to own imported questions.');
   return u.id;
 }
 
+/** Minimal Prisma delegate surface used by the generic reference-entity upsert. */
+interface RefDelegate {
+  findUnique(args: { where: { externalId: string }; select: { id: true; name: true } }): Promise<{ id: string; name: string } | null>;
+  findFirst(args: { where: { name: string; externalId: null }; select: { id: true } }): Promise<{ id: string } | null>;
+  update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<unknown>;
+  create(args: { data: Record<string, unknown> }): Promise<{ id: string }>;
+}
+
 /** Upsert a small reference entity by externalId, adopting an existing same-named row. */
 async function upsertRef(
-  table: 'boards' | 'classes' | 'series',
-  extId: string, name: string, extraCols: Record<string, unknown>, counts: EntityCounts,
+  model: RefDelegate,
+  extId: string, name: string, extraCreate: Record<string, unknown>, counts: EntityCounts,
 ): Promise<string | null> {
   try {
-    const existing = await q1<{ id: string; name: string }>(`SELECT id, name FROM ${table} WHERE externalId = ?`, [extId]);
+    const existing = await model.findUnique({ where: { externalId: extId }, select: { id: true, name: true } });
     if (existing) {
-      if (existing.name !== name) { await run(`UPDATE ${table} SET name = ?, updatedAt = NOW() WHERE id = ?`, [name, existing.id]); counts.updated++; }
+      if (existing.name !== name) { await model.update({ where: { id: existing.id }, data: { name } }); counts.updated++; }
       else counts.skipped++;
       return existing.id;
     }
-    const byName = await q1<{ id: string }>(`SELECT id FROM ${table} WHERE name = ? AND externalId IS NULL LIMIT 1`, [name]);
-    if (byName) { await run(`UPDATE ${table} SET externalId = ?, updatedAt = NOW() WHERE id = ?`, [extId, byName.id]); counts.updated++; return byName.id; }
-    const id = newId();
-    const cols = ['id', 'name', 'externalId', 'status', ...Object.keys(extraCols)];
-    const vals = [id, name, extId, 'ACTIVE', ...Object.values(extraCols)];
-    await run(`INSERT INTO ${table} (${cols.join(', ')}, createdAt, updatedAt) VALUES (${cols.map(() => '?').join(', ')}, NOW(), NOW())`, vals);
+    const byName = await model.findFirst({ where: { name, externalId: null }, select: { id: true } });
+    if (byName) { await model.update({ where: { id: byName.id }, data: { externalId: extId } }); counts.updated++; return byName.id; }
+    const created = await model.create({ data: { name, externalId: extId, status: 'ACTIVE', ...extraCreate } });
     counts.inserted++;
-    return id;
+    return created.id;
   } catch (err) {
     counts.failed++;
-    logger.error(`[content-sync] ${table} ${extId} failed: ${(err as Error).message}`);
+    logger.error(`[content-sync] ref ${extId} failed: ${(err as Error).message}`);
     return null;
   }
 }
@@ -106,7 +120,7 @@ async function upsertRef(
 async function syncBoards(counts: EntityCounts): Promise<Map<string, RefRow>> {
   const map = new Map<string, RefRow>();
   for (const b of await ContentService.getBoards()) {
-    const id = await upsertRef('boards', String(b.id), b.name, {}, counts);
+    const id = await upsertRef(prisma.board as unknown as RefDelegate, String(b.id), b.name, {}, counts);
     if (id) map.set(String(b.id), { id, name: b.name });
   }
   return map;
@@ -115,7 +129,7 @@ async function syncBoards(counts: EntityCounts): Promise<Map<string, RefRow>> {
 async function syncStandards(counts: EntityCounts): Promise<Map<string, RefRow>> {
   const map = new Map<string, RefRow>();
   for (const s of await ContentService.getStandards()) {
-    const id = await upsertRef('classes', String(s.id), s.name, { serial: String(s.order ?? '') }, counts);
+    const id = await upsertRef(prisma.class as unknown as RefDelegate, String(s.id), s.name, { serial: String(s.order ?? '') }, counts);
     if (id) map.set(String(s.id), { id, name: s.name });
   }
   return map;
@@ -126,24 +140,23 @@ async function syncSubjects(counts: EntityCounts): Promise<Map<string, RefRow>> 
   for (const s of await ContentService.getSubjects()) {
     const extId = String(s.id);
     try {
-      const existing = await q1<{ id: string; name: string }>('SELECT id, name FROM subjects WHERE externalId = ?', [extId]);
+      const existing = await prisma.subject.findUnique({ where: { externalId: extId }, select: { id: true, name: true } });
       if (existing) {
-        if (existing.name !== s.name) { await run('UPDATE subjects SET name = ?, updatedAt = NOW() WHERE id = ?', [s.name, existing.id]); counts.updated++; }
+        if (existing.name !== s.name) { await prisma.subject.update({ where: { id: existing.id }, data: { name: s.name } }); counts.updated++; }
         else counts.skipped++;
         map.set(extId, { id: existing.id, name: s.name });
         continue;
       }
-      const byName = await q1<{ id: string }>('SELECT id FROM subjects WHERE name = ? AND externalId IS NULL LIMIT 1', [s.name]);
+      const byName = await prisma.subject.findFirst({ where: { name: s.name, externalId: null }, select: { id: true } });
       if (byName) {
-        await run('UPDATE subjects SET externalId = ?, updatedAt = NOW() WHERE id = ?', [extId, byName.id]);
+        await prisma.subject.update({ where: { id: byName.id }, data: { externalId: extId } });
         counts.updated++; map.set(extId, { id: byName.id, name: s.name }); continue;
       }
-      const id = newId();
-      await run(
-        "INSERT INTO subjects (id, name, slug, kind, externalId, status, createdAt, updatedAt) VALUES (?, ?, ?, 'SUBJECT', ?, 'ACTIVE', NOW(), NOW())",
-        [id, s.name, slugify(s.name), extId],
-      );
-      counts.inserted++; map.set(extId, { id, name: s.name });
+      const created = await prisma.subject.create({
+        data: { name: s.name, slug: slugify(s.name), kind: 'SUBJECT', externalId: extId, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      counts.inserted++; map.set(extId, { id: created.id, name: s.name });
     } catch (err) {
       counts.failed++;
       logger.error(`[content-sync] subject ${extId} failed: ${(err as Error).message}`);
@@ -155,7 +168,7 @@ async function syncSubjects(counts: EntityCounts): Promise<Map<string, RefRow>> 
 async function syncSeries(counts: EntityCounts): Promise<Map<string, RefRow>> {
   const map = new Map<string, RefRow>();
   for (const s of await ContentService.getSeries()) {
-    const id = await upsertRef('series', String(s.id), s.name, {}, counts);
+    const id = await upsertRef(prisma.series as unknown as RefDelegate, String(s.id), s.name, {}, counts);
     if (id) map.set(String(s.id), { id, name: s.name });
   }
   return map;
@@ -170,28 +183,27 @@ async function upsertBook(
   boards: Map<string, RefRow>, classes: Map<string, RefRow>, subjects: Map<string, RefRow>, series: Map<string, RefRow>,
   counts: EntityCounts,
 ): Promise<BookInfo> {
-  const classId   = standardId != null ? classes.get(String(standardId))?.id  ?? null : null;
+  const classId    = standardId != null ? classes.get(String(standardId))?.id  ?? null : null;
   const subjectId2 = subjectId  != null ? subjects.get(String(subjectId))?.id  ?? null : null;
   const boardLocal = boardId    != null ? boards.get(String(boardId))          ?? null : null;
   const seriesLocalId = seriesId != null ? series.get(String(seriesId))?.id    ?? null : null;
   const educationBoard = boardLocal?.name ?? null;
 
-  const existing = await q1<{ id: string }>('SELECT id FROM books WHERE externalId = ?', [extId]);
+  const existing = await prisma.book.findUnique({ where: { externalId: extId }, select: { id: true } });
   if (existing) {
-    await run(
-      'UPDATE books SET name = ?, classId = ?, subjectId = ?, boardId = ?, seriesId = ?, updatedAt = NOW() WHERE id = ?',
-      [name, classId, subjectId2, boardLocal?.id ?? null, seriesLocalId, existing.id],
-    );
+    await prisma.book.update({
+      where: { id: existing.id },
+      data: { name, classId, subjectId: subjectId2, boardId: boardLocal?.id ?? null, seriesId: seriesLocalId },
+    });
     counts.updated++;
     return { localId: existing.id, classId, subjectId: subjectId2, educationBoard };
   }
-  const id = newId();
-  await run(
-    "INSERT INTO books (id, name, classId, subjectId, boardId, seriesId, externalId, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', NOW(), NOW())",
-    [id, name, classId, subjectId2, boardLocal?.id ?? null, seriesLocalId, extId],
-  );
+  const created = await prisma.book.create({
+    data: { name, classId, subjectId: subjectId2, boardId: boardLocal?.id ?? null, seriesId: seriesLocalId, externalId: extId, status: 'ACTIVE' },
+    select: { id: true },
+  });
   counts.inserted++;
-  return { localId: id, classId, subjectId: subjectId2, educationBoard };
+  return { localId: created.id, classId, subjectId: subjectId2, educationBoard };
 }
 
 async function syncBooks(
@@ -216,19 +228,17 @@ async function syncBooks(
 
 /** Upsert a chapter (derived from a question's embedded chapter object). */
 async function upsertChapter(extId: string, name: string, localBookId: string, counts: EntityCounts): Promise<string> {
-  const existing = await q1<{ id: string }>('SELECT id FROM chapters WHERE externalId = ?', [extId]);
+  const existing = await prisma.chapter.findUnique({ where: { externalId: extId }, select: { id: true } });
   if (existing) {
-    await run('UPDATE chapters SET name = ?, bookId = ?, updatedAt = NOW() WHERE id = ?', [name, localBookId, existing.id]);
+    await prisma.chapter.update({ where: { id: existing.id }, data: { name, bookId: localBookId } });
     counts.updated++;
     return existing.id;
   }
-  const id = newId();
-  await run(
-    "INSERT INTO chapters (id, name, bookId, externalId, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, 'ACTIVE', NOW(), NOW())",
-    [id, name, localBookId, extId],
-  );
+  const created = await prisma.chapter.create({
+    data: { name, bookId: localBookId, externalId: extId, status: 'ACTIVE' }, select: { id: true },
+  });
   counts.inserted++;
-  return id;
+  return created.id;
 }
 
 // ── questions (runtime shape) ───────────────────────────────────────────────
@@ -284,30 +294,30 @@ async function syncQuestions(
         const correctOptions = correctLetter ? toJson([correctLetter]) : '[]';
         optionsImported += opts.filter((o) => o.text).length;
 
-        const existing = await q1<{ id: string }>('SELECT id FROM questions WHERE externalId = ?', [extId]);
+        const existing = await prisma.question.findUnique({ where: { externalId: extId }, select: { id: true } });
         if (existing) {
-          await run(
-            `UPDATE questions SET prompt = ?, optionA = ?, optionB = ?, optionC = ?, optionD = ?,
-               correctAnswer = ?, correctOptions = ?, explanation = ?, difficulty = ?,
-               subjectId = ?, classId = ?, chapterId = ?, bookId = ?, educationBoard = ?, updatedAt = NOW()
-             WHERE id = ?`,
-            [qn.text, optionA, optionB, optionC, optionD, correctLetter, correctOptions,
-             qn.explanation ?? null, qn.level, binfo.subjectId, binfo.classId, localChapterId, binfo.localId,
-             binfo.educationBoard, existing.id],
-          );
+          await prisma.question.update({
+            where: { id: existing.id },
+            data: {
+              prompt: qn.text, optionA, optionB, optionC, optionD,
+              correctAnswer: correctLetter, correctOptions, explanation: qn.explanation ?? null,
+              difficulty: toDifficulty(qn.level),
+              subjectId: binfo.subjectId, classId: binfo.classId, chapterId: localChapterId, bookId: binfo.localId,
+              educationBoard: binfo.educationBoard,
+            },
+          });
           stats.questions.updated++;
         } else {
-          await run(
-            `INSERT INTO questions
-               (id, type, prompt, optionA, optionB, optionC, optionD, correctAnswer, correctOptions, correctBoolean,
-                explanation, marks, negativeMarks, difficulty, language, tags, status,
-                subjectId, classId, chapterId, bookId, educationBoard, createdById, externalId, createdAt, updatedAt)
-             VALUES (?, 'MCQ_SINGLE', ?, ?, ?, ?, ?, ?, ?, NULL, ?, 1, 0, ?, 'English', '[]', 'ACTIVE',
-                     ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-            [newId(), qn.text, optionA, optionB, optionC, optionD, correctLetter, correctOptions,
-             qn.explanation ?? null, qn.level, binfo.subjectId, binfo.classId, localChapterId, binfo.localId,
-             binfo.educationBoard, createdById, extId],
-          );
+          await prisma.question.create({
+            data: {
+              type: 'MCQ_SINGLE', prompt: qn.text, optionA, optionB, optionC, optionD,
+              correctAnswer: correctLetter, correctOptions, correctBoolean: null,
+              explanation: qn.explanation ?? null, marks: 1, negativeMarks: 0,
+              difficulty: toDifficulty(qn.level), language: 'English', tags: '[]', status: 'ACTIVE',
+              subjectId: binfo.subjectId, classId: binfo.classId, chapterId: localChapterId, bookId: binfo.localId,
+              educationBoard: binfo.educationBoard, createdById, externalId: extId,
+            },
+          });
           stats.questions.inserted++;
         }
       } catch (err) {
@@ -334,16 +344,15 @@ export const ContentSyncService = {
     _syncing = true;
 
     const started = Date.now();
-    const logId = newId();
     const stats: SyncStats = {
       boards: zero(), classes: zero(), subjects: zero(), series: zero(),
       books: zero(), chapters: zero(), questions: zero(), optionsImported: 0,
     };
 
-    await run(
-      "INSERT INTO content_sync_logs (id, status, `trigger`, startedAt, stats, createdAt) VALUES (?, 'RUNNING', ?, NOW(), '{}', NOW())",
-      [logId, trigger],
-    );
+    const log = await prisma.contentSyncLog.create({
+      data: { status: 'RUNNING', trigger, stats: '{}' }, select: { id: true },
+    });
+    const logId = log.id;
     logger.info(`[content-sync] started (${trigger}) log=${logId}`);
 
     try {
@@ -360,20 +369,28 @@ export const ContentSyncService = {
 
       const totals = sumCounts(stats);
       const durationMs = Date.now() - started;
-      await run(
-        "UPDATE content_sync_logs SET status = 'SUCCESS', finishedAt = NOW(), durationMs = ?, inserted = ?, updated = ?, skipped = ?, failed = ?, stats = ? WHERE id = ?",
-        [durationMs, totals.inserted, totals.updated, totals.skipped, totals.failed, toJson(stats), logId],
-      );
+      await prisma.contentSyncLog.update({
+        where: { id: logId },
+        data: {
+          status: 'SUCCESS', finishedAt: new Date(), durationMs,
+          inserted: totals.inserted, updated: totals.updated, skipped: totals.skipped, failed: totals.failed,
+          stats: toJson(stats),
+        },
+      });
       logger.info(`[content-sync] done in ${durationMs}ms — +${totals.inserted} ~${totals.updated} =${totals.skipped} !${totals.failed}, options=${stats.optionsImported}`);
       return { logId, status: 'SUCCESS', durationMs, totals, stats };
     } catch (err) {
       const durationMs = Date.now() - started;
       const message = (err as Error).message;
       const totals = sumCounts(stats);
-      await run(
-        "UPDATE content_sync_logs SET status = 'FAILED', finishedAt = NOW(), durationMs = ?, inserted = ?, updated = ?, skipped = ?, failed = ?, stats = ?, error = ? WHERE id = ?",
-        [durationMs, totals.inserted, totals.updated, totals.skipped, totals.failed, toJson(stats), message, logId],
-      ).catch(() => { /* never mask the original error */ });
+      await prisma.contentSyncLog.update({
+        where: { id: logId },
+        data: {
+          status: 'FAILED', finishedAt: new Date(), durationMs,
+          inserted: totals.inserted, updated: totals.updated, skipped: totals.skipped, failed: totals.failed,
+          stats: toJson(stats), error: message,
+        },
+      }).catch(() => { /* never mask the original error */ });
       logger.error(`[content-sync] FAILED after ${durationMs}ms: ${message}`);
       return { logId, status: 'FAILED', durationMs, totals, stats, error: message };
     } finally {
@@ -382,10 +399,13 @@ export const ContentSyncService = {
   },
 
   async recentLogs(limit = 20) {
-    return q(
-      'SELECT id, status, `trigger`, startedAt, finishedAt, durationMs, inserted, updated, skipped, failed, error FROM content_sync_logs ORDER BY startedAt DESC LIMIT ?',
-      [limit],
-    );
+    return prisma.contentSyncLog.findMany({
+      orderBy: { startedAt: 'desc' }, take: limit,
+      select: {
+        id: true, status: true, trigger: true, startedAt: true, finishedAt: true,
+        durationMs: true, inserted: true, updated: true, skipped: true, failed: true, error: true,
+      },
+    });
   },
 };
 

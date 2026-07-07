@@ -312,7 +312,7 @@ function buildCreateData(q: RawQuestion, creatorId: string) {
 
     correctAnswer: toStringOrNull(q.correctAnswer),
     // correctOptions/matchPairs/tags are LongText columns storing JSON strings
-    // (see prisma/schema.prisma + the runtime toJson() helper in src/lib/db.ts).
+    // (see prisma/schema.prisma + the runtime toJson() helper in src/utils/json.ts).
     correctOptions: JSON.stringify(
       Array.isArray(q.correctOptions)
         ? (q.correctOptions as string[]).map((o) => o.toUpperCase())

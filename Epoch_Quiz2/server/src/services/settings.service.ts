@@ -1,4 +1,4 @@
-import { q, q1, run, newId } from '../lib/db';
+import { prisma } from '../lib/prisma';
 
 export interface SettingEntry {
   key:      string;
@@ -28,18 +28,13 @@ const DEFAULTS: SettingEntry[] = [
 
 export const SettingsService = {
   async getAll(): Promise<SettingEntry[]> {
-    const stored = await q<SettingEntry>(
-      'SELECT `key`, value, category, label, `type` FROM settings',
-    );
+    const stored = await prisma.setting.findMany({
+      select: { key: true, value: true, category: true, label: true, type: true },
+    });
     const storedKeys = new Set(stored.map(s => s.key));
     const missing = DEFAULTS.filter(d => !storedKeys.has(d.key));
     if (missing.length) {
-      for (const d of missing) {
-        await run(
-          'INSERT IGNORE INTO settings (id, `key`, value, category, label, `type`, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())',
-          [newId(), d.key, d.value, d.category, d.label, d.type],
-        );
-      }
+      await prisma.setting.createMany({ data: missing, skipDuplicates: true });
     }
     return [...stored, ...missing].sort((a, b) => a.key.localeCompare(b.key));
   },
@@ -51,10 +46,7 @@ export const SettingsService = {
 
   async get(key: string): Promise<string | null> {
     try {
-      const row = await q1<SettingEntry>(
-        'SELECT `key`, value, category, label, `type` FROM settings WHERE `key` = ?',
-        [key],
-      );
+      const row = await prisma.setting.findUnique({ where: { key }, select: { value: true } });
       if (row) return row.value;
       return DEFAULTS.find(d => d.key === key)?.value ?? null;
     } catch {
@@ -64,13 +56,15 @@ export const SettingsService = {
 
   async set(key: string, value: string): Promise<SettingEntry> {
     const def = DEFAULTS.find(d => d.key === key);
-    await run(
-      `INSERT INTO settings (id, \`key\`, value, category, label, \`type\`, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
-       ON DUPLICATE KEY UPDATE value = VALUES(value), updatedAt = NOW()`,
-      [newId(), key, value, def?.category ?? 'general', def?.label ?? key, def?.type ?? 'string'],
-    );
-    return { key, value, category: def?.category ?? 'general', label: def?.label ?? key, type: def?.type ?? 'string' };
+    const category = def?.category ?? 'general';
+    const label    = def?.label ?? key;
+    const type     = def?.type ?? 'string';
+    await prisma.setting.upsert({
+      where:  { key },
+      create: { key, value, category, label, type },
+      update: { value },
+    });
+    return { key, value, category, label, type };
   },
 
   async setMany(updates: Record<string, string>): Promise<void> {
