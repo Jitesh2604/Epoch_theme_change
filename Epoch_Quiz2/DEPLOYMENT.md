@@ -5,7 +5,7 @@ Two deployable services:
 | Service    | Tech                      | Port | Role                                   |
 |------------|---------------------------|------|----------------------------------------|
 | **web**    | nginx + built React SPA   | 80   | Serves the SPA, reverse-proxies `/api` |
-| **server** | Node 22 + TypeScript API  | 3000 | REST API (`/api/v1`), mysql2 pool      |
+| **server** | Node 22 + TypeScript API  | 3000 | REST API (`/api/v1`), Prisma Client     |
 | **db**     | MySQL 8.4                 | 3306 | Persistent store (managed by Prisma migrations) |
 
 Everything is served **same-origin**: the browser calls `/api/v1/*` on the same
@@ -103,8 +103,8 @@ required one is missing or invalid** — so a misconfigured deploy fails fast.
 
 | Variable             | Notes                                                        |
 |----------------------|--------------------------------------------------------------|
-| `DATABASE_URL`       | `mysql://user:pass@host:3306/db` — used by Prisma migrations |
-| `DB_HOST` `DB_PORT` `DB_USER` `DB_PASSWORD` `DB_NAME` | used by the runtime mysql2 pool (`src/lib/db.ts`) — keep in sync with `DATABASE_URL` |
+| `DATABASE_URL`       | `mysql://user:pass@host:3306/db` — the **only** DB URL the app/Prisma uses (queries + migrations) |
+| `DB_PASSWORD` `DB_NAME` (`DB_HOST` `DB_PORT` `DB_USER`) | Docker-Compose only — they provision the MySQL container and build `DATABASE_URL` in `docker-compose.yml`. The app itself reads just `DATABASE_URL`. |
 | `JWT_ACCESS_SECRET`  | ≥ 16 chars; `openssl rand -hex 32`                           |
 | `JWT_REFRESH_SECRET` | ≥ 16 chars; different from the access secret                 |
 
@@ -138,6 +138,65 @@ Full annotated reference: `server/.env.example`.
 
 Point your load balancer / orchestrator liveness probe at `/api/v1/health` and
 readiness at `/api/v1/health/db`.
+
+---
+
+## Database migrations & the `0_init` baseline
+
+The database is managed entirely by **Prisma Migrate** (`server/prisma/migrations`).
+The history is a single **baseline migration, `0_init`**, that reflects the exact
+current schema.
+
+### Fresh environment (new, empty database)
+
+Nothing manual — `migrate deploy` builds the whole schema from `0_init`:
+
+```bash
+cd server
+npx prisma migrate deploy      # applies 0_init
+npx prisma generate
+npm run seed                   # default subjects/classes + admin account
+```
+
+### Why `0_init` exists (a deliberate history reset)
+
+The original migration history had **drifted**: the `_prisma_migrations` table
+recorded migrations that existed in no folder and no git commit, plus duplicate
+half-applied rows. New migrations then failed even though the schema itself was
+correct (the changes already existed in the DB). On **2026-07-08** the history
+was **baselined** — Prisma's recommended fix for exactly this situation
+([docs](https://www.prisma.io/docs/orm/prisma-migrate/workflows/baselining)):
+the six drifted folders were replaced by one `0_init` generated from the current
+schema. This touched **migration metadata only — no application data** — and a
+fresh `migrate deploy` was verified to reproduce the previous schema exactly
+(identical tables, columns, indexes, foreign keys, enums, and defaults).
+
+### Existing databases created BEFORE the baseline — one-time step
+
+A database that predates `0_init` already has the correct tables, but its
+`_prisma_migrations` table still lists the old (now-deleted) history. Run this
+**once** per such environment, **after backing up**, then deploy normally forever:
+
+```bash
+# 1. Back up the migration-tracking table (metadata only)
+mysqldump -u<user> -p <db> _prisma_migrations > _prisma_migrations.bak.sql
+# 2. Reset it and record the baseline as already-applied (NO DDL, NO data change)
+mysql -u<user> -p <db> -e "TRUNCATE TABLE _prisma_migrations;"
+cd server && npx prisma migrate resolve --applied 0_init
+# 3. Confirm
+npx prisma migrate status       # -> "Database schema is up to date!"
+```
+
+Do **not** run this on fresh databases — they use `migrate deploy` (above).
+
+### Creating new migrations going forward
+
+Normal Prisma workflow — the chain starts cleanly at `0_init`:
+
+```bash
+npx prisma migrate dev --name <change>     # in development: create + apply
+npx prisma migrate deploy                  # in CI/prod: apply pending
+```
 
 ---
 
