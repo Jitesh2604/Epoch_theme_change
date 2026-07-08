@@ -29,7 +29,9 @@ CREATE TABLE `boards` (
     `status` ENUM('ACTIVE', 'PENDING', 'INACTIVE') NOT NULL DEFAULT 'ACTIVE',
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
+    `externalId` VARCHAR(191) NULL,
 
+    UNIQUE INDEX `boards_externalId_key`(`externalId`),
     INDEX `boards_publicationId_idx`(`publicationId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -42,7 +44,9 @@ CREATE TABLE `series` (
     `status` ENUM('ACTIVE', 'PENDING', 'INACTIVE') NOT NULL DEFAULT 'ACTIVE',
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
+    `externalId` VARCHAR(191) NULL,
 
+    UNIQUE INDEX `series_externalId_key`(`externalId`),
     INDEX `series_publicationId_idx`(`publicationId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -55,7 +59,9 @@ CREATE TABLE `classes` (
     `status` ENUM('ACTIVE', 'PENDING', 'INACTIVE') NOT NULL DEFAULT 'ACTIVE',
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
+    `externalId` VARCHAR(191) NULL,
 
+    UNIQUE INDEX `classes_externalId_key`(`externalId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -65,12 +71,15 @@ CREATE TABLE `subjects` (
     `name` VARCHAR(191) NOT NULL,
     `slug` VARCHAR(191) NOT NULL,
     `serial` VARCHAR(191) NULL,
+    `kind` VARCHAR(191) NOT NULL DEFAULT 'SUBJECT',
     `status` ENUM('ACTIVE', 'PENDING', 'INACTIVE') NOT NULL DEFAULT 'ACTIVE',
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
+    `externalId` VARCHAR(191) NULL,
 
     UNIQUE INDEX `subjects_name_key`(`name`),
     UNIQUE INDEX `subjects_slug_key`(`slug`),
+    UNIQUE INDEX `subjects_externalId_key`(`externalId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -88,8 +97,11 @@ CREATE TABLE `books` (
     `status` ENUM('ACTIVE', 'PENDING', 'INACTIVE') NOT NULL DEFAULT 'ACTIVE',
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
+    `externalId` VARCHAR(191) NULL,
+    `sourceUpdatedAt` DATETIME(3) NULL,
 
     UNIQUE INDEX `books_isbn_key`(`isbn`),
+    UNIQUE INDEX `books_externalId_key`(`externalId`),
     INDEX `books_publicationId_idx`(`publicationId`),
     INDEX `books_boardId_idx`(`boardId`),
     INDEX `books_seriesId_idx`(`seriesId`),
@@ -107,7 +119,10 @@ CREATE TABLE `chapters` (
     `status` ENUM('ACTIVE', 'PENDING', 'INACTIVE') NOT NULL DEFAULT 'ACTIVE',
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
+    `externalId` VARCHAR(191) NULL,
+    `sourceUpdatedAt` DATETIME(3) NULL,
 
+    UNIQUE INDEX `chapters_externalId_key`(`externalId`),
     INDEX `chapters_bookId_idx`(`bookId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -151,7 +166,7 @@ CREATE TABLE `teacher_profiles` (
     `state` VARCHAR(191) NULL,
     `city` VARCHAR(191) NULL,
     `zip` VARCHAR(191) NULL,
-    `imageUrl` VARCHAR(191) NULL,
+    `imageUrl` MEDIUMTEXT NULL,
     `bio` TEXT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
@@ -180,13 +195,14 @@ CREATE TABLE `student_profiles` (
     `state` VARCHAR(191) NULL,
     `city` VARCHAR(191) NULL,
     `zip` VARCHAR(191) NULL,
-    `imageUrl` VARCHAR(191) NULL,
+    `imageUrl` MEDIUMTEXT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
 
     UNIQUE INDEX `student_profiles_userId_key`(`userId`),
     INDEX `student_profiles_boardId_idx`(`boardId`),
     INDEX `student_profiles_classId_idx`(`classId`),
+    INDEX `student_profiles_seriesId_fkey`(`seriesId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -210,6 +226,7 @@ CREATE TABLE `student_books` (
     `studentProfileId` VARCHAR(191) NOT NULL,
     `bookId` VARCHAR(191) NOT NULL,
 
+    INDEX `student_books_bookId_fkey`(`bookId`),
     PRIMARY KEY (`studentProfileId`, `bookId`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -218,6 +235,7 @@ CREATE TABLE `teacher_classes` (
     `teacherProfileId` VARCHAR(191) NOT NULL,
     `classId` VARCHAR(191) NOT NULL,
 
+    INDEX `teacher_classes_classId_fkey`(`classId`),
     PRIMARY KEY (`teacherProfileId`, `classId`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -226,6 +244,7 @@ CREATE TABLE `teacher_subjects` (
     `teacherProfileId` VARCHAR(191) NOT NULL,
     `subjectId` VARCHAR(191) NOT NULL,
 
+    INDEX `teacher_subjects_subjectId_fkey`(`subjectId`),
     PRIMARY KEY (`teacherProfileId`, `subjectId`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -234,6 +253,7 @@ CREATE TABLE `teacher_series` (
     `teacherProfileId` VARCHAR(191) NOT NULL,
     `seriesId` VARCHAR(191) NOT NULL,
 
+    INDEX `teacher_series_seriesId_fkey`(`seriesId`),
     PRIMARY KEY (`teacherProfileId`, `seriesId`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -242,7 +262,17 @@ CREATE TABLE `teacher_books` (
     `teacherProfileId` VARCHAR(191) NOT NULL,
     `bookId` VARCHAR(191) NOT NULL,
 
+    INDEX `teacher_books_bookId_fkey`(`bookId`),
     PRIMARY KEY (`teacherProfileId`, `bookId`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `student_subjects` (
+    `studentProfileId` VARCHAR(191) NOT NULL,
+    `subjectId` VARCHAR(191) NOT NULL,
+
+    INDEX `student_subjects_subjectId_fkey`(`subjectId`),
+    PRIMARY KEY (`studentProfileId`, `subjectId`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
@@ -251,26 +281,29 @@ CREATE TABLE `questions` (
     `type` ENUM('MCQ_SINGLE', 'MCQ_MULTIPLE', 'TRUE_FALSE', 'FILL_IN_BLANK', 'MATCH_THE_COLUMN', 'DESCRIPTIVE') NOT NULL,
     `prompt` TEXT NOT NULL,
     `promptImageUrl` VARCHAR(191) NULL,
-    `optionA` VARCHAR(191) NULL,
+    `optionA` TEXT NULL,
     `optionAImageUrl` VARCHAR(191) NULL,
-    `optionB` VARCHAR(191) NULL,
+    `optionB` TEXT NULL,
     `optionBImageUrl` VARCHAR(191) NULL,
-    `optionC` VARCHAR(191) NULL,
+    `optionC` TEXT NULL,
     `optionCImageUrl` VARCHAR(191) NULL,
-    `optionD` VARCHAR(191) NULL,
+    `optionD` TEXT NULL,
     `optionDImageUrl` VARCHAR(191) NULL,
     `correctAnswer` VARCHAR(191) NULL,
-    `correctOptions` JSON NOT NULL,
+    `correctOptions` LONGTEXT NOT NULL,
     `correctBoolean` BOOLEAN NULL,
     `modelAnswer` TEXT NULL,
-    `matchPairs` JSON NULL,
+    `matchPairs` LONGTEXT NULL,
     `explanation` TEXT NULL,
     `explanationImageUrl` VARCHAR(191) NULL,
     `marks` INTEGER NOT NULL DEFAULT 1,
     `negativeMarks` DOUBLE NOT NULL DEFAULT 0,
     `difficulty` ENUM('EASY', 'MEDIUM', 'HARD') NOT NULL DEFAULT 'MEDIUM',
     `language` VARCHAR(191) NULL DEFAULT 'English',
-    `tags` JSON NOT NULL,
+    `educationBoard` VARCHAR(191) NULL,
+    `topic` VARCHAR(191) NULL,
+    `subtopic` VARCHAR(191) NULL,
+    `tags` LONGTEXT NOT NULL,
     `status` ENUM('ACTIVE', 'PENDING', 'INACTIVE') NOT NULL DEFAULT 'ACTIVE',
     `bookId` VARCHAR(191) NULL,
     `chapterId` VARCHAR(191) NULL,
@@ -279,7 +312,10 @@ CREATE TABLE `questions` (
     `createdById` VARCHAR(191) NOT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
+    `externalId` VARCHAR(191) NULL,
+    `sourceUpdatedAt` DATETIME(3) NULL,
 
+    UNIQUE INDEX `questions_externalId_key`(`externalId`),
     INDEX `questions_createdById_idx`(`createdById`),
     INDEX `questions_type_idx`(`type`),
     INDEX `questions_subjectId_idx`(`subjectId`),
@@ -328,6 +364,7 @@ CREATE TABLE `assessments` (
     INDEX `assessments_boardId_idx`(`boardId`),
     INDEX `assessments_classId_idx`(`classId`),
     INDEX `assessments_publicationId_idx`(`publicationId`),
+    INDEX `assessments_bookId_fkey`(`bookId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -352,6 +389,7 @@ CREATE TABLE `assessment_chapters` (
     `assessmentId` VARCHAR(191) NOT NULL,
     `chapterId` VARCHAR(191) NOT NULL,
 
+    INDEX `assessment_chapters_chapterId_fkey`(`chapterId`),
     PRIMARY KEY (`assessmentId`, `chapterId`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -360,6 +398,7 @@ CREATE TABLE `assessment_assigned_classes` (
     `assessmentId` VARCHAR(191) NOT NULL,
     `classId` VARCHAR(191) NOT NULL,
 
+    INDEX `assessment_assigned_classes_classId_fkey`(`classId`),
     PRIMARY KEY (`assessmentId`, `classId`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -368,6 +407,7 @@ CREATE TABLE `assessment_assigned_students` (
     `assessmentId` VARCHAR(191) NOT NULL,
     `studentId` VARCHAR(191) NOT NULL,
 
+    INDEX `assessment_assigned_students_studentId_fkey`(`studentId`),
     PRIMARY KEY (`assessmentId`, `studentId`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -401,6 +441,7 @@ CREATE TABLE `answers` (
     `isCorrect` BOOLEAN NULL,
     `marksAwarded` INTEGER NOT NULL DEFAULT 0,
     `timeMs` INTEGER NULL,
+    `selectedOptions` LONGTEXT NOT NULL,
 
     INDEX `answers_submissionId_idx`(`submissionId`),
     INDEX `answers_questionId_idx`(`questionId`),
@@ -449,6 +490,10 @@ CREATE TABLE `quizzes` (
     INDEX `quizzes_status_idx`(`status`),
     INDEX `quizzes_publicationId_idx`(`publicationId`),
     INDEX `quizzes_classId_idx`(`classId`),
+    INDEX `quizzes_boardId_fkey`(`boardId`),
+    INDEX `quizzes_bookId_fkey`(`bookId`),
+    INDEX `quizzes_seriesId_fkey`(`seriesId`),
+    INDEX `quizzes_subjectId_fkey`(`subjectId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -474,6 +519,7 @@ CREATE TABLE `quiz_chapters` (
     `quizId` VARCHAR(191) NOT NULL,
     `chapterId` VARCHAR(191) NOT NULL,
 
+    INDEX `quiz_chapters_chapterId_fkey`(`chapterId`),
     PRIMARY KEY (`quizId`, `chapterId`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -482,6 +528,7 @@ CREATE TABLE `quiz_assigned_classes` (
     `quizId` VARCHAR(191) NOT NULL,
     `classId` VARCHAR(191) NOT NULL,
 
+    INDEX `quiz_assigned_classes_classId_fkey`(`classId`),
     PRIMARY KEY (`quizId`, `classId`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -490,6 +537,7 @@ CREATE TABLE `quiz_assigned_students` (
     `quizId` VARCHAR(191) NOT NULL,
     `studentId` VARCHAR(191) NOT NULL,
 
+    INDEX `quiz_assigned_students_studentId_fkey`(`studentId`),
     PRIMARY KEY (`quizId`, `studentId`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -528,7 +576,7 @@ CREATE TABLE `attempt_answers` (
     `attemptId` VARCHAR(191) NOT NULL,
     `questionId` VARCHAR(191) NOT NULL,
     `selectedOption` VARCHAR(191) NULL,
-    `selectedOptions` JSON NOT NULL,
+    `selectedOptions` LONGTEXT NOT NULL,
     `textAnswer` TEXT NULL,
     `isCorrect` BOOLEAN NULL,
     `marksAwarded` DOUBLE NOT NULL DEFAULT 0,
@@ -590,7 +638,7 @@ CREATE TABLE `notifications` (
     `message` TEXT NOT NULL,
     `type` ENUM('GENERAL', 'QUIZ', 'RESULT', 'CERTIFICATE', 'REMINDER') NOT NULL DEFAULT 'GENERAL',
     `target` ENUM('ALL', 'STUDENTS', 'TEACHERS', 'CLASS', 'SPECIFIC') NOT NULL DEFAULT 'ALL',
-    `targetIds` JSON NOT NULL,
+    `targetIds` LONGTEXT NOT NULL,
     `scheduledAt` DATETIME(3) NULL,
     `isSent` BOOLEAN NOT NULL DEFAULT false,
     `sentAt` DATETIME(3) NULL,
@@ -612,7 +660,7 @@ CREATE TABLE `question_uploads` (
     `totalRows` INTEGER NOT NULL DEFAULT 0,
     `rowsImported` INTEGER NOT NULL DEFAULT 0,
     `rowsFailed` INTEGER NOT NULL DEFAULT 0,
-    `errorLog` JSON NULL,
+    `errorLog` LONGTEXT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
 
@@ -638,6 +686,27 @@ CREATE TABLE `settings` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
+-- CreateTable
+CREATE TABLE `content_sync_logs` (
+    `id` VARCHAR(191) NOT NULL,
+    `status` VARCHAR(191) NOT NULL DEFAULT 'RUNNING',
+    `trigger` VARCHAR(191) NOT NULL DEFAULT 'MANUAL',
+    `startedAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `finishedAt` DATETIME(3) NULL,
+    `durationMs` INTEGER NULL,
+    `inserted` INTEGER NOT NULL DEFAULT 0,
+    `updated` INTEGER NOT NULL DEFAULT 0,
+    `skipped` INTEGER NOT NULL DEFAULT 0,
+    `failed` INTEGER NOT NULL DEFAULT 0,
+    `stats` LONGTEXT NOT NULL,
+    `error` TEXT NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    INDEX `content_sync_logs_status_idx`(`status`),
+    INDEX `content_sync_logs_startedAt_idx`(`startedAt`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
 -- AddForeignKey
 ALTER TABLE `boards` ADD CONSTRAINT `boards_publicationId_fkey` FOREIGN KEY (`publicationId`) REFERENCES `publications`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
@@ -645,16 +714,16 @@ ALTER TABLE `boards` ADD CONSTRAINT `boards_publicationId_fkey` FOREIGN KEY (`pu
 ALTER TABLE `series` ADD CONSTRAINT `series_publicationId_fkey` FOREIGN KEY (`publicationId`) REFERENCES `publications`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `books` ADD CONSTRAINT `books_publicationId_fkey` FOREIGN KEY (`publicationId`) REFERENCES `publications`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE `books` ADD CONSTRAINT `books_boardId_fkey` FOREIGN KEY (`boardId`) REFERENCES `boards`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `books` ADD CONSTRAINT `books_seriesId_fkey` FOREIGN KEY (`seriesId`) REFERENCES `series`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `books` ADD CONSTRAINT `books_classId_fkey` FOREIGN KEY (`classId`) REFERENCES `classes`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `books` ADD CONSTRAINT `books_classId_fkey` FOREIGN KEY (`classId`) REFERENCES `classes`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `books` ADD CONSTRAINT `books_publicationId_fkey` FOREIGN KEY (`publicationId`) REFERENCES `publications`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `books` ADD CONSTRAINT `books_seriesId_fkey` FOREIGN KEY (`seriesId`) REFERENCES `series`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `books` ADD CONSTRAINT `books_subjectId_fkey` FOREIGN KEY (`subjectId`) REFERENCES `subjects`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
@@ -666,13 +735,10 @@ ALTER TABLE `chapters` ADD CONSTRAINT `chapters_bookId_fkey` FOREIGN KEY (`bookI
 ALTER TABLE `users` ADD CONSTRAINT `users_publicationId_fkey` FOREIGN KEY (`publicationId`) REFERENCES `publications`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `teacher_profiles` ADD CONSTRAINT `teacher_profiles_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE `teacher_profiles` ADD CONSTRAINT `teacher_profiles_boardId_fkey` FOREIGN KEY (`boardId`) REFERENCES `boards`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `student_profiles` ADD CONSTRAINT `student_profiles_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `teacher_profiles` ADD CONSTRAINT `teacher_profiles_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `student_profiles` ADD CONSTRAINT `student_profiles_boardId_fkey` FOREIGN KEY (`boardId`) REFERENCES `boards`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
@@ -684,37 +750,46 @@ ALTER TABLE `student_profiles` ADD CONSTRAINT `student_profiles_classId_fkey` FO
 ALTER TABLE `student_profiles` ADD CONSTRAINT `student_profiles_seriesId_fkey` FOREIGN KEY (`seriesId`) REFERENCES `series`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `refresh_tokens` ADD CONSTRAINT `refresh_tokens_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `student_profiles` ADD CONSTRAINT `student_profiles_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `student_books` ADD CONSTRAINT `student_books_studentProfileId_fkey` FOREIGN KEY (`studentProfileId`) REFERENCES `student_profiles`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `refresh_tokens` ADD CONSTRAINT `refresh_tokens_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `student_books` ADD CONSTRAINT `student_books_bookId_fkey` FOREIGN KEY (`bookId`) REFERENCES `books`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `teacher_classes` ADD CONSTRAINT `teacher_classes_teacherProfileId_fkey` FOREIGN KEY (`teacherProfileId`) REFERENCES `teacher_profiles`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `student_books` ADD CONSTRAINT `student_books_studentProfileId_fkey` FOREIGN KEY (`studentProfileId`) REFERENCES `student_profiles`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `teacher_classes` ADD CONSTRAINT `teacher_classes_classId_fkey` FOREIGN KEY (`classId`) REFERENCES `classes`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `teacher_subjects` ADD CONSTRAINT `teacher_subjects_teacherProfileId_fkey` FOREIGN KEY (`teacherProfileId`) REFERENCES `teacher_profiles`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `teacher_classes` ADD CONSTRAINT `teacher_classes_teacherProfileId_fkey` FOREIGN KEY (`teacherProfileId`) REFERENCES `teacher_profiles`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `teacher_subjects` ADD CONSTRAINT `teacher_subjects_subjectId_fkey` FOREIGN KEY (`subjectId`) REFERENCES `subjects`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `teacher_series` ADD CONSTRAINT `teacher_series_teacherProfileId_fkey` FOREIGN KEY (`teacherProfileId`) REFERENCES `teacher_profiles`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `teacher_subjects` ADD CONSTRAINT `teacher_subjects_teacherProfileId_fkey` FOREIGN KEY (`teacherProfileId`) REFERENCES `teacher_profiles`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `teacher_series` ADD CONSTRAINT `teacher_series_seriesId_fkey` FOREIGN KEY (`seriesId`) REFERENCES `series`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `teacher_books` ADD CONSTRAINT `teacher_books_teacherProfileId_fkey` FOREIGN KEY (`teacherProfileId`) REFERENCES `teacher_profiles`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `teacher_series` ADD CONSTRAINT `teacher_series_teacherProfileId_fkey` FOREIGN KEY (`teacherProfileId`) REFERENCES `teacher_profiles`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `teacher_books` ADD CONSTRAINT `teacher_books_bookId_fkey` FOREIGN KEY (`bookId`) REFERENCES `books`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `teacher_books` ADD CONSTRAINT `teacher_books_teacherProfileId_fkey` FOREIGN KEY (`teacherProfileId`) REFERENCES `teacher_profiles`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `student_subjects` ADD CONSTRAINT `student_subjects_subjectId_fkey` FOREIGN KEY (`subjectId`) REFERENCES `subjects`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `student_subjects` ADD CONSTRAINT `student_subjects_studentProfileId_fkey` FOREIGN KEY (`studentProfileId`) REFERENCES `student_profiles`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `questions` ADD CONSTRAINT `questions_bookId_fkey` FOREIGN KEY (`bookId`) REFERENCES `books`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
@@ -723,31 +798,31 @@ ALTER TABLE `questions` ADD CONSTRAINT `questions_bookId_fkey` FOREIGN KEY (`boo
 ALTER TABLE `questions` ADD CONSTRAINT `questions_chapterId_fkey` FOREIGN KEY (`chapterId`) REFERENCES `chapters`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `questions` ADD CONSTRAINT `questions_subjectId_fkey` FOREIGN KEY (`subjectId`) REFERENCES `subjects`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE `questions` ADD CONSTRAINT `questions_classId_fkey` FOREIGN KEY (`classId`) REFERENCES `classes`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `questions` ADD CONSTRAINT `questions_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE `questions` ADD CONSTRAINT `questions_subjectId_fkey` FOREIGN KEY (`subjectId`) REFERENCES `subjects`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE `assessments` ADD CONSTRAINT `assessments_boardId_fkey` FOREIGN KEY (`boardId`) REFERENCES `boards`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `assessments` ADD CONSTRAINT `assessments_classId_fkey` FOREIGN KEY (`classId`) REFERENCES `classes`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE `assessments` ADD CONSTRAINT `assessments_subjectId_fkey` FOREIGN KEY (`subjectId`) REFERENCES `subjects`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE `assessments` ADD CONSTRAINT `assessments_bookId_fkey` FOREIGN KEY (`bookId`) REFERENCES `books`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `assessments` ADD CONSTRAINT `assessments_classId_fkey` FOREIGN KEY (`classId`) REFERENCES `classes`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `assessments` ADD CONSTRAINT `assessments_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `assessments` ADD CONSTRAINT `assessments_publicationId_fkey` FOREIGN KEY (`publicationId`) REFERENCES `publications`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `assessments` ADD CONSTRAINT `assessments_subjectId_fkey` FOREIGN KEY (`subjectId`) REFERENCES `subjects`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `assessment_questions` ADD CONSTRAINT `assessment_questions_assessmentId_fkey` FOREIGN KEY (`assessmentId`) REFERENCES `assessments`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
@@ -780,49 +855,49 @@ ALTER TABLE `submissions` ADD CONSTRAINT `submissions_assessmentId_fkey` FOREIGN
 ALTER TABLE `submissions` ADD CONSTRAINT `submissions_studentId_fkey` FOREIGN KEY (`studentId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `answers` ADD CONSTRAINT `answers_submissionId_fkey` FOREIGN KEY (`submissionId`) REFERENCES `submissions`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE `answers` ADD CONSTRAINT `answers_questionId_fkey` FOREIGN KEY (`questionId`) REFERENCES `questions`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `quizzes` ADD CONSTRAINT `quizzes_publicationId_fkey` FOREIGN KEY (`publicationId`) REFERENCES `publications`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `answers` ADD CONSTRAINT `answers_submissionId_fkey` FOREIGN KEY (`submissionId`) REFERENCES `submissions`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `quizzes` ADD CONSTRAINT `quizzes_boardId_fkey` FOREIGN KEY (`boardId`) REFERENCES `boards`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `quizzes` ADD CONSTRAINT `quizzes_seriesId_fkey` FOREIGN KEY (`seriesId`) REFERENCES `series`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `quizzes` ADD CONSTRAINT `quizzes_bookId_fkey` FOREIGN KEY (`bookId`) REFERENCES `books`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `quizzes` ADD CONSTRAINT `quizzes_classId_fkey` FOREIGN KEY (`classId`) REFERENCES `classes`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `quizzes` ADD CONSTRAINT `quizzes_subjectId_fkey` FOREIGN KEY (`subjectId`) REFERENCES `subjects`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE `quizzes` ADD CONSTRAINT `quizzes_bookId_fkey` FOREIGN KEY (`bookId`) REFERENCES `books`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE `quizzes` ADD CONSTRAINT `quizzes_createdById_fkey` FOREIGN KEY (`createdById`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `quiz_questions` ADD CONSTRAINT `quiz_questions_quizId_fkey` FOREIGN KEY (`quizId`) REFERENCES `quizzes`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `quizzes` ADD CONSTRAINT `quizzes_publicationId_fkey` FOREIGN KEY (`publicationId`) REFERENCES `publications`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `quizzes` ADD CONSTRAINT `quizzes_seriesId_fkey` FOREIGN KEY (`seriesId`) REFERENCES `series`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `quizzes` ADD CONSTRAINT `quizzes_subjectId_fkey` FOREIGN KEY (`subjectId`) REFERENCES `subjects`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `quiz_questions` ADD CONSTRAINT `quiz_questions_questionId_fkey` FOREIGN KEY (`questionId`) REFERENCES `questions`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `quiz_chapters` ADD CONSTRAINT `quiz_chapters_quizId_fkey` FOREIGN KEY (`quizId`) REFERENCES `quizzes`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `quiz_questions` ADD CONSTRAINT `quiz_questions_quizId_fkey` FOREIGN KEY (`quizId`) REFERENCES `quizzes`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `quiz_chapters` ADD CONSTRAINT `quiz_chapters_chapterId_fkey` FOREIGN KEY (`chapterId`) REFERENCES `chapters`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `quiz_assigned_classes` ADD CONSTRAINT `quiz_assigned_classes_quizId_fkey` FOREIGN KEY (`quizId`) REFERENCES `quizzes`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `quiz_chapters` ADD CONSTRAINT `quiz_chapters_quizId_fkey` FOREIGN KEY (`quizId`) REFERENCES `quizzes`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `quiz_assigned_classes` ADD CONSTRAINT `quiz_assigned_classes_classId_fkey` FOREIGN KEY (`classId`) REFERENCES `classes`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `quiz_assigned_classes` ADD CONSTRAINT `quiz_assigned_classes_quizId_fkey` FOREIGN KEY (`quizId`) REFERENCES `quizzes`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `quiz_assigned_students` ADD CONSTRAINT `quiz_assigned_students_quizId_fkey` FOREIGN KEY (`quizId`) REFERENCES `quizzes`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
@@ -843,20 +918,20 @@ ALTER TABLE `attempt_answers` ADD CONSTRAINT `attempt_answers_attemptId_fkey` FO
 ALTER TABLE `attempt_answers` ADD CONSTRAINT `attempt_answers_questionId_fkey` FOREIGN KEY (`questionId`) REFERENCES `questions`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE `leaderboard` ADD CONSTRAINT `leaderboard_attemptId_fkey` FOREIGN KEY (`attemptId`) REFERENCES `quiz_attempts`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE `leaderboard` ADD CONSTRAINT `leaderboard_quizId_fkey` FOREIGN KEY (`quizId`) REFERENCES `quizzes`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `leaderboard` ADD CONSTRAINT `leaderboard_studentId_fkey` FOREIGN KEY (`studentId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `leaderboard` ADD CONSTRAINT `leaderboard_attemptId_fkey` FOREIGN KEY (`attemptId`) REFERENCES `quiz_attempts`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE `question_uploads` ADD CONSTRAINT `question_uploads_uploadedById_fkey` FOREIGN KEY (`uploadedById`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `question_uploads` ADD CONSTRAINT `question_uploads_assessmentId_fkey` FOREIGN KEY (`assessmentId`) REFERENCES `assessments`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `question_uploads` ADD CONSTRAINT `question_uploads_quizId_fkey` FOREIGN KEY (`quizId`) REFERENCES `quizzes`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `question_uploads` ADD CONSTRAINT `question_uploads_assessmentId_fkey` FOREIGN KEY (`assessmentId`) REFERENCES `assessments`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `question_uploads` ADD CONSTRAINT `question_uploads_uploadedById_fkey` FOREIGN KEY (`uploadedById`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 

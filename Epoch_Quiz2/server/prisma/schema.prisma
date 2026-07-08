@@ -370,6 +370,8 @@ model Question {
   difficulty          Difficulty           @default(MEDIUM)
   language            String?              @default("English")
   educationBoard      String?
+  topic               String?
+  subtopic            String?
   tags                String               @db.LongText
   status              UserStatus           @default(ACTIVE)
   bookId              String?
