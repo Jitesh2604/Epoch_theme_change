@@ -113,6 +113,17 @@ model Subject {
   @@map("subjects")
 }
 
+model Category {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  slug      String     @unique
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@map("categories")
+}
+
 model Book {
   id            String        @id @default(cuid())
   name          String

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronDown, Menu, Search, Sun, Moon, HelpCircle } from 'lucide-react';
+import { ChevronDown, Menu, Search, Sun, Moon, HelpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { signOut } from './auth';
 import { logout } from '../../lib/authStore';
@@ -12,10 +12,8 @@ interface Props {
 
 export function Topbar({ user, onMenuClick }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [bellOpen, setBellOpen] = useState(false);
   const [theme, setTheme] = useState(() => (typeof window !== 'undefined' && localStorage.getItem('epoch-theme')) || 'light');
   const ref = useRef<HTMLDivElement>(null);
-  const bellRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -31,7 +29,6 @@ export function Topbar({ user, onMenuClick }: Props) {
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setMenuOpen(false);
-      if (bellRef.current && !bellRef.current.contains(e.target as Node)) setBellOpen(false);
     };
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
@@ -65,47 +62,6 @@ export function Topbar({ user, onMenuClick }: Props) {
           <button className="w-9 h-9 grid place-items-center rounded-lg border border-line text-fg3 hover:text-fg1 hover:bg-surface2 transition">
             <HelpCircle size={15} />
           </button>
-        </div>
-
-        <div ref={bellRef} className="relative">
-          <button
-            onClick={() => setBellOpen(o => !o)}
-            className="relative w-9 h-9 grid place-items-center rounded-lg border border-line text-fg3 hover:text-fg1 hover:bg-surface2 transition"
-          >
-            <Bell size={15} />
-            <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-brand animate-pulse-soft" />
-          </button>
-          <AnimatePresence>
-            {bellOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
-                className="absolute right-0 top-12 w-80 bg-surface1 border border-line rounded-xl shadow-elev2 z-50 overflow-hidden"
-              >
-                <div className="px-4 py-3 border-b border-line flex items-center justify-between">
-                  <span className="text-[13px] font-semibold text-fg1">Notifications</span>
-                  <button className="text-[11px] text-brand hover:underline">Mark all read</button>
-                </div>
-                <div className="max-h-80 overflow-y-auto divide-y divide-line">
-                  {[
-                    { t: 'New assessment ready for review', s: '2 min ago' },
-                    { t: '5 students completed Algebra Test', s: '1 hour ago' },
-                    { t: 'Weekly analytics report ready', s: 'Yesterday' },
-                  ].map((n, i) => (
-                    <button key={i} className="w-full text-left px-4 py-3 hover:bg-surface2">
-                      <div className="text-[12.5px] text-fg1">{n.t}</div>
-                      <div className="text-[10.5px] text-fg3 mt-0.5">{n.s}</div>
-                    </button>
-                  ))}
-                </div>
-                <button
-                  onClick={() => { setBellOpen(false); }}
-                  className="block w-full px-4 py-2.5 text-[12px] text-fg2 hover:bg-surface2 border-t border-line"
-                >
-                  View all
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
 
         <div ref={ref} className="relative">

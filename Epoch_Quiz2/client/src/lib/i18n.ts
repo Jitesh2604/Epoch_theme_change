@@ -5,7 +5,7 @@ export type Lang = 'EN' | 'HI' | 'ES' | 'FR' | 'DE' | 'JA';
 const T: Record<Lang, Record<string, string>> = {
   EN: {
     'nav.home': 'Home',
-    'nav.quizPlay': 'Quiz play',
+    'nav.quizPlay': 'Play Olympaid',
     'nav.instructions': 'Instructions',
     'nav.more': 'More',
     'nav.aboutUs': 'About us',
@@ -40,7 +40,7 @@ const T: Record<Lang, Record<string, string>> = {
     'cat.questions': 'questions',
     'cat.levels': '3 levels',
     'cat.topics': 'topics',
-    'cat.backToQuizPlay': 'Quiz play',
+    'cat.backToQuizPlay': 'Play Olympaid',
 
     'level.pickDifficulty': 'Pick a difficulty.',
     'level.perQuestion': '/ question',

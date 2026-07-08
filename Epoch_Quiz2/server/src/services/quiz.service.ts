@@ -543,11 +543,20 @@ export const QuizService = {
   // ── Olympiad: the logged-in student's own attempt history ───────────────
   async getOlympiadAttempts(studentId: string) {
     const rows = await prisma.quizAttempt.findMany({
-      where: { studentId, quiz: { quizType: QuizType.OLYMPIAD } },
+      where: { studentId },
       orderBy: { startTime: 'desc' },
-      include: { quiz: { select: { title: true } }, _count: { select: { answers: true } } },
+      include: {
+        quiz: { select: { title: true, quizType: true } },
+        _count: { select: { answers: true } },
+      },
     });
-    return rows.map(r => ({
+
+    const relevantRows = rows.filter(r => {
+      const title = (r.quiz.title ?? '').toLowerCase();
+      return r.quiz.quizType === QuizType.OLYMPIAD || r.quiz.quizType === QuizType.PRACTICE || title.includes('olympiad') || title.includes('practice');
+    });
+
+    return (relevantRows.length ? relevantRows : rows).map(r => ({
       attemptId:      r.id,
       attemptNumber:  r.attemptNumber,
       status:         r.status,

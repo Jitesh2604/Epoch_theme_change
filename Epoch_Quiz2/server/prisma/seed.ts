@@ -25,6 +25,11 @@ const DEFAULT_CLASSES: Array<{ name: string; serial: string }> = Array.from(
   (_, i) => ({ name: `Class ${i + 1}`, serial: String(i + 1).padStart(2, '0') }),
 );
 
+const DEFAULT_CATEGORIES: Array<{ name: string; slug: string }> = [
+  { name: 'Attempted Olympiad', slug: 'attempted-olympiad' },
+  { name: 'Practice Olympiad', slug: 'practice-olympiad' },
+];
+
 const ADMIN_EMAIL    = process.env.SEED_ADMIN_EMAIL    ?? 'admin@epoch.local';
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? 'Admin@12345';
 const ADMIN_NAME     = process.env.SEED_ADMIN_NAME     ?? 'Publication Admin';
@@ -59,6 +64,19 @@ async function seedClasses(): Promise<void> {
   console.log(`[seed] Classes in DB: ${count}`);
 }
 
+async function seedCategories(): Promise<void> {
+  console.log('[seed] Upserting default categories…');
+  for (const category of DEFAULT_CATEGORIES) {
+    await prisma.category.upsert({
+      where: { slug: category.slug },
+      update: { name: category.name },
+      create: { name: category.name, slug: category.slug },
+    });
+  }
+  const count = await prisma.category.count();
+  console.log(`[seed] Categories in DB: ${count}`);
+}
+
 async function seedAdmin(): Promise<void> {
   const existing = await prisma.user.findUnique({ where: { email: ADMIN_EMAIL } });
   if (existing) {
@@ -82,6 +100,7 @@ async function seedAdmin(): Promise<void> {
 async function main(): Promise<void> {
   await seedSubjects();
   await seedClasses();
+  await seedCategories();
   await seedAdmin();
   console.log('[seed] Done.');
 }

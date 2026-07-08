@@ -3,8 +3,8 @@ import type { NavigateFn, Tweaks } from '../../types';
 import { Icon } from '../../components/ui/Icon';
 import { Footer } from '../../components/layout/Footer';
 import { HERO_SLIDES } from '../../lib/data';
-import { SubjectCategoryGrid } from '../../components/quiz/SubjectCategoryGrid';
 import { useT } from '../../lib/i18n';
+import { useCategories } from '../../hooks/useCategories';
 
 interface HomePageProps {
   navigate: NavigateFn;
@@ -14,6 +14,7 @@ interface HomePageProps {
 export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
   const [slide, setSlide] = useState(0);
   const t = useT();
+  const { data: categories, loading, error } = useCategories();
 
   useEffect(() => {
     const timer = setInterval(() => setSlide(s => (s + 1) % HERO_SLIDES.length), 6000);
@@ -66,9 +67,28 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
             <h2>{t('home.pickCategoryAndStart')}</h2>
           </div>
 
-          {/* Same dynamic Categories grid as the Quiz Play page — shared component,
-              driven by the Subjects API. New subjects appear here automatically. */}
-          <SubjectCategoryGrid navigate={navigate} cardStyle={tweaks.catCardStyle} />
+          <div className="cat-grid" data-card-style={tweaks.catCardStyle}>
+            {loading && <div className="text-fg3 text-[13px]">Loading categories…</div>}
+            {error && <div className="text-danger text-[13px]">Unable to load categories.</div>}
+            {!loading && !error && categories?.map((category) => (
+              <button
+                key={category.id}
+                className="cat-card"
+                onClick={() => {
+                  if (category.slug === 'practice-olympiad') {
+                    navigate('play');
+                  } else if (category.slug === 'attempted-olympiad') {
+                    navigate('olympiad/history');
+                  }
+                }}
+              >
+                <div className="cat-ico"><Icon name={category.slug === 'practice-olympiad' ? 'trophy' : 'refresh'} size={20} /></div>
+                <h3>{category.name}</h3>
+                <p>{category.slug === 'practice-olympiad' ? 'Start a mixed Olympiad quiz across your selected subjects.' : 'Review your past Olympiad attempts and scores.'}</p>
+                <span className="cat-arrow"><Icon name="arrowUpRight" size={18} /></span>
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
