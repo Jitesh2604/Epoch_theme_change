@@ -5,6 +5,7 @@ import { ApiError } from '../utils/ApiError';
 import { isAdminRole } from '../utils/roles';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
 import { parseStrArr, toJson } from '../utils/json';
+import { ContentService, ContentMeta } from './content.service';
 import type { Actor } from './assessment.service';
 import type {
   CreateQuestionInput,
@@ -18,13 +19,16 @@ import type {
 // ── Query shape ────────────────────────────────────────────────
 
 const questionInclude = {
-  subject:   { select: { id: true, name: true, slug: true } },
   createdBy: { select: { id: true, name: true, email: true } },
 } satisfies Prisma.QuestionInclude;
 
 type QuestionWithRel = Prisma.QuestionGetPayload<{ include: typeof questionInclude }>;
 
 const IDX_TO_LETTER = ['A', 'B', 'C', 'D'] as const;
+
+function slugify(name: string): string {
+  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'subject';
+}
 
 interface OptionFields {
   optionA: string | null; optionB: string | null;
@@ -38,7 +42,7 @@ function buildOptionFields(options: string[]): OptionFields {
   };
 }
 
-function toPublic(row: QuestionWithRel) {
+function toPublic(row: QuestionWithRel, subjectNames?: Map<string, string>) {
   const opts = [row.optionA, row.optionB, row.optionC, row.optionD].filter(Boolean) as string[];
   const tags = parseStrArr(row.tags);
 
@@ -70,10 +74,13 @@ function toPublic(row: QuestionWithRel) {
     language:       row.language,
     tags,
     status:         row.status,
-    subject:        row.subject ? { id: row.subject.id, name: row.subject.name, slug: row.subject.slug } : null,
-    classId:        row.classId,
-    chapterId:      row.chapterId,
-    bookId:         row.bookId,
+    subject:        row.subjectExternalId
+      ? { id: row.subjectExternalId, name: subjectNames?.get(row.subjectExternalId) ?? null, slug: slugify(subjectNames?.get(row.subjectExternalId) ?? '') || null }
+      : null,
+    subjectExternalId: row.subjectExternalId,
+    classExternalId:   row.classExternalId,
+    chapterExternalId: row.chapterExternalId,
+    bookExternalId:    row.bookExternalId,
     educationBoard: row.educationBoard,
     createdBy:      { id: row.createdBy.id, name: row.createdBy.name, email: row.createdBy.email },
     createdAt:      row.createdAt,
@@ -83,24 +90,29 @@ function toPublic(row: QuestionWithRel) {
 
 // ── helpers ────────────────────────────────────────────────────
 
-async function ensureSubjectExists(subjectId: string): Promise<void> {
-  const s = await prisma.subject.findUnique({ where: { id: subjectId }, select: { id: true } });
-  if (!s) throw ApiError.badRequest(`Subject not found: ${subjectId}`);
+/**
+ * Validate a subject EXTERNAL id against the live (cached) Content API. When the
+ * API is unconfigured we cannot validate, so we accept the value as-is rather
+ * than block question authoring.
+ */
+async function ensureSubjectExists(subjectExternalId: string): Promise<void> {
+  if (!ContentService.isConfigured()) return;
+  if (!(await ContentMeta.subjectExists(subjectExternalId))) {
+    throw ApiError.badRequest(`Subject not found: ${subjectExternalId}`);
+  }
 }
 
-/** Validate any academic FKs supplied on a question payload. */
-async function validateAcademicFks(input: { classId?: string | null; chapterId?: string | null; bookId?: string | null }): Promise<void> {
-  if (input.classId) {
-    const r = await prisma.class.findUnique({ where: { id: input.classId }, select: { id: true } });
-    if (!r) throw ApiError.badRequest(`Class not found: ${input.classId}`);
-  }
-  if (input.chapterId) {
-    const r = await prisma.chapter.findUnique({ where: { id: input.chapterId }, select: { id: true } });
-    if (!r) throw ApiError.badRequest(`Chapter not found: ${input.chapterId}`);
-  }
-  if (input.bookId) {
-    const r = await prisma.book.findUnique({ where: { id: input.bookId }, select: { id: true } });
-    if (!r) throw ApiError.badRequest(`Book not found: ${input.bookId}`);
+/**
+ * Validate academic external ids supplied on a question payload against the
+ * live catalog. Only the class dimension is validated against the API (books
+ * and chapters are per-book lookups the list endpoints don't expose cheaply);
+ * they are stored as-is. No local catalog tables exist anymore.
+ */
+async function validateAcademicFks(input: { classExternalId?: string | null }): Promise<void> {
+  if (input.classExternalId && ContentService.isConfigured()) {
+    if (!(await ContentMeta.classExists(input.classExternalId))) {
+      throw ApiError.badRequest(`Class not found: ${input.classExternalId}`);
+    }
   }
 }
 
@@ -139,19 +151,19 @@ export const QuestionService = {
     if (actor.role !== Role.TEACHER && !isAdminRole(actor.role)) {
       throw ApiError.forbidden('Only teachers can create questions');
     }
-    if (input.subjectId) await ensureSubjectExists(input.subjectId);
+    if (input.subjectExternalId) await ensureSubjectExists(input.subjectExternalId);
     await validateAcademicFks(input);
 
     const data: Prisma.QuestionUncheckedCreateInput = {
-      type:           input.type,
-      prompt:         input.prompt,
-      marks:          input.marks,
-      difficulty:     input.difficulty,
-      subjectId:      input.subjectId ?? null,
-      classId:        input.classId   ?? null,
-      chapterId:      input.chapterId ?? null,
-      bookId:         input.bookId    ?? null,
-      educationBoard: input.educationBoard ?? null,
+      type:              input.type,
+      prompt:            input.prompt,
+      marks:             input.marks,
+      difficulty:        input.difficulty,
+      subjectExternalId: input.subjectExternalId ?? null,
+      classExternalId:   input.classExternalId   ?? null,
+      chapterExternalId: input.chapterExternalId ?? null,
+      bookExternalId:    input.bookExternalId    ?? null,
+      educationBoard:    input.educationBoard ?? null,
       createdById:    actor.id,
       correctOptions: '[]',
       tags:           toJson(input.tags ?? []),
@@ -177,11 +189,12 @@ export const QuestionService = {
     }
 
     const created = await prisma.question.create({ data, include: questionInclude });
-    return toPublic(created);
+    return toPublic(created, await ContentMeta.subjects());
   },
 
   async list(actor: Actor, query: ListQuestionsQuery) {
-    const { page, limit, type, difficulty, subjectId, search, mine } = query;
+    const { page, limit, type, difficulty, search, mine } = query;
+    const subjectExternalId   = (query as Record<string, unknown>).subjectExternalId  as string | undefined;
     const tag                 = (query as Record<string, unknown>).tag                as string | undefined;
     const excludeAssessmentId = (query as Record<string, unknown>).excludeAssessmentId as string | undefined;
 
@@ -190,7 +203,7 @@ export const QuestionService = {
     const where: Prisma.QuestionWhereInput = {
       ...(type && { type }),
       ...(difficulty && { difficulty }),
-      ...(subjectId && { subjectId }),
+      ...(subjectExternalId && { subjectExternalId }),
       ...(search && { prompt: { contains: search } }),
       ...(excludeAssessmentId && { assessments: { none: { assessmentId: excludeAssessmentId } } }),
     };
@@ -211,29 +224,30 @@ export const QuestionService = {
       total = rows.length;
     }
 
-    return { items: rows.map(toPublic), meta: pageMeta(total, page, limit) };
+    const subjectNames = await ContentMeta.subjects();
+    return { items: rows.map((r) => toPublic(r, subjectNames)), meta: pageMeta(total, page, limit) };
   },
 
   async findById(actor: Actor, id: string) {
     const row = await loadQuestionOwned(id, actor, 'read');
-    return toPublic(row);
+    return toPublic(row, await ContentMeta.subjects());
   },
 
   async update(actor: Actor, id: string, input: UpdateQuestionInput) {
     const existing = await loadQuestionOwned(id, actor, 'write');
-    if (input.subjectId) await ensureSubjectExists(input.subjectId);
+    if (input.subjectExternalId) await ensureSubjectExists(input.subjectExternalId);
     await validateAcademicFks(input);
 
     const data: Prisma.QuestionUncheckedUpdateInput = {};
-    if (input.prompt         !== undefined) data.prompt = input.prompt;
-    if (input.marks          !== undefined) data.marks = input.marks;
-    if (input.difficulty     !== undefined) data.difficulty = input.difficulty;
-    if (input.tags           !== undefined) data.tags = toJson(input.tags);
-    if (input.subjectId      !== undefined) data.subjectId = input.subjectId;
-    if (input.classId        !== undefined) data.classId = input.classId;
-    if (input.chapterId      !== undefined) data.chapterId = input.chapterId;
-    if (input.bookId         !== undefined) data.bookId = input.bookId;
-    if (input.educationBoard !== undefined) data.educationBoard = input.educationBoard;
+    if (input.prompt            !== undefined) data.prompt = input.prompt;
+    if (input.marks             !== undefined) data.marks = input.marks;
+    if (input.difficulty        !== undefined) data.difficulty = input.difficulty;
+    if (input.tags              !== undefined) data.tags = toJson(input.tags);
+    if (input.subjectExternalId !== undefined) data.subjectExternalId = input.subjectExternalId;
+    if (input.classExternalId   !== undefined) data.classExternalId = input.classExternalId;
+    if (input.chapterExternalId !== undefined) data.chapterExternalId = input.chapterExternalId;
+    if (input.bookExternalId    !== undefined) data.bookExternalId = input.bookExternalId;
+    if (input.educationBoard    !== undefined) data.educationBoard = input.educationBoard;
 
     if ((existing.type === QuestionType.MCQ_SINGLE || existing.type === QuestionType.MCQ_MULTIPLE) && input.options !== undefined) {
       Object.assign(data, buildOptionFields(input.options));
@@ -270,7 +284,7 @@ export const QuestionService = {
     });
 
     const updated = await prisma.question.findUnique({ where: { id }, include: questionInclude });
-    return toPublic(updated!);
+    return toPublic(updated!, await ContentMeta.subjects());
   },
 
   async remove(actor: Actor, id: string) {
@@ -302,12 +316,13 @@ export const QuestionService = {
       include: { question: { include: questionInclude } },
     });
 
+    const subjectNames = await ContentMeta.subjects();
     return rows.map((r) => ({
       order:                r.order,
       assessmentQuestionId: r.id,
       marksOverride:        r.marksOverride,
       effectiveMarks:       r.marksOverride ?? r.question.marks,
-      question:             toPublic(r.question),
+      question:             toPublic(r.question, subjectNames),
     }));
   },
 

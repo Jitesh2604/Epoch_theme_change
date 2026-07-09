@@ -68,7 +68,8 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       CONTACT_TO: ${CONTACT_TO:-}
       CONTENT_API_KEY: ${CONTENT_API_KEY:-}
-      CONTENT_SYNC_ENABLED: ${CONTENT_SYNC_ENABLED:-false}
+      CONTENT_BASE_URL: ${CONTENT_BASE_URL:-https://content.epochgpt.in}
+      CONTENT_CACHE_TTL_MS: ${CONTENT_CACHE_TTL_MS:-300000}
     expose:
       - "3000"
 

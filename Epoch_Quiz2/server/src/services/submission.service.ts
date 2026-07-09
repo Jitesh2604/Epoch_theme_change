@@ -5,8 +5,13 @@ import { ApiError } from '../utils/ApiError';
 import { isAdminRole } from '../utils/roles';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
 import { parseStrArr, parseIntArr, toJson } from '../utils/json';
+import { ContentMeta } from './content.service';
 import type { Actor } from './assessment.service';
 import { assessmentVisibleToStudent } from './assessment.service';
+
+function slugify(name: string): string {
+  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'subject';
+}
 import type {
   SaveAnswerInput,
   SubmitAttemptInput,
@@ -49,25 +54,28 @@ interface LoadedSubmission {
 const submissionSelect = {
   id: true, studentId: true, assessmentId: true, status: true, score: true, totalMarks: true,
   timeTakenSec: true, startedAt: true, submittedAt: true,
-  assessment: { select: { title: true, description: true, duration: true, passingMarks: true, createdById: true, subject: { select: { id: true, name: true, slug: true } } } },
+  assessment: { select: { title: true, description: true, duration: true, passingMarks: true, createdById: true, subjectExternalId: true } },
   student: { select: { name: true, email: true } },
 } satisfies Prisma.SubmissionSelect;
 
-function mapLoaded(s: Prisma.SubmissionGetPayload<{ select: typeof submissionSelect }>): LoadedSubmission {
+function mapLoaded(s: Prisma.SubmissionGetPayload<{ select: typeof submissionSelect }>, subjectName: string | null): LoadedSubmission {
+  const subExternalId = s.assessment.subjectExternalId;
   return {
     id: s.id, studentId: s.studentId, assessmentId: s.assessmentId, status: s.status,
     score: s.score, totalMarks: s.totalMarks, timeTakenSec: s.timeTakenSec,
     startedAt: s.startedAt, submittedAt: s.submittedAt,
     aTitle: s.assessment.title, aDescription: s.assessment.description, aDuration: s.assessment.duration,
     aPassing: s.assessment.passingMarks, aCreatedById: s.assessment.createdById,
-    subId: s.assessment.subject?.id ?? null, subName: s.assessment.subject?.name ?? null, subSlug: s.assessment.subject?.slug ?? null,
+    subId: subExternalId, subName: subExternalId ? subjectName : null, subSlug: subExternalId && subjectName ? slugify(subjectName) : null,
     stName: s.student.name, stEmail: s.student.email,
   };
 }
 
 async function loadSubmissionFlat(id: string): Promise<LoadedSubmission | null> {
   const s = await prisma.submission.findUnique({ where: { id }, select: submissionSelect });
-  return s ? mapLoaded(s) : null;
+  if (!s) return null;
+  const subjectName = await ContentMeta.subjectName(s.assessment.subjectExternalId);
+  return mapLoaded(s, subjectName);
 }
 
 const aqQuestionSelect = {
@@ -302,9 +310,10 @@ export const SubmissionService = {
 
     const assessment = await prisma.assessment.findUnique({
       where: { id: assessmentId },
-      select: { id: true, title: true, description: true, duration: true, totalMarks: true, passingMarks: true, status: true, subject: { select: { id: true, name: true, slug: true } } },
+      select: { id: true, title: true, description: true, duration: true, totalMarks: true, passingMarks: true, status: true, subjectExternalId: true },
     });
     if (!assessment) throw ApiError.notFound('Assessment not found');
+    const subjectName = await ContentMeta.subjectName(assessment.subjectExternalId);
     if (assessment.status !== AssessmentStatus.PUBLISHED) throw ApiError.notFound('Assessment not found');
     if (!(await assessmentVisibleToStudent(actor.id, assessmentId))) throw ApiError.notFound('Assessment not found');
 
@@ -367,8 +376,8 @@ export const SubmissionService = {
         assessment: {
           id: assessment.id, title: assessment.title, description: assessment.description,
           duration: assessment.duration,
-          subject: assessment.subject
-            ? { id: assessment.subject.id, name: assessment.subject.name, slug: assessment.subject.slug }
+          subject: assessment.subjectExternalId
+            ? { id: assessment.subjectExternalId, name: subjectName, slug: subjectName ? slugify(subjectName) : null }
             : null,
         },
         questions,
@@ -496,21 +505,24 @@ export const SubmissionService = {
     };
     const { skip, take } = pageToSkipTake(page, limit);
 
-    const [rows, total] = await Promise.all([
+    const [rows, total, subjectNames] = await Promise.all([
       prisma.submission.findMany({
         where, orderBy: { startedAt: 'desc' }, skip, take,
-        select: { id: true, status: true, score: true, totalMarks: true, timeTakenSec: true, startedAt: true, submittedAt: true, assessment: { select: { id: true, title: true, subject: { select: { id: true, name: true, slug: true } } } } },
+        select: { id: true, status: true, score: true, totalMarks: true, timeTakenSec: true, startedAt: true, submittedAt: true, assessment: { select: { id: true, title: true, subjectExternalId: true } } },
       }),
       prisma.submission.count({ where }),
+      ContentMeta.subjects(),
     ]);
 
     const items = rows.map((s) => {
       const score = s.score ?? 0; const totalMarks = s.totalMarks ?? 0;
+      const subExt = s.assessment.subjectExternalId;
+      const subName = subExt ? subjectNames.get(subExt) ?? null : null;
       return {
         id: s.id, status: s.status, score, totalMarks,
         percent: totalMarks > 0 ? Math.round((score / totalMarks) * 10000) / 100 : 0,
         startedAt: s.startedAt, submittedAt: s.submittedAt, timeTakenSec: s.timeTakenSec,
-        assessment: { id: s.assessment.id, title: s.assessment.title, subject: s.assessment.subject ? { id: s.assessment.subject.id, name: s.assessment.subject.name, slug: s.assessment.subject.slug } : null },
+        assessment: { id: s.assessment.id, title: s.assessment.title, subject: subExt ? { id: subExt, name: subName, slug: subName ? slugify(subName) : null } : null },
       };
     });
     return { items, meta: pageMeta(total, page, limit) };
@@ -528,21 +540,24 @@ export const SubmissionService = {
     };
     const { skip, take } = pageToSkipTake(page, limit);
 
-    const [rows, total] = await Promise.all([
+    const [rows, total, subjectNames] = await Promise.all([
       prisma.submission.findMany({
         where, orderBy: { startedAt: 'desc' }, skip, take,
-        select: { id: true, status: true, score: true, totalMarks: true, timeTakenSec: true, startedAt: true, submittedAt: true, assessment: { select: { id: true, title: true, subject: { select: { id: true, name: true, slug: true } } } }, student: { select: { id: true, name: true, email: true } } },
+        select: { id: true, status: true, score: true, totalMarks: true, timeTakenSec: true, startedAt: true, submittedAt: true, assessment: { select: { id: true, title: true, subjectExternalId: true } }, student: { select: { id: true, name: true, email: true } } },
       }),
       prisma.submission.count({ where }),
+      ContentMeta.subjects(),
     ]);
 
     const items = rows.map((s) => {
       const score = s.score ?? 0; const totalMarks = s.totalMarks ?? 0;
+      const subExt = s.assessment.subjectExternalId;
+      const subName = subExt ? subjectNames.get(subExt) ?? null : null;
       return {
         id: s.id, status: s.status, score, totalMarks,
         percent: totalMarks > 0 ? Math.round((score / totalMarks) * 10000) / 100 : 0,
         startedAt: s.startedAt, submittedAt: s.submittedAt, timeTakenSec: s.timeTakenSec,
-        assessment: { id: s.assessment.id, title: s.assessment.title, subject: s.assessment.subject ? { id: s.assessment.subject.id, name: s.assessment.subject.name, slug: s.assessment.subject.slug } : null },
+        assessment: { id: s.assessment.id, title: s.assessment.title, subject: subExt ? { id: subExt, name: subName, slug: subName ? slugify(subName) : null } : null },
         student: { id: s.student.id, name: s.student.name, email: s.student.email },
       };
     });

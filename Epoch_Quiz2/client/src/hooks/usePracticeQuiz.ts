@@ -123,7 +123,7 @@ export function useOlympiadAttempts() {
 // ── API methods ───────────────────────────────────────────────────
 
 export const practiceApi = {
-  start: (data: { subjectId: string; difficulty?: string; chapterId?: string; questionCount?: number }) =>
+  start: (data: { subjectExternalId: string; difficulty?: string; chapterExternalId?: string; questionCount?: number }) =>
     api.post<PracticeAttemptData>('/quizzes/practice/start', data),
 
   startOlympiad: (data: { perSubject?: number } = {}) =>

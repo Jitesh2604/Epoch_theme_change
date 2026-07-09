@@ -22,7 +22,12 @@ import { toJson } from '../utils/json';
 import { ApiError } from '../utils/ApiError';
 import { isAdminRole } from '../utils/roles';
 import { recalcTotalMarks } from './question.service';
+import { ContentMeta } from './content.service';
 import type { Actor } from './assessment.service';
+
+function slugifySubject(name: string): string {
+  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'subject';
+}
 
 export interface RowError {
   row: number;
@@ -272,11 +277,14 @@ export const ExcelService = {
       target = { id: a.id, status: a.status };
     }
 
-    const subjectList = await prisma.subject.findMany({ select: { id: true, name: true, slug: true } });
+    // Subjects come from the Content API (single source of truth). Build a
+    // name/slug -> external-id index so spreadsheet subject names resolve to the
+    // external id we store on each question.
+    const subjectNames = await ContentMeta.subjects();
     const subjectIndex = new Map<string, string>();
-    for (const s of subjectList) {
-      subjectIndex.set(s.name.toLowerCase().trim(), s.id);
-      subjectIndex.set(s.slug.toLowerCase().trim(), s.id);
+    for (const [extId, name] of subjectNames) {
+      subjectIndex.set(name.toLowerCase().trim(), extId);
+      subjectIndex.set(slugifySubject(name), extId);
     }
 
     const { valid, errors } = validateRows(rows, subjectIndex, actor.id);
@@ -293,7 +301,7 @@ export const ExcelService = {
           data: {
             type: d.type, prompt: d.prompt, marks: d.marks, difficulty: d.difficulty,
             tags: toJson(d.tags), correctOptions: '[]',
-            subjectId: d.subjectId ?? null,
+            subjectExternalId: d.subjectId ?? null,
             optionA: d.optionA ?? null, optionB: d.optionB ?? null, optionC: d.optionC ?? null, optionD: d.optionD ?? null,
             correctAnswer: d.correctAnswer ?? null,
             correctBoolean: d.correctBoolean ?? null,

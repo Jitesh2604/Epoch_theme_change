@@ -25,92 +25,26 @@ model Publication {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   assessments  Assessment[]
-  boards       Board[]
-  books        Book[]
   quizzes      Quiz[]
-  series       Series[]
   users        User[]       @relation("PublicationUsers")
 
   @@map("publications")
 }
 
-model Board {
-  id              String           @id @default(cuid())
-  name            String
-  publicationId   String?
-  status          UserStatus       @default(ACTIVE)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  assessments     Assessment[]
-  publication     Publication?     @relation(fields: [publicationId], references: [id])
-  books           Book[]
-  quizzes         Quiz[]
-  studentProfiles StudentProfile[]
-  teacherProfiles TeacherProfile[]
+// The app-owned Olympiad "mode" rows. These are NOT catalog data — they are an
+// application concept surfaced alongside the (Content API) subjects list. Real
+// subjects come from the Content API and are never stored here.
+model OlympiadMode {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  slug      String     @unique
+  serial    String?
+  kind      String     @default("OLYMPIAD")
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
-  externalId String? @unique
-
-  @@index([publicationId])
-  @@map("boards")
-}
-
-model Series {
-  id              String           @id @default(cuid())
-  name            String
-  publicationId   String?
-  status          UserStatus       @default(ACTIVE)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  books           Book[]
-  quizzes         Quiz[]
-  publication     Publication?     @relation(fields: [publicationId], references: [id])
-  studentProfiles StudentProfile[]
-  teacherSeries   TeacherSeries[]
-
-  externalId String? @unique
-
-  @@index([publicationId])
-  @@map("series")
-}
-
-model Class {
-  id                        String                    @id @default(cuid())
-  name                      String
-  serial                    String?
-  status                    UserStatus                @default(ACTIVE)
-  createdAt                 DateTime                  @default(now())
-  updatedAt                 DateTime                  @updatedAt
-  assessmentAssignedClasses AssessmentAssignedClass[]
-  assessments               Assessment[]
-  books                     Book[]
-  questions                 Question[]
-  quizAssignedClasses       QuizAssignedClass[]
-  quizzes                   Quiz[]
-  studentProfiles           StudentProfile[]
-  teacherClasses            TeacherClass[]
-  externalId                String?                   @unique
-
-  @@map("classes")
-}
-
-model Subject {
-  id              String           @id @default(cuid())
-  name            String           @unique
-  slug            String           @unique
-  serial          String?
-  kind            String           @default("SUBJECT")
-  status          UserStatus       @default(ACTIVE)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  assessments     Assessment[]
-  books           Book[]
-  questions       Question[]
-  quizzes         Quiz[]
-  teacherSubjects TeacherSubject[]
-  studentSubjects StudentSubject[]
-  externalId      String?          @unique
-
-  @@map("subjects")
+  @@map("olympiad_modes")
 }
 
 model Category {
@@ -122,62 +56,6 @@ model Category {
   updatedAt DateTime   @updatedAt
 
   @@map("categories")
-}
-
-model Book {
-  id            String        @id @default(cuid())
-  name          String
-  publicationId String?
-  boardId       String?
-  seriesId      String?
-  classId       String?
-  subjectId     String?
-  isbn          String?       @unique
-  imageUrl      String?
-  status        UserStatus    @default(ACTIVE)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  assessments   Assessment[]
-  board         Board?        @relation(fields: [boardId], references: [id])
-  class         Class?        @relation(fields: [classId], references: [id])
-  publication   Publication?  @relation(fields: [publicationId], references: [id])
-  series        Series?       @relation(fields: [seriesId], references: [id])
-  subject       Subject?      @relation(fields: [subjectId], references: [id])
-  chapters      Chapter[]
-  questions     Question[]
-  quizzes       Quiz[]
-  studentBooks  StudentBook[]
-  teacherBooks  TeacherBook[]
-
-  @@index([publicationId])
-  @@index([boardId])
-  @@index([seriesId])
-  @@index([classId])
-  externalId      String?   @unique
-  sourceUpdatedAt DateTime?
-
-  @@index([subjectId])
-  @@map("books")
-}
-
-model Chapter {
-  id                 String              @id @default(cuid())
-  name               String
-  bookId             String?
-  serial             Int?
-  status             UserStatus          @default(ACTIVE)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  assessmentChapters AssessmentChapter[]
-  book               Book?               @relation(fields: [bookId], references: [id])
-  questions          Question[]
-  quizChapters       QuizChapter[]
-
-  externalId      String?   @unique
-  sourceUpdatedAt DateTime?
-
-  @@index([bookId])
-  @@map("chapters")
 }
 
 model User {
@@ -214,65 +92,61 @@ model User {
 }
 
 model TeacherProfile {
-  id             String           @id @default(cuid())
-  userId         String           @unique
-  mobileNo       String?
-  dob            DateTime?
-  schoolName     String?
-  boardId        String?
-  educationBoard String?
-  stateBoard     String?
-  teacherCode    String?          @unique
-  address        String?          @db.Text
-  country        String?
-  state          String?
-  city           String?
-  zip            String?
-  imageUrl       String?          @db.MediumText
-  bio            String?          @db.Text
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  books          TeacherBook[]
-  classes        TeacherClass[]
-  board          Board?           @relation(fields: [boardId], references: [id])
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  teacherSeries  TeacherSeries[]
-  subjects       TeacherSubject[]
+  id              String           @id @default(cuid())
+  userId          String           @unique
+  mobileNo        String?
+  dob             DateTime?
+  schoolName      String?
+  boardExternalId String?
+  educationBoard  String?
+  stateBoard      String?
+  teacherCode     String?          @unique
+  address         String?          @db.Text
+  country         String?
+  state           String?
+  city            String?
+  zip             String?
+  imageUrl        String?          @db.MediumText
+  bio             String?          @db.Text
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  books           TeacherBook[]
+  classes         TeacherClass[]
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teacherSeries   TeacherSeries[]
+  subjects        TeacherSubject[]
 
-  @@index([boardId])
+  @@index([boardExternalId])
   @@map("teacher_profiles")
 }
 
 model StudentProfile {
-  id             String        @id @default(cuid())
-  userId         String        @unique
-  mobileNo       String?
-  dob            DateTime?
-  schoolName     String?
-  boardId        String?
-  educationBoard String?
-  stateBoard     String?
-  classId        String?
-  seriesId       String?
-  teacherCode    String?
-  address        String?       @db.Text
-  country        String?
-  state          String?
-  city           String?
-  zip            String?
-  imageUrl       String?       @db.MediumText
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  books          StudentBook[]
-  subjects       StudentSubject[]
-  board          Board?        @relation(fields: [boardId], references: [id])
-  class          Class?        @relation(fields: [classId], references: [id])
-  series         Series?       @relation(fields: [seriesId], references: [id])
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String           @id @default(cuid())
+  userId          String           @unique
+  mobileNo        String?
+  dob             DateTime?
+  schoolName      String?
+  boardExternalId String?
+  educationBoard  String?
+  stateBoard      String?
+  classExternalId String?
+  seriesExternalId String?
+  teacherCode     String?
+  address         String?          @db.Text
+  country         String?
+  state           String?
+  city            String?
+  zip             String?
+  imageUrl        String?          @db.MediumText
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  books           StudentBook[]
+  subjects        StudentSubject[]
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([boardId])
-  @@index([classId])
-  @@index([seriesId], map: "student_profiles_seriesId_fkey")
+  @@index([boardExternalId])
+  @@index([classExternalId])
+  @@index([seriesExternalId])
   @@map("student_profiles")
 }
 
@@ -292,67 +166,61 @@ model RefreshToken {
 
 model StudentBook {
   studentProfileId String
-  bookId           String
-  book             Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  bookExternalId   String
   studentProfile   StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
 
-  @@id([studentProfileId, bookId])
-  @@index([bookId], map: "student_books_bookId_fkey")
+  @@id([studentProfileId, bookExternalId])
+  @@index([bookExternalId])
   @@map("student_books")
 }
 
 model TeacherClass {
   teacherProfileId String
-  classId          String
-  class            Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  classExternalId  String
   teacherProfile   TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
 
-  @@id([teacherProfileId, classId])
-  @@index([classId], map: "teacher_classes_classId_fkey")
+  @@id([teacherProfileId, classExternalId])
+  @@index([classExternalId])
   @@map("teacher_classes")
 }
 
 model TeacherSubject {
-  teacherProfileId String
-  subjectId        String
-  subject          Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  teacherProfile   TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
+  teacherProfileId  String
+  subjectExternalId String
+  teacherProfile    TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
 
-  @@id([teacherProfileId, subjectId])
-  @@index([subjectId], map: "teacher_subjects_subjectId_fkey")
+  @@id([teacherProfileId, subjectExternalId])
+  @@index([subjectExternalId])
   @@map("teacher_subjects")
 }
 
 model TeacherSeries {
   teacherProfileId String
-  seriesId         String
-  series           Series         @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  seriesExternalId String
   teacherProfile   TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
 
-  @@id([teacherProfileId, seriesId])
-  @@index([seriesId], map: "teacher_series_seriesId_fkey")
+  @@id([teacherProfileId, seriesExternalId])
+  @@index([seriesExternalId])
   @@map("teacher_series")
 }
 
 model TeacherBook {
   teacherProfileId String
-  bookId           String
-  book             Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  bookExternalId   String
   teacherProfile   TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
 
-  @@id([teacherProfileId, bookId])
-  @@index([bookId], map: "teacher_books_bookId_fkey")
+  @@id([teacherProfileId, bookExternalId])
+  @@index([bookExternalId])
   @@map("teacher_books")
 }
 
 model StudentSubject {
-  studentProfileId String
-  subjectId        String
-  subject          Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  studentProfile   StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  studentProfileId  String
+  subjectExternalId String
+  studentProfile    StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
 
-  @@id([studentProfileId, subjectId])
-  @@index([subjectId], map: "student_subjects_subjectId_fkey")
+  @@id([studentProfileId, subjectExternalId])
+  @@index([subjectExternalId])
   @@map("student_subjects")
 }
 
@@ -385,33 +253,26 @@ model Question {
   subtopic            String?
   tags                String               @db.LongText
   status              UserStatus           @default(ACTIVE)
-  bookId              String?
-  chapterId           String?
-  subjectId           String?
-  classId             String?
+  bookExternalId      String?
+  chapterExternalId   String?
+  subjectExternalId   String?
+  classExternalId     String?
   createdById         String
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   answers             Answer[]
   assessments         AssessmentQuestion[]
   attemptAnswers      AttemptAnswer[]
-  book                Book?                @relation(fields: [bookId], references: [id])
-  chapter             Chapter?             @relation(fields: [chapterId], references: [id])
-  class               Class?               @relation(fields: [classId], references: [id])
   createdBy           User                 @relation("QuestionCreatedBy", fields: [createdById], references: [id])
-  subject             Subject?             @relation(fields: [subjectId], references: [id])
   quizQuestions       QuizQuestion[]
 
   @@index([createdById])
   @@index([type])
-  @@index([subjectId])
+  @@index([subjectExternalId])
   @@index([difficulty])
-  @@index([bookId])
-  @@index([chapterId])
-  externalId      String?   @unique
-  sourceUpdatedAt DateTime?
-
-  @@index([classId])
+  @@index([bookExternalId])
+  @@index([chapterExternalId])
+  @@index([classExternalId])
   @@map("questions")
 }
 
@@ -420,10 +281,10 @@ model Assessment {
   title              String
   assessmentType     AssessmentType              @default(CHAPTER_TEST)
   description        String?                     @db.Text
-  boardId            String?
-  classId            String?
-  subjectId          String?
-  bookId             String?
+  boardExternalId    String?
+  classExternalId    String?
+  subjectExternalId  String?
+  bookExternalId     String?
   questionSelection  QuestionSelection           @default(MANUAL)
   totalQuestions     Int                         @default(0)
   duration           Int                         @default(60)
@@ -449,22 +310,18 @@ model Assessment {
   assignedStudents   AssessmentAssignedStudent[]
   chapters           AssessmentChapter[]
   questions          AssessmentQuestion[]
-  board              Board?                      @relation(fields: [boardId], references: [id])
-  book               Book?                       @relation(fields: [bookId], references: [id])
-  class              Class?                      @relation(fields: [classId], references: [id])
   createdBy          User                        @relation("AssessmentCreatedBy", fields: [createdById], references: [id])
   publication        Publication?                @relation(fields: [publicationId], references: [id])
-  subject            Subject?                    @relation(fields: [subjectId], references: [id])
   questionUploads    QuestionUpload[]
   submissions        Submission[]
 
   @@index([createdById])
   @@index([status])
-  @@index([subjectId])
-  @@index([boardId])
-  @@index([classId])
+  @@index([subjectExternalId])
+  @@index([boardExternalId])
+  @@index([classExternalId])
   @@index([publicationId])
-  @@index([bookId], map: "assessments_bookId_fkey")
+  @@index([bookExternalId])
   @@map("assessments")
 }
 
@@ -486,24 +343,22 @@ model AssessmentQuestion {
 }
 
 model AssessmentChapter {
-  assessmentId String
-  chapterId    String
-  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
-  chapter      Chapter    @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  assessmentId      String
+  chapterExternalId String
+  assessment        Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
 
-  @@id([assessmentId, chapterId])
-  @@index([chapterId], map: "assessment_chapters_chapterId_fkey")
+  @@id([assessmentId, chapterExternalId])
+  @@index([chapterExternalId])
   @@map("assessment_chapters")
 }
 
 model AssessmentAssignedClass {
-  assessmentId String
-  classId      String
-  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
-  class        Class      @relation(fields: [classId], references: [id], onDelete: Cascade)
+  assessmentId    String
+  classExternalId String
+  assessment      Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
 
-  @@id([assessmentId, classId])
-  @@index([classId], map: "assessment_assigned_classes_classId_fkey")
+  @@id([assessmentId, classExternalId])
+  @@index([classExternalId])
   @@map("assessment_assigned_classes")
 }
 
@@ -565,11 +420,11 @@ model Quiz {
   description        String?               @db.Text
   quizType           QuizType              @default(PRACTICE)
   publicationId      String?
-  boardId            String?
-  seriesId           String?
-  classId            String?
-  subjectId          String?
-  bookId             String?
+  boardExternalId    String?
+  seriesExternalId   String?
+  classExternalId    String?
+  subjectExternalId  String?
+  bookExternalId     String?
   questionSelection  QuestionSelection     @default(MANUAL)
   totalQuestions     Int                   @default(0)
   totalMarks         Int                   @default(0)
@@ -601,22 +456,17 @@ model Quiz {
   attempts           QuizAttempt[]
   chapters           QuizChapter[]
   questions          QuizQuestion[]
-  board              Board?                @relation(fields: [boardId], references: [id])
-  book               Book?                 @relation(fields: [bookId], references: [id])
-  class              Class?                @relation(fields: [classId], references: [id])
   createdBy          User                  @relation("QuizCreatedBy", fields: [createdById], references: [id])
   publication        Publication?          @relation(fields: [publicationId], references: [id])
-  series             Series?               @relation(fields: [seriesId], references: [id])
-  subject            Subject?              @relation(fields: [subjectId], references: [id])
 
   @@index([createdById])
   @@index([status])
   @@index([publicationId])
-  @@index([classId])
-  @@index([boardId], map: "quizzes_boardId_fkey")
-  @@index([bookId], map: "quizzes_bookId_fkey")
-  @@index([seriesId], map: "quizzes_seriesId_fkey")
-  @@index([subjectId], map: "quizzes_subjectId_fkey")
+  @@index([classExternalId])
+  @@index([boardExternalId])
+  @@index([bookExternalId])
+  @@index([seriesExternalId])
+  @@index([subjectExternalId])
   @@map("quizzes")
 }
 
@@ -639,24 +489,22 @@ model QuizQuestion {
 }
 
 model QuizChapter {
-  quizId    String
-  chapterId String
-  chapter   Chapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
-  quiz      Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  quizId            String
+  chapterExternalId String
+  quiz              Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
-  @@id([quizId, chapterId])
-  @@index([chapterId], map: "quiz_chapters_chapterId_fkey")
+  @@id([quizId, chapterExternalId])
+  @@index([chapterExternalId])
   @@map("quiz_chapters")
 }
 
 model QuizAssignedClass {
-  quizId  String
-  classId String
-  class   Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
-  quiz    Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  quizId          String
+  classExternalId String
+  quiz            Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
-  @@id([quizId, classId])
-  @@index([classId], map: "quiz_assigned_classes_classId_fkey")
+  @@id([quizId, classExternalId])
+  @@index([classExternalId])
   @@map("quiz_assigned_classes")
 }
 
@@ -817,26 +665,6 @@ model Setting {
 
   @@index([category])
   @@map("settings")
-}
-
-model ContentSyncLog {
-  id          String   @id @default(cuid())
-  status      String   @default("RUNNING") // RUNNING | SUCCESS | FAILED
-  trigger     String   @default("MANUAL")  // MANUAL | SCHEDULED
-  startedAt   DateTime @default(now())
-  finishedAt  DateTime?
-  durationMs  Int?
-  inserted    Int      @default(0)
-  updated     Int      @default(0)
-  skipped     Int      @default(0)
-  failed      Int      @default(0)
-  stats       String   @db.LongText          // per-entity counts (JSON)
-  error       String?  @db.Text
-  createdAt   DateTime @default(now())
-
-  @@index([status])
-  @@index([startedAt])
-  @@map("content_sync_logs")
 }
 
 enum Role {

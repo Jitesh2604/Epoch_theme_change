@@ -1,29 +1,18 @@
 /**
- * Prisma seed
- *  - default subjects
+ * Prisma seed — APP-OWNED data only.
+ *
+ * Catalog data (subjects, classes, boards, series, books, chapters) is NOT
+ * seeded here: the Content API is the single source of truth for it and the
+ * backend never persists it. This seed covers only application-owned rows:
+ *  - default categories (Olympiad modes surfaced by /categories)
  *  - one default ADMIN user (configurable via env)
  *
- * Run with:  npm run prisma:seed
+ * Run with:  npm run seed
  */
 import { PrismaClient, Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
-
-const DEFAULT_SUBJECTS: Array<{ name: string; slug: string }> = [
-  { name: 'Mathematics',       slug: 'mathematics' },
-  { name: 'Science',           slug: 'science' },
-  { name: 'English',           slug: 'english' },
-  { name: 'General Knowledge', slug: 'general-knowledge' },
-  { name: 'Computer Science',  slug: 'computer-science' },
-  { name: 'Social Studies',    slug: 'social-studies' },
-];
-
-// Standard grade levels (Class 1 … Class 12). `serial` drives catalog ordering.
-const DEFAULT_CLASSES: Array<{ name: string; serial: string }> = Array.from(
-  { length: 12 },
-  (_, i) => ({ name: `Class ${i + 1}`, serial: String(i + 1).padStart(2, '0') }),
-);
 
 const DEFAULT_CATEGORIES: Array<{ name: string; slug: string }> = [
   { name: 'Attempted Olympiad', slug: 'attempted-olympiad' },
@@ -33,36 +22,6 @@ const DEFAULT_CATEGORIES: Array<{ name: string; slug: string }> = [
 const ADMIN_EMAIL    = process.env.SEED_ADMIN_EMAIL    ?? 'admin@epoch.local';
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? 'Admin@12345';
 const ADMIN_NAME     = process.env.SEED_ADMIN_NAME     ?? 'Publication Admin';
-
-async function seedSubjects(): Promise<void> {
-  console.log('[seed] Upserting default subjects…');
-  for (const s of DEFAULT_SUBJECTS) {
-    await prisma.subject.upsert({
-      where: { slug: s.slug },
-      update: { name: s.name },
-      create: { name: s.name, slug: s.slug },
-    });
-  }
-  const count = await prisma.subject.count();
-  console.log(`[seed] Subjects in DB: ${count}`);
-}
-
-async function seedClasses(): Promise<void> {
-  console.log('[seed] Upserting default classes…');
-  // Class.name has no unique constraint, so match by name to stay idempotent.
-  for (const c of DEFAULT_CLASSES) {
-    const existing = await prisma.class.findFirst({ where: { name: c.name } });
-    if (existing) {
-      if (existing.serial !== c.serial) {
-        await prisma.class.update({ where: { id: existing.id }, data: { serial: c.serial } });
-      }
-    } else {
-      await prisma.class.create({ data: { name: c.name, serial: c.serial } });
-    }
-  }
-  const count = await prisma.class.count();
-  console.log(`[seed] Classes in DB: ${count}`);
-}
 
 async function seedCategories(): Promise<void> {
   console.log('[seed] Upserting default categories…');
@@ -98,8 +57,6 @@ async function seedAdmin(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  await seedSubjects();
-  await seedClasses();
   await seedCategories();
   await seedAdmin();
   console.log('[seed] Done.');

@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { QuestionType, AttemptStatus, QuizType, QuizStatus } from '../lib/enums';
 import { parseStrArr, toJson } from '../utils/json';
 import { ApiError } from '../utils/ApiError';
+import { ContentMeta } from './content.service';
 import type {
   StartPracticeInput,
   StartOlympiadInput,
@@ -28,6 +29,10 @@ const GRADABLE_TYPES: QuestionType[] = [
   QuestionType.MCQ_SINGLE, QuestionType.MCQ_MULTIPLE,
   QuestionType.TRUE_FALSE, QuestionType.FILL_IN_BLANK,
 ];
+
+function slugify(name: string): string {
+  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'subject';
+}
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -95,21 +100,20 @@ function gradeOne(q: GradableQuestion, ans: AnswerLike): { isCorrect: boolean | 
 }
 
 /** Gets or lazy-creates the shared Practice Quiz record for a subject. */
-async function getOrCreatePracticeQuiz(subjectId: string, fallbackUserId: string): Promise<string> {
+async function getOrCreatePracticeQuiz(subjectExternalId: string, subjectName: string | null, fallbackUserId: string): Promise<string> {
   const existing = await prisma.quiz.findFirst({
-    where: { subjectId, quizType: QuizType.PRACTICE, questionSelection: 'AUTO_RANDOM' }, select: { id: true },
+    where: { subjectExternalId, quizType: QuizType.PRACTICE, questionSelection: 'AUTO_RANDOM' }, select: { id: true },
   });
   if (existing) return existing.id;
 
   const admin = await prisma.user.findFirst({
     where: { role: { in: ['SUPER_ADMIN', 'PUBLICATION_ADMIN'] } }, orderBy: { createdAt: 'asc' }, select: { id: true },
   });
-  const subject = await prisma.subject.findUnique({ where: { id: subjectId }, select: { name: true } });
 
   const quiz = await prisma.quiz.create({
     data: {
-      title: `Practice · ${subject?.name ?? subjectId}`,
-      quizType: QuizType.PRACTICE, questionSelection: 'AUTO_RANDOM', subjectId,
+      title: `Practice · ${subjectName ?? subjectExternalId}`,
+      quizType: QuizType.PRACTICE, questionSelection: 'AUTO_RANDOM', subjectExternalId,
       status: QuizStatus.PUBLISHED, createdById: admin?.id ?? fallbackUserId, leaderboardEnabled: true, duration: 0,
     },
     select: { id: true },
@@ -118,21 +122,20 @@ async function getOrCreatePracticeQuiz(subjectId: string, fallbackUserId: string
 }
 
 /** Gets or lazy-creates the shared per-class Olympiad quiz record. */
-async function getOrCreateOlympiadQuiz(classId: string | null, fallbackUserId: string): Promise<string> {
+async function getOrCreateOlympiadQuiz(classExternalId: string | null, className: string | null, fallbackUserId: string): Promise<string> {
   const existing = await prisma.quiz.findFirst({
-    where: { quizType: QuizType.OLYMPIAD, classId }, select: { id: true },
+    where: { quizType: QuizType.OLYMPIAD, classExternalId }, select: { id: true },
   });
   if (existing) return existing.id;
 
   const admin = await prisma.user.findFirst({
     where: { role: { in: ['SUPER_ADMIN', 'PUBLICATION_ADMIN'] } }, orderBy: { createdAt: 'asc' }, select: { id: true },
   });
-  const cls = classId ? await prisma.class.findUnique({ where: { id: classId }, select: { name: true } }) : null;
 
   const quiz = await prisma.quiz.create({
     data: {
-      title: `Olympiad${cls ? ` · ${cls.name}` : ''}`,
-      quizType: QuizType.OLYMPIAD, questionSelection: 'AUTO_RANDOM', classId,
+      title: `Olympiad${className ? ` · ${className}` : ''}`,
+      quizType: QuizType.OLYMPIAD, questionSelection: 'AUTO_RANDOM', classExternalId,
       status: QuizStatus.PUBLISHED, createdById: admin?.id ?? fallbackUserId, leaderboardEnabled: true, duration: 0,
     },
     select: { id: true },
@@ -140,25 +143,25 @@ async function getOrCreateOlympiadQuiz(classId: string | null, fallbackUserId: s
   return quiz.id;
 }
 
-interface StudentAcademic { profileId: string | null; classId: string | null; educationBoard: string | null }
+interface StudentAcademic { profileId: string | null; classExternalId: string | null; educationBoard: string | null }
 
 /** The academic context used to scope a student's quizzes. */
 async function readStudentProfile(studentId: string): Promise<StudentAcademic> {
   const row = await prisma.studentProfile.findUnique({
-    where: { userId: studentId }, select: { id: true, classId: true, educationBoard: true },
+    where: { userId: studentId }, select: { id: true, classExternalId: true, educationBoard: true },
   });
-  return { profileId: row?.id ?? null, classId: row?.classId ?? null, educationBoard: row?.educationBoard ?? null };
+  return { profileId: row?.id ?? null, classExternalId: row?.classExternalId ?? null, educationBoard: row?.educationBoard ?? null };
 }
 
 /**
  * Scope filter used by both practice and olympiad: a question matches if it is
  * the student's own class/board OR untagged (global). It is NEVER from another
- * class or board.
+ * class or board. Class is matched by the Content API external id.
  */
-function classBoardAnd(classId: string | null, board: string | null): Prisma.QuestionWhereInput[] {
+function classBoardAnd(classExternalId: string | null, board: string | null): Prisma.QuestionWhereInput[] {
   const and: Prisma.QuestionWhereInput[] = [];
-  if (classId) and.push({ OR: [{ classId }, { classId: null }] });
-  if (board)   and.push({ OR: [{ educationBoard: board }, { educationBoard: null }] });
+  if (classExternalId) and.push({ OR: [{ classExternalId }, { classExternalId: null }] });
+  if (board)           and.push({ OR: [{ educationBoard: board }, { educationBoard: null }] });
   return and;
 }
 
@@ -259,53 +262,59 @@ async function createQuizAttempt(quizId: string, studentId: string): Promise<{ a
 export const QuizService = {
   async getSubjectsWithQuestions() {
     const counts = await prisma.question.groupBy({
-      by: ['subjectId', 'difficulty'],
-      where: { status: 'ACTIVE', type: { in: GRADABLE_TYPES }, subjectId: { not: null } },
+      by: ['subjectExternalId', 'difficulty'],
+      where: { status: 'ACTIVE', type: { in: GRADABLE_TYPES }, subjectExternalId: { not: null } },
       _count: { _all: true },
     });
 
-    const subjectIds = [...new Set(counts.map(c => c.subjectId).filter((id): id is string => id != null))];
+    const subjectIds = [...new Set(counts.map(c => c.subjectExternalId).filter((id): id is string => id != null))];
     if (!subjectIds.length) return [];
 
-    const subjects = await prisma.subject.findMany({
-      where: { id: { in: subjectIds }, status: 'ACTIVE' }, orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true },
-    });
+    // Resolve subject display names from the live (cached) Content API. Subjects
+    // no longer exist locally, so a subject with questions but no live catalog
+    // entry falls back to its external id as the name.
+    const subjectNames = await ContentMeta.subjects();
 
-    return subjects.map(s => {
-      const sc     = counts.filter(c => c.subjectId === s.id);
-      const easy   = sc.find(c => c.difficulty === 'EASY')?._count._all   ?? 0;
-      const medium = sc.find(c => c.difficulty === 'MEDIUM')?._count._all ?? 0;
-      const hard   = sc.find(c => c.difficulty === 'HARD')?._count._all   ?? 0;
-      return { ...s, questionCount: easy + medium + hard, easyCount: easy, mediumCount: medium, hardCount: hard };
-    });
+    return subjectIds
+      .map(extId => {
+        const name = subjectNames.get(extId) ?? extId;
+        const sc     = counts.filter(c => c.subjectExternalId === extId);
+        const easy   = sc.find(c => c.difficulty === 'EASY')?._count._all   ?? 0;
+        const medium = sc.find(c => c.difficulty === 'MEDIUM')?._count._all ?? 0;
+        const hard   = sc.find(c => c.difficulty === 'HARD')?._count._all   ?? 0;
+        return { id: extId, name, slug: slugify(name), questionCount: easy + medium + hard, easyCount: easy, mediumCount: medium, hardCount: hard };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
   },
 
   async startPractice(studentId: string, input: StartPracticeInput) {
-    const subject = await prisma.subject.findUnique({
-      where: { id: input.subjectId }, select: { id: true, name: true, slug: true, kind: true },
-    });
-    if (!subject) throw ApiError.notFound('Subject not found');
-    if (subject.kind !== 'SUBJECT') {
+    // input.subjectExternalId is a Content API subject external id. Resolve its
+    // display name and reject Olympiad modes (which are app-owned, not subjects).
+    const subjectNames = await ContentMeta.subjects();
+    const subjectName = subjectNames.get(input.subjectExternalId) ?? null;
+    const mode = await prisma.olympiadMode.findFirst({ where: { id: input.subjectExternalId }, select: { id: true } });
+    if (mode) {
       throw ApiError.badRequest('This category is an Olympiad mode — use the Olympiad flow, not subject practice.');
     }
 
     // Scope to the student's class AND board (never other classes/boards).
     const profile = await readStudentProfile(studentId);
-    const scopeAnd = classBoardAnd(profile.classId, profile.educationBoard);
+    const scopeAnd = classBoardAnd(profile.classExternalId, profile.educationBoard);
 
     const allQuestions = await prisma.question.findMany({
       where: {
-        subjectId: input.subjectId, status: 'ACTIVE', type: { in: GRADABLE_TYPES },
+        subjectExternalId: input.subjectExternalId, status: 'ACTIVE', type: { in: GRADABLE_TYPES },
         ...(input.difficulty && { difficulty: input.difficulty }),
-        ...(input.chapterId && { chapterId: input.chapterId }),
+        ...(input.chapterExternalId && { chapterExternalId: input.chapterExternalId }),
         ...(scopeAnd.length && { AND: scopeAnd }),
       },
     });
 
     if (!allQuestions.length) throw ApiError.badRequest('No questions available for this subject / class / board / difficulty');
 
+    const subject = { id: input.subjectExternalId, name: subjectName ?? input.subjectExternalId, slug: slugify(subjectName ?? input.subjectExternalId), kind: 'SUBJECT' };
     const selected = shuffleArray(allQuestions).slice(0, input.questionCount);
-    const quizId   = await getOrCreatePracticeQuiz(input.subjectId, studentId);
+    const quizId   = await getOrCreatePracticeQuiz(input.subjectExternalId, subjectName, studentId);
 
     const { attemptId, attemptNumber } = await createQuizAttempt(quizId, studentId);
 
@@ -483,19 +492,21 @@ export const QuizService = {
   async startOlympiad(studentId: string, input: StartOlympiadInput) {
     const profile = await readStudentProfile(studentId);
 
-    const subjects = await prisma.subject.findMany({
-      where: {
-        kind: 'SUBJECT', status: 'ACTIVE',
-        studentSubjects: { some: { studentProfileId: profile.profileId ?? '__none__' } },
-      },
-      orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true },
+    // The student's chosen subjects are stored as Content API external ids.
+    const chosen = await prisma.studentSubject.findMany({
+      where: { studentProfileId: profile.profileId ?? '__none__' },
+      select: { subjectExternalId: true },
     });
-    if (!subjects.length) {
+    if (!chosen.length) {
       throw ApiError.badRequest('Add your subjects in your profile to start an Olympiad.');
     }
+    const subjectNames = await ContentMeta.subjects();
+    const subjects = chosen
+      .map(c => ({ id: c.subjectExternalId, name: subjectNames.get(c.subjectExternalId) ?? c.subjectExternalId }))
+      .sort((a, b) => a.name.localeCompare(b.name));
 
     const perSubject = input.perSubject ?? await getOlympiadPerSubject();
-    const scopeAnd = classBoardAnd(profile.classId, profile.educationBoard);
+    const scopeAnd = classBoardAnd(profile.classExternalId, profile.educationBoard);
 
     // Balanced pull: up to `perSubject` random questions from each subject,
     // strictly within the student's class + board.
@@ -504,7 +515,7 @@ export const QuizService = {
     for (const subj of subjects) {
       const rows = await prisma.question.findMany({
         where: {
-          subjectId: subj.id, status: 'ACTIVE', type: { in: GRADABLE_TYPES },
+          subjectExternalId: subj.id, status: 'ACTIVE', type: { in: GRADABLE_TYPES },
           ...(scopeAnd.length && { AND: scopeAnd }),
         },
       });
@@ -517,7 +528,8 @@ export const QuizService = {
     }
 
     const selected = shuffleArray(picked);
-    const quizId   = await getOrCreateOlympiadQuiz(profile.classId, studentId);
+    const className = await ContentMeta.className(profile.classExternalId);
+    const quizId   = await getOrCreateOlympiadQuiz(profile.classExternalId, className, studentId);
 
     const { attemptId, attemptNumber } = await createQuizAttempt(quizId, studentId);
     await prisma.attemptAnswer.createMany({

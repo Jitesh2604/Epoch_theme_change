@@ -10,12 +10,12 @@ const tagsSchema       = z.array(z.string().trim().min(1).max(40)).max(20);
 const subjectIdSchema  = z.string().min(1).optional().nullable();
 const optionsSchema    = z.array(z.string().trim().min(1).max(500)).min(2, 'At least 2 options').max(8);
 
-// Academic taxonomy shared by every question type. classId/chapterId/bookId are
+// Academic taxonomy shared by every question type. classExternalId/chapterExternalId/bookExternalId are
 // real FK columns on `questions`; all optional so existing callers keep working.
 const academicFields = {
-  classId:        z.string().min(1).optional().nullable(),
-  chapterId:      z.string().min(1).optional().nullable(),
-  bookId:         z.string().min(1).optional().nullable(),
+  classExternalId:        z.string().min(1).optional().nullable(),
+  chapterExternalId:      z.string().min(1).optional().nullable(),
+  bookExternalId:         z.string().min(1).optional().nullable(),
   educationBoard: z.string().trim().min(1).max(120).optional().nullable(),
 };
 
@@ -29,7 +29,7 @@ const mcqSingleCreateSchema = z.object({
   marks:         marksSchema.default(1),
   difficulty:    difficultySchema.default(Difficulty.MEDIUM),
   tags:          tagsSchema.default([]),
-  subjectId:     subjectIdSchema,
+  subjectExternalId:     subjectIdSchema,
 });
 
 const mcqMultipleCreateSchema = z.object({
@@ -40,7 +40,7 @@ const mcqMultipleCreateSchema = z.object({
   marks:          marksSchema.default(1),
   difficulty:     difficultySchema.default(Difficulty.MEDIUM),
   tags:           tagsSchema.default([]),
-  subjectId:      subjectIdSchema,
+  subjectExternalId:      subjectIdSchema,
 });
 
 const tfCreateSchema = z.object({
@@ -50,7 +50,7 @@ const tfCreateSchema = z.object({
   marks:          marksSchema.default(1),
   difficulty:     difficultySchema.default(Difficulty.MEDIUM),
   tags:           tagsSchema.default([]),
-  subjectId:      subjectIdSchema,
+  subjectExternalId:      subjectIdSchema,
 });
 
 const fillInBlankCreateSchema = z.object({
@@ -60,7 +60,7 @@ const fillInBlankCreateSchema = z.object({
   marks:         marksSchema.default(1),
   difficulty:    difficultySchema.default(Difficulty.MEDIUM),
   tags:          tagsSchema.default([]),
-  subjectId:     subjectIdSchema,
+  subjectExternalId:     subjectIdSchema,
 });
 
 const matchColumnCreateSchema = z.object({
@@ -72,7 +72,7 @@ const matchColumnCreateSchema = z.object({
   marks:      marksSchema.default(1),
   difficulty: difficultySchema.default(Difficulty.MEDIUM),
   tags:       tagsSchema.default([]),
-  subjectId:  subjectIdSchema,
+  subjectExternalId:  subjectIdSchema,
 });
 
 const descCreateSchema = z.object({
@@ -82,7 +82,7 @@ const descCreateSchema = z.object({
   marks:       marksSchema.default(1),
   difficulty:  difficultySchema.default(Difficulty.MEDIUM),
   tags:        tagsSchema.default([]),
-  subjectId:   subjectIdSchema,
+  subjectExternalId:   subjectIdSchema,
 });
 
 export const createQuestionSchema = z
@@ -103,7 +103,7 @@ export const updateQuestionSchema = z
     marks:          marksSchema.optional(),
     difficulty:     difficultySchema.optional(),
     tags:           tagsSchema.optional(),
-    subjectId:      subjectIdSchema,
+    subjectExternalId:      subjectIdSchema,
     ...academicFields,
 
     // MCQ-only
@@ -131,7 +131,7 @@ export const updateQuestionSchema = z
 export const listQuestionsQuerySchema = paginationSchema.extend({
   type:       z.nativeEnum(QuestionType).optional(),
   difficulty: difficultySchema.optional(),
-  subjectId:  z.string().min(1).optional(),
+  subjectExternalId:  z.string().min(1).optional(),
   search:     z.string().trim().min(1).max(200).optional(),
   mine:       z.coerce.boolean().optional(),
   tag:        z.string().trim().min(1).max(40).optional(),

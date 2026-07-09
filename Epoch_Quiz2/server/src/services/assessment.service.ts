@@ -4,6 +4,7 @@ import { AssessmentStatus, Role } from '../lib/enums';
 import { isAdminRole } from '../utils/roles';
 import { ApiError } from '../utils/ApiError';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
+import { ContentService, ContentMeta } from './content.service';
 import type {
   CreateAssessmentInput,
   UpdateAssessmentInput,
@@ -19,14 +20,18 @@ export interface Actor {
 // ── Query shape ───────────────────────────────────────────────
 
 const assessmentInclude = {
-  subject:   { select: { id: true, name: true, slug: true } },
   createdBy: { select: { id: true, name: true, email: true } },
   _count:    { select: { questions: true, submissions: true } },
 } satisfies Prisma.AssessmentInclude;
 
 type AssessmentWithRel = Prisma.AssessmentGetPayload<{ include: typeof assessmentInclude }>;
 
-function toPublic(a: AssessmentWithRel) {
+function slugify(name: string): string {
+  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'subject';
+}
+
+function toPublic(a: AssessmentWithRel, subjectNames?: Map<string, string>) {
+  const subjectName = a.subjectExternalId ? subjectNames?.get(a.subjectExternalId) ?? null : null;
   return {
     id:            a.id,
     title:         a.title,
@@ -36,7 +41,9 @@ function toPublic(a: AssessmentWithRel) {
     passingMarks:  a.passingMarks,
     status:        a.status,
     publishedAt:   a.publishedAt,
-    subject:       a.subject ? { id: a.subject.id, name: a.subject.name, slug: a.subject.slug } : null,
+    subject:       a.subjectExternalId
+      ? { id: a.subjectExternalId, name: subjectName, slug: slugify(subjectName ?? '') || null }
+      : null,
     createdBy:     { id: a.createdBy.id, name: a.createdBy.name, email: a.createdBy.email },
     questionCount: a._count.questions,
     attempts:      a._count.submissions,
@@ -45,20 +52,21 @@ function toPublic(a: AssessmentWithRel) {
   };
 }
 
-async function ensureSubjectExists(subjectId: string): Promise<void> {
-  const s = await prisma.subject.findUnique({ where: { id: subjectId }, select: { id: true } });
-  if (!s) throw ApiError.badRequest(`Subject not found: ${subjectId}`);
+/** Validate a subject external id against the live catalog (skip if API off). */
+async function ensureSubjectExists(subjectExternalId: string): Promise<void> {
+  if (!ContentService.isConfigured()) return;
+  if (!(await ContentMeta.subjectExists(subjectExternalId))) throw ApiError.badRequest(`Subject not found: ${subjectExternalId}`);
 }
 
-async function ensureClassExists(classId: string): Promise<void> {
-  const c = await prisma.class.findUnique({ where: { id: classId }, select: { id: true } });
-  if (!c) throw ApiError.badRequest(`Class not found: ${classId}`);
+async function ensureClassExists(classExternalId: string): Promise<void> {
+  if (!ContentService.isConfigured()) return;
+  if (!(await ContentMeta.classExists(classExternalId))) throw ApiError.badRequest(`Class not found: ${classExternalId}`);
 }
 
-/** A student's own class (null if the profile has none yet). */
+/** A student's own class external id (null if the profile has none yet). */
 async function getStudentClassId(studentId: string): Promise<string | null> {
-  const row = await prisma.studentProfile.findUnique({ where: { userId: studentId }, select: { classId: true } });
-  return row?.classId ?? null;
+  const row = await prisma.studentProfile.findUnique({ where: { userId: studentId }, select: { classExternalId: true } });
+  return row?.classExternalId ?? null;
 }
 
 /**
@@ -72,7 +80,7 @@ export async function assessmentVisibleToStudent(studentId: string, assessmentId
 
   const classId = await getStudentClassId(studentId);
   if (!classId) return false;
-  const byClass = await prisma.assessmentAssignedClass.count({ where: { assessmentId, classId } });
+  const byClass = await prisma.assessmentAssignedClass.count({ where: { assessmentId, classExternalId: classId } });
   return byClass > 0;
 }
 
@@ -88,15 +96,15 @@ async function writeAssignments(
 ): Promise<void> {
   if (classIds !== undefined) {
     const unique = [...new Set(classIds)];
-    if (unique.length) {
-      const found = await txc.class.findMany({ where: { id: { in: unique } }, select: { id: true } });
-      const foundSet = new Set(found.map(r => r.id));
-      const missing = unique.find(id => !foundSet.has(id));
+    if (unique.length && ContentService.isConfigured()) {
+      // Validate class external ids against the live catalog.
+      const classMap = await ContentMeta.classes();
+      const missing = unique.find(id => !classMap.has(String(id)));
       if (missing) throw ApiError.badRequest(`Class not found: ${missing}`);
     }
     await txc.assessmentAssignedClass.deleteMany({ where: { assessmentId } });
     if (unique.length)
-      await txc.assessmentAssignedClass.createMany({ data: unique.map(classId => ({ assessmentId, classId })), skipDuplicates: true });
+      await txc.assessmentAssignedClass.createMany({ data: unique.map(classExternalId => ({ assessmentId, classExternalId })), skipDuplicates: true });
   }
 
   if (studentIds !== undefined) {
@@ -138,21 +146,21 @@ export const AssessmentService = {
     if (actor.role !== Role.TEACHER && !isAdminRole(actor.role)) {
       throw ApiError.forbidden('Only teachers can create assessments');
     }
-    if (input.subjectId) await ensureSubjectExists(input.subjectId);
-    if (input.classId)   await ensureClassExists(input.classId);
+    if (input.subjectExternalId) await ensureSubjectExists(input.subjectExternalId);
+    if (input.classExternalId)   await ensureClassExists(input.classExternalId);
 
     const created = await prisma.$transaction(async (txc) => {
       const a = await txc.assessment.create({
         data: {
-          title:        input.title,
-          description:  input.description ?? null,
-          duration:     input.duration,
-          totalMarks:   0,
-          passingMarks: input.passingMarks ?? 0,
-          status:       AssessmentStatus.DRAFT,
-          subjectId:    input.subjectId ?? null,
-          classId:      input.classId ?? null,
-          createdById:  actor.id,
+          title:             input.title,
+          description:       input.description ?? null,
+          duration:          input.duration,
+          totalMarks:        0,
+          passingMarks:      input.passingMarks ?? 0,
+          status:            AssessmentStatus.DRAFT,
+          subjectExternalId: input.subjectExternalId ?? null,
+          classExternalId:   input.classExternalId ?? null,
+          createdById:       actor.id,
         },
       });
       if (input.assignedClassIds !== undefined || input.assignedStudentIds !== undefined) {
@@ -162,7 +170,7 @@ export const AssessmentService = {
     });
 
     const full = await prisma.assessment.findUnique({ where: { id: created.id }, include: assessmentInclude });
-    return toPublic(full!);
+    return toPublic(full!, await ContentMeta.subjects());
   },
 
   /** Replace-set the class/student assignment for an assessment (owner/admin only). */
@@ -177,25 +185,27 @@ export const AssessmentService = {
   /** Current assignment (assigned classes + students) for teacher/admin UI. */
   async getAssignments(actor: Actor, id: string) {
     await loadAuthorized(id, actor, 'write');
-    const [classes, students] = await Promise.all([
-      prisma.class.findMany({
-        where: { assessmentAssignedClasses: { some: { assessmentId: id } } },
-        select: { id: true, name: true }, orderBy: [{ serial: 'asc' }, { name: 'asc' }],
-      }),
+    const [assignedClasses, students, classMap] = await Promise.all([
+      prisma.assessmentAssignedClass.findMany({ where: { assessmentId: id }, select: { classExternalId: true } }),
       prisma.user.findMany({
         where: { assessmentAssignedStudents: { some: { assessmentId: id } } },
         select: { id: true, name: true, email: true }, orderBy: { name: 'asc' },
       }),
+      ContentMeta.classes(),
     ]);
+    const classes = assignedClasses
+      .map(c => ({ id: c.classExternalId, name: classMap.get(String(c.classExternalId)) ?? c.classExternalId }))
+      .sort((a, b) => a.name.localeCompare(b.name));
     return { classes, students };
   },
 
   async list(actor: Actor, query: ListAssessmentsQuery) {
-    const { page, limit, status, subjectId, search, mine } = query;
+    const { page, limit, status, search, mine } = query;
+    const subjectExternalId = (query as Record<string, unknown>).subjectExternalId as string | undefined;
 
     const where: Prisma.AssessmentWhereInput = {
       ...(status && { status }),
-      ...(subjectId && { subjectId }),
+      ...(subjectExternalId && { subjectExternalId }),
     };
     const and: Prisma.AssessmentWhereInput[] = [];
     if (search) and.push({ OR: [{ title: { contains: search } }, { description: { contains: search } }] });
@@ -209,7 +219,7 @@ export const AssessmentService = {
       and.push({
         OR: [
           { assignedStudents: { some: { studentId: actor.id } } },
-          ...(classId ? [{ assignedClasses: { some: { classId } } }] : []),
+          ...(classId ? [{ assignedClasses: { some: { classExternalId: classId } } }] : []),
         ],
       });
     } else if (isAdminRole(actor.role) && mine) {
@@ -219,17 +229,18 @@ export const AssessmentService = {
 
     const { skip, take } = pageToSkipTake(page, limit);
 
-    const [rows, total] = await Promise.all([
+    const [rows, total, subjectNames] = await Promise.all([
       prisma.assessment.findMany({ where, include: assessmentInclude, orderBy: { createdAt: 'desc' }, skip, take }),
       prisma.assessment.count({ where }),
+      ContentMeta.subjects(),
     ]);
 
-    return { items: rows.map(toPublic), meta: pageMeta(total, page, limit) };
+    return { items: rows.map((r) => toPublic(r, subjectNames)), meta: pageMeta(total, page, limit) };
   },
 
   async findById(actor: Actor, id: string) {
     const a = await loadAuthorized(id, actor, 'read');
-    return toPublic(a);
+    return toPublic(a, await ContentMeta.subjects());
   },
 
   async update(actor: Actor, id: string, input: UpdateAssessmentInput) {
@@ -237,20 +248,20 @@ export const AssessmentService = {
     if (existing.status === AssessmentStatus.ARCHIVED) {
       throw ApiError.badRequest('Archived assessments cannot be edited');
     }
-    if (input.subjectId) await ensureSubjectExists(input.subjectId);
+    if (input.subjectExternalId) await ensureSubjectExists(input.subjectExternalId);
 
     const updated = await prisma.assessment.update({
       where: { id },
       data: {
-        ...(input.title        !== undefined && { title: input.title }),
-        ...(input.description  !== undefined && { description: input.description }),
-        ...(input.duration     !== undefined && { duration: input.duration }),
-        ...(input.subjectId    !== undefined && { subjectId: input.subjectId }),
-        ...(input.passingMarks !== undefined && { passingMarks: input.passingMarks }),
+        ...(input.title             !== undefined && { title: input.title }),
+        ...(input.description       !== undefined && { description: input.description }),
+        ...(input.duration          !== undefined && { duration: input.duration }),
+        ...(input.subjectExternalId !== undefined && { subjectExternalId: input.subjectExternalId }),
+        ...(input.passingMarks      !== undefined && { passingMarks: input.passingMarks }),
       },
       include: assessmentInclude,
     });
-    return toPublic(updated);
+    return toPublic(updated, await ContentMeta.subjects());
   },
 
   async remove(actor: Actor, id: string) {
@@ -270,7 +281,7 @@ export const AssessmentService = {
     const updated = await prisma.assessment.update({
       where: { id }, data: { status: AssessmentStatus.PUBLISHED, publishedAt: new Date() }, include: assessmentInclude,
     });
-    return toPublic(updated);
+    return toPublic(updated, await ContentMeta.subjects());
   },
 
   async unpublish(actor: Actor, id: string) {
@@ -279,7 +290,7 @@ export const AssessmentService = {
     const updated = await prisma.assessment.update({
       where: { id }, data: { status: AssessmentStatus.DRAFT, publishedAt: null }, include: assessmentInclude,
     });
-    return toPublic(updated);
+    return toPublic(updated, await ContentMeta.subjects());
   },
 
   async archive(actor: Actor, id: string) {
@@ -288,6 +299,6 @@ export const AssessmentService = {
     const updated = await prisma.assessment.update({
       where: { id }, data: { status: AssessmentStatus.ARCHIVED, publishedAt: null }, include: assessmentInclude,
     });
-    return toPublic(updated);
+    return toPublic(updated, await ContentMeta.subjects());
   },
 };

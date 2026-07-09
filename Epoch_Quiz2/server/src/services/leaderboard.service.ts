@@ -76,11 +76,12 @@ export const LeaderboardService = {
   },
 
   async global(_actor: Actor, query: GlobalLeaderboardQuery) {
-    const { page, limit, subjectId } = query;
+    const { page, limit } = query;
+    const subjectExternalId = (query as Record<string, unknown>).subjectExternalId as string | undefined;
 
     const grouped = await prisma.submission.groupBy({
       by: ['studentId'],
-      where: { status: COUNTABLE, ...(subjectId && { assessment: { subjectId } }) },
+      where: { status: COUNTABLE, ...(subjectExternalId && { assessment: { subjectExternalId } }) },
       _sum: { score: true, totalMarks: true },
       _count: { _all: true },
     });

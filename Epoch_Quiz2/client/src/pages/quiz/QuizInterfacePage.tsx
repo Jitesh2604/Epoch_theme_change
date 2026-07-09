@@ -62,7 +62,7 @@ export const QuizInterfacePage: React.FC<QuizInterfacePageProps> = ({
     if (!lvl) return;
     const difficulty = level.toUpperCase() as 'EASY' | 'MEDIUM' | 'HARD';
     practiceApi
-      .start({ subjectId: subId, difficulty, questionCount: lvl.questions })
+      .start({ subjectExternalId: subId, difficulty, questionCount: lvl.questions })
       .then(data => {
         if (!data.questions || data.questions.length === 0) {
           setSessionError('__empty__');

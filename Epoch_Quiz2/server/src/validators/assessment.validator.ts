@@ -12,8 +12,8 @@ export const createAssessmentSchema = z.object({
   title:        titleSchema,
   description:  descriptionSchema,
   duration:     durationSchema,
-  subjectId:    z.string().min(1).optional().nullable(),
-  classId:      z.string().min(1).optional().nullable(),
+  subjectExternalId:    z.string().min(1).optional().nullable(),
+  classExternalId:z.string().min(1).optional().nullable(),
   passingMarks: z.coerce.number().int().min(0).optional(),
   // Optional assignment at creation time (replace-set semantics)
   assignedClassIds:   idArraySchema.optional(),
@@ -33,13 +33,13 @@ export const updateAssessmentSchema = z.object({
   title:        titleSchema.optional(),
   description:  descriptionSchema,
   duration:     durationSchema.optional(),
-  subjectId:    z.string().min(1).optional().nullable(),
+  subjectExternalId:    z.string().min(1).optional().nullable(),
   passingMarks: z.coerce.number().int().min(0).optional(),
 }).refine((v) => Object.keys(v).length > 0, { message: 'No fields to update' });
 
 export const listAssessmentsQuerySchema = paginationSchema.extend({
   status:    z.nativeEnum(AssessmentStatus).optional(),
-  subjectId: z.string().min(1).optional(),
+  subjectExternalId: z.string().min(1).optional(),
   search:    z.string().trim().min(1).max(80).optional(),
   mine:      z.coerce.boolean().optional(),
 });

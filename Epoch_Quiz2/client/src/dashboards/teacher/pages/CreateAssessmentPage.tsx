@@ -31,7 +31,7 @@ export function CreateAssessmentPage() {
         title:        data.title,
         description:  data.description || undefined,
         duration:     data.duration,
-        subjectId:    data.subjectId   || undefined,
+        subjectExternalId: data.subjectId || undefined,
         passingMarks: data.passingMarks,
       });
       push({ kind: 'success', title: 'Assessment created', sub: `"${data.title}" is ready — add questions next.` });

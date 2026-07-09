@@ -122,7 +122,7 @@ export function PracticeQuizPage() {
     setStarting(true);
     try {
       const attempt = await practiceApi.start({
-        subjectId:     selected.id,
+        subjectExternalId: selected.id,
         difficulty:    difficulty || undefined,
         questionCount: Number(count),
       });

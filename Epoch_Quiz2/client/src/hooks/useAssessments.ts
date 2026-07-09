@@ -27,7 +27,7 @@ export function useAssessments(params: {
   page?: number;
   limit?: number;
   status?: string;
-  subjectId?: string;
+  subjectExternalId?: string;
   search?: string;
 } = {}) {
   return useAsync<AssessmentsPage>(
@@ -46,9 +46,9 @@ export interface AssessmentAssignments {
 }
 
 export const assessmentApi = {
-  create:    (data: { title: string; description?: string; duration: number; subjectId?: string; classId?: string; passingMarks?: number; assignedClassIds?: string[]; assignedStudentIds?: string[] }) =>
+  create:    (data: { title: string; description?: string; duration: number; subjectExternalId?: string; classExternalId?: string; passingMarks?: number; assignedClassIds?: string[]; assignedStudentIds?: string[] }) =>
                api.post<Assessment>('/assessments', data),
-  update:    (id: string, data: Partial<{ title: string; description: string; duration: number; subjectId: string; classId: string; passingMarks: number }>) =>
+  update:    (id: string, data: Partial<{ title: string; description: string; duration: number; subjectExternalId: string; classExternalId: string; passingMarks: number }>) =>
                api.patch<Assessment>(`/assessments/${id}`, data),
   remove:    (id: string) => api.delete(`/assessments/${id}`),
   publish:   (id: string) => api.post<Assessment>(`/assessments/${id}/publish`),

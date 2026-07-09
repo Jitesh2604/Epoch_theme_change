@@ -7,7 +7,7 @@ export const assessmentLeaderboardQuerySchema = paginationSchema.extend({
 
 export const globalLeaderboardQuerySchema = paginationSchema.extend({
   limit:     z.coerce.number().int().min(1).max(200).default(20),
-  subjectId: z.string().min(1).optional(),
+  subjectExternalId: z.string().min(1).optional(),
 });
 
 export type AssessmentLeaderboardQuery = z.infer<typeof assessmentLeaderboardQuerySchema>;

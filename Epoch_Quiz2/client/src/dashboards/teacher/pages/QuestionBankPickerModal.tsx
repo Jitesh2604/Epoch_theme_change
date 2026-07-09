@@ -129,7 +129,7 @@ export function QuestionBankPickerModal({ open, onClose, assessmentId, onAdd }: 
     search:   search  || undefined,
     type:     typeF   !== 'all' ? typeF   : undefined,
     difficulty: diffF !== 'all' ? diffF   : undefined,
-    subjectId: subjectF !== 'all' ? subjectF : undefined,
+    subjectExternalId: subjectF !== 'all' ? subjectF : undefined,
     mine:     mineOnly || undefined,
     excludeAssessmentId: assessmentId,
   });

@@ -5,6 +5,7 @@ import { ApiError } from '../utils/ApiError';
 import { hashPassword, comparePassword } from '../utils/password';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
 import { suggestStateBoard } from '../lib/educationBoards';
+import { ContentService, ContentMeta } from './content.service';
 import type { DbUser } from './auth.service';
 import type {
   AdminCreateUserInput,
@@ -220,8 +221,8 @@ export const UserService = {
     if (user.role === Role.TEACHER) {
       const teacherFields = {
         ...sharedFields,
-        ...(input.boardId !== undefined && { boardId: input.boardId }),
-        ...(input.bio     !== undefined && { bio:     input.bio }),
+        ...(input.boardExternalId !== undefined && { boardExternalId: input.boardExternalId }),
+        ...(input.bio             !== undefined && { bio:             input.bio }),
       } as Prisma.TeacherProfileUncheckedUpdateInput;
 
       const tp = await prisma.teacherProfile.upsert({
@@ -230,25 +231,25 @@ export const UserService = {
         update: teacherFields,
       });
 
-      if (input.classIds !== undefined) {
+      if (input.classExternalIds !== undefined) {
         await prisma.teacherClass.deleteMany({ where: { teacherProfileId: tp.id } });
-        if (input.classIds.length)
-          await prisma.teacherClass.createMany({ data: input.classIds.map(classId => ({ teacherProfileId: tp.id, classId })), skipDuplicates: true });
+        if (input.classExternalIds.length)
+          await prisma.teacherClass.createMany({ data: input.classExternalIds.map(classExternalId => ({ teacherProfileId: tp.id, classExternalId })), skipDuplicates: true });
       }
-      if (input.subjectIds !== undefined) {
+      if (input.subjectExternalIds !== undefined) {
         await prisma.teacherSubject.deleteMany({ where: { teacherProfileId: tp.id } });
-        if (input.subjectIds.length)
-          await prisma.teacherSubject.createMany({ data: input.subjectIds.map(subjectId => ({ teacherProfileId: tp.id, subjectId })), skipDuplicates: true });
+        if (input.subjectExternalIds.length)
+          await prisma.teacherSubject.createMany({ data: input.subjectExternalIds.map(subjectExternalId => ({ teacherProfileId: tp.id, subjectExternalId })), skipDuplicates: true });
       }
-      if (input.seriesIds !== undefined) {
+      if (input.seriesExternalIds !== undefined) {
         await prisma.teacherSeries.deleteMany({ where: { teacherProfileId: tp.id } });
-        if (input.seriesIds.length)
-          await prisma.teacherSeries.createMany({ data: input.seriesIds.map(seriesId => ({ teacherProfileId: tp.id, seriesId })), skipDuplicates: true });
+        if (input.seriesExternalIds.length)
+          await prisma.teacherSeries.createMany({ data: input.seriesExternalIds.map(seriesExternalId => ({ teacherProfileId: tp.id, seriesExternalId })), skipDuplicates: true });
       }
-      if (input.bookIds !== undefined) {
+      if (input.bookExternalIds !== undefined) {
         await prisma.teacherBook.deleteMany({ where: { teacherProfileId: tp.id } });
-        if (input.bookIds.length)
-          await prisma.teacherBook.createMany({ data: input.bookIds.map(bookId => ({ teacherProfileId: tp.id, bookId })), skipDuplicates: true });
+        if (input.bookExternalIds.length)
+          await prisma.teacherBook.createMany({ data: input.bookExternalIds.map(bookExternalId => ({ teacherProfileId: tp.id, bookExternalId })), skipDuplicates: true });
       }
     }
 
@@ -264,33 +265,33 @@ export const UserService = {
         const teacher = await prisma.teacherProfile.findUnique({
           where: { teacherCode: code },
           select: {
-            id: true, boardId: true,
-            classes: { take: 1, select: { classId: true } },
-            teacherSeries: { take: 1, select: { seriesId: true } },
-            books: { select: { bookId: true } },
+            id: true, boardExternalId: true,
+            classes: { take: 1, select: { classExternalId: true } },
+            teacherSeries: { take: 1, select: { seriesExternalId: true } },
+            books: { select: { bookExternalId: true } },
           },
         });
         if (!teacher) throw ApiError.badRequest('Invalid teacher code. Please check the code with your teacher.');
 
         normalizedCode    = code;
-        inheritedBoardId  = teacher.boardId ?? null;
-        inheritedClassId  = teacher.classes[0]?.classId ?? null;
-        inheritedSeriesId = teacher.teacherSeries[0]?.seriesId ?? null;
-        inheritedBookIds  = teacher.books.map(b => b.bookId);
+        inheritedBoardId  = teacher.boardExternalId ?? null;
+        inheritedClassId  = teacher.classes[0]?.classExternalId ?? null;
+        inheritedSeriesId = teacher.teacherSeries[0]?.seriesExternalId ?? null;
+        inheritedBookIds  = teacher.books.map(b => b.bookExternalId);
       }
 
       const studentFields = {
         ...sharedFields,
         ...(normalizedCode    !== undefined && { teacherCode: normalizedCode }),
         ...(inheritedBoardId  !== undefined
-          ? { boardId:  inheritedBoardId }
-          : input.boardId  !== undefined && { boardId:  input.boardId  }),
-        ...(input.classId !== undefined
-          ? { classId:  input.classId }
-          : inheritedClassId !== undefined && { classId: inheritedClassId }),
+          ? { boardExternalId:  inheritedBoardId }
+          : input.boardExternalId  !== undefined && { boardExternalId:  input.boardExternalId  }),
+        ...(input.classExternalId !== undefined
+          ? { classExternalId:  input.classExternalId }
+          : inheritedClassId !== undefined && { classExternalId: inheritedClassId }),
         ...(inheritedSeriesId !== undefined
-          ? { seriesId: inheritedSeriesId }
-          : input.seriesId !== undefined && { seriesId: input.seriesId }),
+          ? { seriesExternalId: inheritedSeriesId }
+          : input.seriesExternalId !== undefined && { seriesExternalId: input.seriesExternalId }),
       } as Prisma.StudentProfileUncheckedUpdateInput;
 
       const sp = await prisma.studentProfile.upsert({
@@ -299,24 +300,27 @@ export const UserService = {
         update: studentFields,
       });
 
-      const bookIds = inheritedBookIds !== undefined ? inheritedBookIds : input.bookIds;
+      const bookIds = inheritedBookIds !== undefined ? inheritedBookIds : input.bookExternalIds;
       if (bookIds !== undefined) {
         await prisma.studentBook.deleteMany({ where: { studentProfileId: sp.id } });
         if (bookIds.length)
-          await prisma.studentBook.createMany({ data: bookIds.map(bookId => ({ studentProfileId: sp.id, bookId })), skipDuplicates: true });
+          await prisma.studentBook.createMany({ data: bookIds.map(bookExternalId => ({ studentProfileId: sp.id, bookExternalId })), skipDuplicates: true });
       }
 
-      // Student ↔ Subjects (many-to-many). Only real subjects (kind = SUBJECT)
-      // can be selected — the Olympiad "modes" are never studied subjects.
-      if (input.subjectIds !== undefined) {
+      // Student ↔ Subjects (many-to-many), stored as Content API external ids.
+      // Only real subjects can be selected — Olympiad "modes" are app-owned and
+      // are never studied subjects. When the API is configured we keep only the
+      // external ids that resolve to a real live subject.
+      if (input.subjectExternalIds !== undefined) {
         await prisma.studentSubject.deleteMany({ where: { studentProfileId: sp.id } });
-        if (input.subjectIds.length) {
-          const real = await prisma.subject.findMany({
-            where: { id: { in: input.subjectIds }, kind: 'SUBJECT' },
-            select: { id: true },
-          });
-          if (real.length)
-            await prisma.studentSubject.createMany({ data: real.map(r => ({ studentProfileId: sp.id, subjectId: r.id })), skipDuplicates: true });
+        if (input.subjectExternalIds.length) {
+          let valid = input.subjectExternalIds;
+          if (ContentService.isConfigured()) {
+            const subjectMap = await ContentMeta.subjects();
+            valid = input.subjectExternalIds.filter(id => subjectMap.has(String(id)));
+          }
+          if (valid.length)
+            await prisma.studentSubject.createMany({ data: valid.map(subjectExternalId => ({ studentProfileId: sp.id, subjectExternalId })), skipDuplicates: true });
         }
       }
     }

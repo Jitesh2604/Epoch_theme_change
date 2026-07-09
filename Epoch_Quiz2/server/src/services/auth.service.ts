@@ -12,7 +12,12 @@ import {
 } from '../utils/jwt';
 import { env, isDev } from '../config';
 import { EmailService } from './email.service';
+import { ContentMeta } from './content.service';
 import type { RegisterInput, LoginInput } from '../validators/auth.validator';
+
+function slugifySubject(name: string): string {
+  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'subject';
+}
 
 export interface DbUser {
   id:              string;
@@ -216,11 +221,15 @@ export const AuthService = {
 
     let studentWithSubjects: Record<string, unknown> | null = studentProfile as Record<string, unknown> | null;
     if (studentProfile) {
-      const subjects = await prisma.subject.findMany({
-        where:   { studentSubjects: { some: { studentProfileId: studentProfile.id } } },
-        select:  { id: true, name: true, slug: true },
-        orderBy: { name: 'asc' },
-      });
+      // Subjects are stored as Content API external ids; resolve display names
+      // from the live (cached) catalog. Unknown ids fall back to the id itself.
+      const [links, subjectNames] = await Promise.all([
+        prisma.studentSubject.findMany({ where: { studentProfileId: studentProfile.id }, select: { subjectExternalId: true } }),
+        ContentMeta.subjects(),
+      ]);
+      const subjects = links
+        .map(l => ({ id: l.subjectExternalId, name: subjectNames.get(l.subjectExternalId) ?? l.subjectExternalId, slug: slugifySubject(subjectNames.get(l.subjectExternalId) ?? l.subjectExternalId) }))
+        .sort((a, b) => a.name.localeCompare(b.name));
       studentWithSubjects = { ...studentProfile, subjects };
     }
 

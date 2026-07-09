@@ -2,9 +2,9 @@ import { z } from 'zod';
 import { Difficulty } from '../lib/enums';
 
 export const startPracticeSchema = z.object({
-  subjectId:     z.string().min(1, 'Subject is required'),
+  subjectExternalId:     z.string().min(1, 'Subject is required'),
   difficulty:    z.nativeEnum(Difficulty).optional(),
-  chapterId:     z.string().min(1).optional(),
+  chapterExternalId:     z.string().min(1).optional(),
   questionCount: z.number().int().min(5).max(30).default(10),
 });
 

@@ -122,8 +122,9 @@ required one is missing or invalid** — so a misconfigured deploy fails fast.
 | `LOG_LEVEL` | `info` | |
 | `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASS` `EMAIL_FROM` | — | set all SMTP_* to send real password-reset emails; otherwise the reset token is returned in the API response (dev convenience) |
 | `CONTACT_TO` | `mayank@epochstudio.net` | recipient of the contact form |
-| `CONTENT_API_KEY` | — | blank = content-sync disabled |
-| `CONTENT_SYNC_ENABLED` | `true` | daily job; set `false` if no `CONTENT_API_KEY` |
+| `CONTENT_API_KEY` | — | Content API key for live catalog (boards/classes/subjects/series/books/chapters). Blank = catalog endpoints return empty; server still boots. Catalog is fetched live and **never mirrored into MySQL**. |
+| `CONTENT_BASE_URL` | `https://content.epochgpt.in` | Content API base URL |
+| `CONTENT_CACHE_TTL_MS` | `300000` | Short-lived in-memory cache for Content API responses (never a DB mirror) |
 
 Full annotated reference: `server/.env.example`.
 

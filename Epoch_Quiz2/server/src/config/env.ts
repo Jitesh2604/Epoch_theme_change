@@ -37,20 +37,20 @@ const envSchema = z.object({
   // Recipient of the "Contact us" form. Override in .env if the address changes.
   CONTACT_TO:    z.string().default('mayank@epochstudio.net'),
 
-  // ── Epoch Content SDK (content synchronisation) ─────────────
-  // CONTENT_API_KEY enables the sync; when absent the sync is skipped (server
-  // still boots normally). Never hardcode the key — set it in .env.
+  // ── Epoch Content API (catalog: boards/classes/subjects/series/books/chapters) ──
+  // The Content API is the single source of truth for catalog metadata. The
+  // backend fetches it live (with a short TTL cache) and NEVER mirrors it into
+  // MySQL. CONTENT_API_KEY enables live catalog; when absent, catalog endpoints
+  // return empty results but the server still boots. Never hardcode the key.
   CONTENT_API_KEY:            z.string().optional(),
   CONTENT_BASE_URL:           z.string().default('https://content.epochgpt.in'),
   // Optional DNS pin: connect to this IP while keeping TLS SNI + Host = the
   // baseUrl host. Use only when the host can't be resolved locally.
   CONTENT_RESOLVE_IP:         z.string().optional(),
   CONTENT_HTTP_TIMEOUT_MS:    z.coerce.number().int().positive().default(20_000),
-  CONTENT_SYNC_MAX_RETRIES:   z.coerce.number().int().min(0).max(10).default(3),
-  CONTENT_SYNC_PAGE_SIZE:     z.coerce.number().int().min(1).max(500).default(100),
-  CONTENT_SYNC_ENABLED:       z.string().default('true'),   // 'false' to disable the daily job
-  CONTENT_SYNC_HOUR:          z.coerce.number().int().min(0).max(23).default(2),
-  CONTENT_SYNC_MINUTE:        z.coerce.number().int().min(0).max(59).default(0),
+  CONTENT_MAX_RETRIES:        z.coerce.number().int().min(0).max(10).default(3),
+  // Short-lived in-memory cache for Content API responses (ms). Never a mirror.
+  CONTENT_CACHE_TTL_MS:       z.coerce.number().int().min(0).default(300_000),
 });
 
 const parsed = envSchema.safeParse(process.env);

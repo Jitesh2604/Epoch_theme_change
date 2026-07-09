@@ -6,6 +6,7 @@ import { authorize } from '../middlewares/authorize';
 import { ADMIN_ROLES } from '../utils/roles';
 import { prisma } from '../lib/prisma';
 import { Role, SubmissionStatus } from '../lib/enums';
+import { ContentMeta } from '../services/content.service';
 
 const router = new Router();
 
@@ -33,7 +34,6 @@ router.get(
       prisma.assessment.findMany({
         orderBy: { createdAt: 'desc' }, take: 6,
         include: {
-          subject: { select: { id: true, name: true } },
           createdBy: { select: { id: true, name: true } },
           _count: { select: { questions: true, submissions: true } },
         },
@@ -42,11 +42,16 @@ router.get(
         where: { status: COUNTABLE }, orderBy: { submittedAt: 'desc' }, take: 8,
         include: {
           student: { select: { id: true, name: true, avatarHue: true } },
-          assessment: { select: { id: true, title: true, subject: { select: { name: true } } } },
+          assessment: { select: { id: true, title: true, subjectExternalId: true } },
         },
       }),
       prisma.submission.aggregate({ where: { status: COUNTABLE }, _sum: { score: true, totalMarks: true } }),
     ]);
+
+    // Resolve subject external ids to display names from the cached Content API.
+    const subjectNames = await ContentMeta.subjects();
+    const subjectOf = (extId: string | null) =>
+      extId ? { id: extId, name: subjectNames.get(extId) ?? extId } : null;
 
     const totalScore    = aggRow._sum.score ?? 0;
     const totalPossible = aggRow._sum.totalMarks ?? 0;
@@ -60,7 +65,7 @@ router.get(
       recentAssessments: recentAssessments.map((a) => ({
         id:            a.id,
         title:         a.title,
-        subject:       a.subject ? { id: a.subject.id, name: a.subject.name } : null,
+        subject:       subjectOf(a.subjectExternalId),
         status:        a.status,
         createdBy:     { id: a.createdBy.id, name: a.createdBy.name },
         questionCount: a._count.questions,
@@ -73,7 +78,7 @@ router.get(
         assessment: {
           id:      s.assessment.id,
           title:   s.assessment.title,
-          subject: s.assessment.subject ? { name: s.assessment.subject.name } : null,
+          subject: subjectOf(s.assessment.subjectExternalId),
         },
         score:       s.score,
         totalMarks:  s.totalMarks,

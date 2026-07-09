@@ -80,8 +80,8 @@ export function QuestionManagementPage() {
         prompt:         draft.prompt,
         marks:          draft.marks,
         difficulty:     draft.difficulty,
-        subjectId:      draft.subjectId,
-        classId:        draft.classId,
+        subjectExternalId: draft.subjectId,
+        classExternalId:   draft.classId,
         educationBoard: draft.educationBoard,
       };
 

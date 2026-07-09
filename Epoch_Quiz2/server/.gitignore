@@ -14,3 +14,6 @@ prisma/migrations/dev.db*
 # Upload temp
 uploads
 tmp
+
+# DB backups
+prisma/backups/

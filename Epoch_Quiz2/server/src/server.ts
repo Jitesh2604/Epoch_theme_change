@@ -2,7 +2,6 @@ import { createApp } from './app';
 import { env } from './config';
 import { logger } from './utils/logger';
 import { connectDatabase, disconnectDatabase } from './lib/prisma';
-import { startContentScheduler, stopContentScheduler } from './lib/scheduler';
 
 async function bootstrap(): Promise<void> {
   const app = createApp();
@@ -20,13 +19,10 @@ async function bootstrap(): Promise<void> {
   const server = app.listen(env.PORT, () => {
     logger.info(`Server running at http://localhost:${env.PORT}${env.API_PREFIX}`);
     logger.info(`Environment: ${env.NODE_ENV}`);
-    // Arm the daily content synchronisation (no-op if unconfigured/disabled).
-    startContentScheduler();
   });
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info(`${signal} received, shutting down gracefully…`);
-    stopContentScheduler();
     server.close(async () => {
       await disconnectDatabase();
       process.exit(0);

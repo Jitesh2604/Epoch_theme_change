@@ -33,14 +33,14 @@ export interface ProfileUpdateData {
   educationBoard?: string | null;
   stateBoard?: string | null;
   // FK fields (single select)
-  boardId?: string | null;
-  classId?: string | null;       // student: single
-  seriesId?: string | null;      // student: single
+  boardExternalId?: string | null;
+  classExternalId?: string | null;       // student: single
+  seriesExternalId?: string | null;      // student: single
   // Many-to-many (arrays of IDs)
-  classIds?: string[];           // teacher: multiple
-  subjectIds?: string[];         // teacher: multiple
-  seriesIds?: string[];          // teacher: multiple
-  bookIds?: string[];            // both: multiple
+  classExternalIds?: string[];           // teacher: multiple
+  subjectExternalIds?: string[];         // teacher: multiple
+  seriesExternalIds?: string[];          // teacher: multiple
+  bookExternalIds?: string[];            // both: multiple
   // Role-specific text fields
   bio?: string | null;           // Teacher only
   teacherCode?: string | null;   // Student only

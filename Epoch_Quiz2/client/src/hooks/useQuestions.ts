@@ -18,9 +18,9 @@ export interface Question {
   difficulty: 'EASY' | 'MEDIUM' | 'HARD';
   tags: string[];
   subject: { id: string; name: string; slug: string } | null;
-  classId: string | null;
-  chapterId: string | null;
-  bookId: string | null;
+  classExternalId: string | null;
+  chapterExternalId: string | null;
+  bookExternalId: string | null;
   createdBy: { id: string; name: string; email: string };
   createdAt: string;
   updatedAt: string;
@@ -36,7 +36,7 @@ export function useQuestions(params: {
   limit?: number;
   type?: string;
   difficulty?: string;
-  subjectId?: string;
+  subjectExternalId?: string;
   search?: string;
   mine?: boolean;
   tag?: string;
@@ -75,7 +75,7 @@ export const questionApi = {
     marks?: number;
     difficulty?: string;
     tags?: string[];
-    subjectId?: string | null;
+    subjectExternalId?: string | null;
     classId?: string | null;
     chapterId?: string | null;
     bookId?: string | null;
@@ -84,8 +84,8 @@ export const questionApi = {
   update: (id: string, data: Partial<{
     prompt: string; options: string[]; correctOption: number;
     correctBoolean: boolean; modelAnswer: string;
-    marks: number; difficulty: string; tags: string[]; subjectId: string | null;
-    classId: string | null; chapterId: string | null; bookId: string | null;
+    marks: number; difficulty: string; tags: string[]; subjectExternalId: string | null;
+    classExternalId: string | null; chapterExternalId: string | null; bookExternalId: string | null;
   }>) => api.patch<Question>(`/questions/${id}`, data),
 
   remove: (id: string) => api.delete(`/questions/${id}`),

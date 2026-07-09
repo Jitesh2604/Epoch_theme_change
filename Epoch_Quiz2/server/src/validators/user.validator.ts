@@ -47,14 +47,14 @@ export const updateProfileSchema = z.object({
   educationBoard: z.enum(EDUCATION_BOARD_CODES).optional().nullable(),
   stateBoard:     z.string().trim().max(120).optional().nullable(),
   // FK fields (single select)
-  boardId:   z.string().min(1).optional().nullable(),
-  classId:   z.string().min(1).optional().nullable(),   // student: single
-  seriesId:  z.string().min(1).optional().nullable(),   // student: single
+  boardExternalId:   z.string().min(1).optional().nullable(),
+  classExternalId:   z.string().min(1).optional().nullable(),   // student: single
+  seriesExternalId:  z.string().min(1).optional().nullable(),   // student: single
   // Many-to-many (arrays of IDs)
-  classIds:   z.array(z.string().min(1)).optional(),   // teacher: multiple
-  subjectIds: z.array(z.string().min(1)).optional(),   // teacher: multiple
-  seriesIds:  z.array(z.string().min(1)).optional(),   // teacher: multiple
-  bookIds:    z.array(z.string().min(1)).optional(),   // both: multiple
+  classExternalIds:   z.array(z.string().min(1)).optional(),   // teacher: multiple
+  subjectExternalIds: z.array(z.string().min(1)).optional(),   // teacher: multiple
+  seriesExternalIds:  z.array(z.string().min(1)).optional(),   // teacher: multiple
+  bookExternalIds:    z.array(z.string().min(1)).optional(),   // both: multiple
   // Role-specific text fields
   bio:         z.string().trim().max(1000).optional().nullable(),
   teacherCode: z.string().trim().min(1).max(40).optional().nullable(),
