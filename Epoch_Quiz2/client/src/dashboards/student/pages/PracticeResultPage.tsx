@@ -200,7 +200,7 @@ export function PracticeResultPage() {
       </Card>
 
       {/* ── Stat row ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         {[
           { icon: CheckCircle2, value: result.correctAnswers, label: 'Correct',  color: 'text-emerald-400' },
           { icon: XCircle,      value: result.wrongAnswers,   label: 'Wrong',    color: 'text-rose-400'    },

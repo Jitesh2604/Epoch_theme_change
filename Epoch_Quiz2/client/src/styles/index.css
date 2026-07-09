@@ -23,6 +23,10 @@ body { min-height: 100vh; background: var(--bg); color: var(--fg-1); }
 button { cursor: pointer; font-family: inherit; }
 input, select { font-family: inherit; }
 
+/* Utility: horizontally-scrollable strip (tabs, chips) without a visible bar. */
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 /* Native <select> option colors */
 select option {
   background-color: #FFFFFF;
@@ -78,8 +82,10 @@ select option {
 .brand-mark { width: 32px; height: 32px; }
 .brand-name {
   font-family: var(--font-display); font-weight: 600; font-size: 17px;
-  letter-spacing: -0.01em; color: var(--fg-1);
+  letter-spacing: -0.01em; color: var(--fg-1); white-space: nowrap;
 }
+.brand-link { flex-shrink: 0; }
+.nav-auth .btn { white-space: nowrap; }
 .brand-name em { font-style: italic; color: var(--brand); font-weight: 700; }
 .brand-sub {
   font-family: var(--font-body); font-size: 9.5px; color: var(--fg-4);
@@ -99,7 +105,9 @@ select option {
 }
 .nav-lang:hover { color: var(--fg-1); border-color: var(--border-2); }
 
-.nav-links { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+/* Centered between the two flex:1 sides (brand / auth) so it reserves its own
+   space and can never overlap the auth cluster. */
+.nav-links { display: flex; align-items: center; gap: 4px; flex: 0 1 auto; justify-content: center; }
 
 .nav-link {
   background: transparent; border: none;
@@ -165,21 +173,47 @@ select option {
 .dropdown-item.danger { color: var(--danger); }
 
 .menu-btn { display: none; }
-@media (max-width: 880px) {
+
+/* Below lg (1024px) the full navbar folds into a hamburger + side drawer.
+   Desktop (>=1024px) keeps the full navbar. This spans the whole tablet range
+   (768–1023px) so items never crowd or overlap. */
+@media (max-width: 1023.98px) {
   .nav-links { display: none; }
-  .menu-btn { display: grid; margin-left: auto; }
-  .nav-lang { display: none; }
+  /* !important beats the inline `display:flex` on the auth cluster. */
+  .nav-auth  { display: none !important; }
+  .nav-lang  { display: none; }
+  .menu-btn  { display: grid; margin-left: auto; }
 }
 
-.nav-mobile {
-  position: fixed;
-  top: var(--nav-h); left: 0; right: 0;
+/* ===== Mobile / tablet nav drawer ===== */
+.nav-drawer-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(20, 16, 8, 0.45);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+  animation: navFade var(--dur-base) var(--ease);
+}
+.nav-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 61;
+  width: min(320px, 86vw);
   background: var(--surface-1);
-  border-bottom: 1px solid var(--border-1);
+  border-left: 1px solid var(--border-1);
   box-shadow: var(--shadow-elev-2);
-  padding: 8px var(--pad-x);
-  z-index: 49;
-  display: flex; flex-direction: column;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 14px;
+  overflow-y: auto;
+  animation: navSlideIn var(--dur-base) var(--ease);
+}
+.nav-drawer-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 2px 4px 12px; margin-bottom: 6px;
+  border-bottom: 1px solid var(--border-1);
+}
+.nav-drawer .nav-link { width: 100%; padding: 11px 12px; font-size: 14.5px; }
+@keyframes navFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes navSlideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+/* Never show the drawer on desktop, even if state lingers. */
+@media (min-width: 1024px) {
+  .nav-drawer, .nav-drawer-backdrop { display: none !important; }
 }
 
 /* ===== Main ===== */
@@ -771,7 +805,12 @@ main { flex: 1; position: relative; z-index: 1; }
 .lb-score { font-family: var(--font-mono); font-size: 13px; color: var(--fg-2); font-weight: 600; }
 
 /* ===== Instructions ===== */
-.instr-list { display: flex; flex-direction: column; gap: 12px; }
+.instr-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+@media (max-width: 880px) { .instr-cols { grid-template-columns: 1fr; } }
+.instr-list { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.instr { min-width: 0; }
+.instr > div:last-child { min-width: 0; }
+.instr h4, .instr p { overflow-wrap: anywhere; }
 .instr {
   display: flex; gap: 16px; padding: 20px 24px;
   background: var(--surface-1);

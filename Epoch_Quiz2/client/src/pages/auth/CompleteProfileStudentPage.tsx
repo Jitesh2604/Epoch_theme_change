@@ -252,7 +252,7 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
               label="Country" value={country} onChange={setCountry}
               options={countryOptions} icon="globe" placeholder="— Select country —" error={errors.country}
             />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
               <ProfileField label="State" value={state} onChange={setState}
                 placeholder="Maharashtra" icon="mapPin" error={errors.state} />
               <ProfileField label="City" value={city} onChange={setCity}

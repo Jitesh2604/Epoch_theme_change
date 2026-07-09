@@ -107,12 +107,12 @@ export function ReportsPage() {
       />
 
       {/* ── Tab bar ─────────────────────────────────────────────── */}
-      <div className="flex gap-1 mb-6 p-1 bg-surface1/50 rounded-xl w-fit border border-line">
+      <div className="flex gap-1 mb-6 p-1 bg-surface1/50 rounded-xl w-fit max-w-full overflow-x-auto border border-line no-scrollbar">
         {tabs.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition ${
+            className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition shrink-0 whitespace-nowrap ${
               tab === t.key ? 'bg-brand text-brand-ink shadow-elev1' : 'text-fg2 hover:text-fg1'
             }`}
           >

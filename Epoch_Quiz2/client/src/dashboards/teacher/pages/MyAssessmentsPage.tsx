@@ -170,9 +170,9 @@ export function MyAssessmentsPage() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-2 mt-auto">
+              <div className="flex flex-wrap gap-2 mt-auto">
                 <Button
-                  variant="outline" size="sm" icon={Eye} className="flex-1"
+                  variant="outline" size="sm" icon={Eye} className="flex-1 min-w-[7rem]"
                   onClick={() => navigate(`/teacher/assessments/${a.id}/questions`)}
                 >
                   Questions

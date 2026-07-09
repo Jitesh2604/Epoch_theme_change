@@ -85,10 +85,10 @@ export function SettingsPage() {
         </div>}
       />
       {error && <Card className='p-4 mb-4'><p className='text-danger text-[13px]'>{error}</p></Card>}
-      <div className='flex gap-1 mb-6 p-1 bg-surface1/50 rounded-xl w-fit border border-line'>
+      <div className='flex gap-1 mb-6 p-1 bg-surface1/50 rounded-xl w-fit max-w-full overflow-x-auto border border-line no-scrollbar'>
         {TABS_CFG.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition ${tab === t.key ? 'bg-brand text-brand-ink shadow-elev1' : 'text-fg2 hover:text-fg1'}`}>
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition shrink-0 whitespace-nowrap ${tab === t.key ? 'bg-brand text-brand-ink shadow-elev1' : 'text-fg2 hover:text-fg1'}`}>
             <t.icon size={14} />{t.label}
           </button>
         ))}

@@ -18,7 +18,7 @@ export const InstructionPage: React.FC<InstructionPageProps> = ({ navigate }) =>
         title={t('instr.title')}
         body={t('instr.body')}
       />
-      <section className="container" style={{ paddingBottom: 80, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+      <section className="container instr-cols" style={{ paddingBottom: 80 }}>
         <div>
           <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, marginBottom: 16 }}>{t('instr.howToPlay')}</h3>
           <div className="instr-list">

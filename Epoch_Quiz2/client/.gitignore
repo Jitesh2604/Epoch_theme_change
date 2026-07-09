@@ -23,3 +23,6 @@ dist/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Responsive audit output (screenshots + report)
+e2e/audit-out/

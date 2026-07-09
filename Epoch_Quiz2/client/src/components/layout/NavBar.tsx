@@ -56,6 +56,24 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
   const stop = useCallback((e: React.MouseEvent) => e.stopPropagation(), []);
   const top  = route.split('/')[0] || 'home';
 
+  // Lock body scroll while the drawer is open; close it once the viewport grows
+  // back to desktop so state never gets stuck.
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [mobileOpen]);
+  useEffect(() => {
+    const onResize = () => { if (window.innerWidth >= 1024) setMobileOpen(false); };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMobileOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [mobileOpen]);
+
   const handleLogout = async () => {
     setProfileOpen(false);
     setMobileOpen(false);
@@ -65,6 +83,7 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
   };
 
   return (
+    <>
     <header className="nav">
       <div className="nav-inner" style={{ display: 'flex', alignItems: 'center' }}>
 
@@ -79,8 +98,9 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
           </a>
         </div>
 
-        {/* CENTER — nav links */}
-        <nav className="nav-links" style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>
+        {/* CENTER — nav links (flex-centered between the two flex:1 sides so it
+            can never overlap the auth cluster; hidden below lg via .nav-links) */}
+        <nav className="nav-links">
           <NavLink to="home"        current={top} navigate={navigate}>{t('nav.home')}</NavLink>
           <NavLink to="play"        current={top} navigate={navigate}>{t('nav.quizPlay')}</NavLink>
           <NavLink to="instruction" current={top} navigate={navigate}>{t('nav.instructions')}</NavLink>
@@ -88,8 +108,8 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
           <NavLink to="contact"     current={top} navigate={navigate}>{t('nav.contactUs')}</NavLink>
         </nav>
 
-        {/* RIGHT — auth buttons */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+        {/* RIGHT — auth buttons (desktop only; folded into the drawer below lg) */}
+        <div className="nav-auth" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
           {user ? (
             <>
               <a
@@ -123,9 +143,21 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
           <Icon name={mobileOpen ? 'x' : 'menu'} size={18} />
         </button>
       </div>
+    </header>
 
+      {/* Drawer rendered OUTSIDE <header.nav>: that element has backdrop-filter,
+          which would otherwise make it the containing block for these
+          position:fixed nodes and clip the drawer to the 64px bar height. */}
       {mobileOpen && (
-        <div className="nav-mobile">
+        <>
+          <div className="nav-drawer-backdrop" onClick={() => setMobileOpen(false)} />
+          <aside className="nav-drawer" role="dialog" aria-modal="true" aria-label="Menu">
+            <div className="nav-drawer-head">
+              <span className="brand-name" style={{ fontSize: 15 }}>Olympaid <em>Quiz</em></span>
+              <button className="nav-iconbtn" onClick={() => setMobileOpen(false)} title="Close menu">
+                <Icon name="x" size={18} />
+              </button>
+            </div>
           {([
             ['home',        t('nav.home')],
             ['play',        t('nav.quizPlay')],
@@ -133,12 +165,12 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
             ['about',       t('nav.aboutUs')],
             ['contact',     t('nav.contactUs')],
           ] as [string, string][]).map(([k, n]) => (
-            <button key={k} className="nav-link" style={{ textAlign: 'left' }} onClick={() => { navigate(k); setMobileOpen(false); }}>
+            <button key={k} className={`nav-link ${top === k ? 'active' : ''}`} style={{ textAlign: 'left' }} onClick={() => { navigate(k); setMobileOpen(false); }}>
               {n}
             </button>
           ))}
 
-          <div style={{ borderTop: '1px solid var(--border-1)', marginTop: 4, paddingTop: 8 }}>
+          <div style={{ borderTop: '1px solid var(--border-1)', marginTop: 8, paddingTop: 8 }}>
             {user ? (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px' }}>
@@ -180,9 +212,10 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
               </div>
             )}
           </div>
-        </div>
+          </aside>
+        </>
       )}
-    </header>
+    </>
   );
 };
 

@@ -150,7 +150,7 @@ export function PracticeQuizPage() {
       />
 
       {/* Stats strip */}
-      <div className="grid grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
         {[
           { icon: Target,   label: 'Practice makes perfect', sub: 'No pressure, just learning' },
           { icon: BarChart2, label: 'Track your progress',    sub: 'See correct / wrong per quiz' },

@@ -38,7 +38,7 @@ export function DashboardLayout({ role, brand, brandSub, user, navItems, footerI
       />
 
       <div
-        className="flex-1 flex flex-col min-w-0 transition-[margin] duration-300 ease-out"
+        className="dash-main flex-1 flex flex-col min-w-0 transition-[margin] duration-300 ease-out"
         style={{ marginLeft: collapsed ? 68 : 256 }}
       >
         <Topbar user={user} onMenuClick={() => setMobileOpen(true)} />
@@ -58,8 +58,11 @@ export function DashboardLayout({ role, brand, brandSub, user, navItems, footerI
       </div>
 
       <style>{`
-        @media (max-width: 1024px) {
-          .flex-1[style*="margin-left"] { margin-left: 0 !important; }
+        /* Below lg (Tailwind lg = 1024px, where the fixed sidebar appears) the
+           sidebar is a drawer, so the content must not reserve its margin. Use
+           1023.98px so it never overlaps the sidebar at exactly 1024px. */
+        @media (max-width: 1023.98px) {
+          .dash-main { margin-left: 0 !important; }
         }
       `}</style>
     </div>
