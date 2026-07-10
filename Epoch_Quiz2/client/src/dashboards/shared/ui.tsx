@@ -205,20 +205,22 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: {
             className="fixed inset-0 z-50 bg-[rgba(44,30,8,0.35)] backdrop-blur-sm"
             onClick={onClose}
           />
-          <motion.div
-            initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }}
-            transition={{ duration: 0.18 }}
-            className={`fixed inset-x-4 top-[10vh] md:left-1/2 md:-translate-x-1/2 md:right-auto z-50 w-auto md:w-full ${widths[size]} bg-surface1 border border-line2 rounded-2xl shadow-elev2 overflow-hidden`}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-line bg-surface1">
-              <h3 className="font-display font-semibold text-[16px] text-fg1">{title}</h3>
-              <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg text-fg3 hover:text-fg1 hover:bg-surface2 transition">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="p-5 max-h-[70vh] overflow-y-auto bg-surface1">{children}</div>
-            {footer && <div className="px-5 py-3.5 border-t border-line flex justify-end gap-2 bg-surface2">{footer}</div>}
-          </motion.div>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+            <motion.div
+              initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              transition={{ duration: 0.18 }}
+              className={`pointer-events-auto w-full ${widths[size]} max-h-[90vh] flex flex-col bg-surface1 border border-line2 rounded-2xl shadow-elev2 overflow-hidden`}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-line bg-surface1 shrink-0">
+                <h3 className="font-display font-semibold text-[16px] text-fg1">{title}</h3>
+                <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg text-fg3 hover:text-fg1 hover:bg-surface2 transition">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="p-5 overflow-y-auto bg-surface1 min-h-0">{children}</div>
+              {footer && <div className="px-5 py-3.5 border-t border-line flex justify-end gap-2 bg-surface2 shrink-0">{footer}</div>}
+            </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>

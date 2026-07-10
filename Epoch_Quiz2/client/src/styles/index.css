@@ -17,8 +17,13 @@
 }
 
 /* ===== Base ===== */
-html, body { overflow-x: hidden; }
-body { min-height: 100vh; background: var(--bg); color: var(--fg-1); }
+/* overflow-x: hidden on BOTH html and body forces both to compute
+   overflow-y: auto (CSS overflow spec), creating two independent nested
+   scroll containers instead of one viewport scroll. That breaks every
+   `position: sticky` element in the app (NavBar, dashboard Topbar) — the
+   browser sticks them to the wrong scrolling ancestor. Keep the horizontal
+   clip on body only so there's a single scroll container again. */
+body { overflow-x: hidden; min-height: 100vh; background: var(--bg); color: var(--fg-1); }
 #root { min-height: 100vh; display: flex; flex-direction: column; }
 button { cursor: pointer; font-family: inherit; }
 input, select { font-family: inherit; }

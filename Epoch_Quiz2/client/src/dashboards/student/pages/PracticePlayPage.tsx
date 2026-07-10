@@ -4,7 +4,7 @@ import {
   CheckCircle2, XCircle, ChevronRight, BookOpen, Clock, X, SkipForward,
   CornerDownRight,
 } from 'lucide-react';
-import { Card, Button, Badge, ProgressBar } from '../../shared/ui';
+import { Card, Button, Badge, ProgressBar, useToasts } from '../../shared/ui';
 import {
   practiceApi,
   type PracticeAttemptData,
@@ -115,6 +115,7 @@ export function PracticePlayPage() {
   const navigate      = useNavigate();
   const { elapsed, formatted: timer } = useElapsedSec();
   const elapsedRef    = useRef(elapsed);
+  const { push, node: toastNode } = useToasts();
 
   const [attempt,    setAttempt]    = useState<PracticeAttemptData | null>(location.state?.attempt ?? null);
   const [loadErr,    setLoadErr]    = useState('');
@@ -132,11 +133,14 @@ export function PracticePlayPage() {
 
   // Load attempt from API if not in router state (e.g. page refresh)
   useEffect(() => {
-    if (!attempt && attemptId) {
-      practiceApi.getAttempt(attemptId).then(data => {
-        setAttempt(data as PracticeAttemptData);
-      }).catch(() => setLoadErr('Could not load this quiz. It may have already been submitted.'));
+    if (attempt) return;
+    if (!attemptId) {
+      setLoadErr('No practice attempt found. Please start a new practice quiz.');
+      return;
     }
+    practiceApi.getAttempt(attemptId).then(data => {
+      setAttempt(data as PracticeAttemptData);
+    }).catch(() => setLoadErr('Could not load this quiz. It may have already been submitted.'));
   }, [attemptId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const questions: PracticeQuestion[] = attempt?.questions ?? [];
@@ -192,13 +196,13 @@ export function PracticePlayPage() {
         },
       }));
       setSubmitted(prev => ({ ...prev, [q.id]: true }));
-    } catch {
-      // Non-fatal: move on silently
+    } catch (e: any) {
+      push({ kind: 'danger', title: 'Could not save answer', sub: e?.message ?? 'Please check your connection and try again.' });
     } finally {
       setSaving(false);
       setTextInput('');
     }
-  }, [q, attemptId, answers, submitted]);
+  }, [q, attemptId, answers, submitted, push]);
 
   // ── Advance to next / finish ────────────────────────────────────
 
@@ -217,8 +221,9 @@ export function PracticePlayPage() {
     try {
       const result = await practiceApi.submit(attemptId, elapsed);
       navigate(`/student/practice/result/${attemptId}`, { state: { result } });
-    } catch {
+    } catch (e: any) {
       setFinishing(false);
+      push({ kind: 'danger', title: 'Could not finish quiz', sub: e?.message ?? 'Please check your connection and try again.' });
     }
   };
 
@@ -268,6 +273,7 @@ export function PracticePlayPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
+      {toastNode}
       {/* ── Top bar ─────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-5">
         <div className="flex items-center gap-2 flex-1 min-w-0">

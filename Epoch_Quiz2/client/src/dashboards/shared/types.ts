@@ -70,15 +70,6 @@ export interface ResultRow {
   status: 'passed' | 'failed';
 }
 
-export interface NotificationItem {
-  id: string;
-  title: string;
-  message: string;
-  type: 'info' | 'success' | 'warning' | 'alert';
-  time: string;
-  read: boolean;
-}
-
 export interface SidebarItem {
   to: string;
   label: string;

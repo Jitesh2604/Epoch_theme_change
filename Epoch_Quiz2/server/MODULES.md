@@ -752,7 +752,7 @@ Update every `Role.ADMIN` reference in controllers/validators to `Role.SUPER_ADM
 `quizzes`, `quiz_questions`, `quiz_chapters`, `quiz_assigned_classes`, `quiz_assigned_students`,
 `quiz_attempts`, `attempt_answers`, `leaderboard`,
 `assessment_chapters`, `assessment_assigned_classes`, `assessment_assigned_students`,
-`otps`, `notifications`, `question_uploads`
+`otps`, `question_uploads`
 
 ### New User fields
 - `mobileNo String? @unique`
@@ -969,9 +969,9 @@ curl -X POST "http://localhost:5000/api/v1/quiz-attempts/$ATTEMPT/answer" `
 
 ---
 
-## Module 13 — OTP & Notifications
+## Module 13 — OTP
 
-**Goal:** OTP verification for registration/login/password-reset. Push notifications to all/class/specific users.
+**Goal:** OTP verification for registration/login/password-reset.
 
 OTP flow:
 1. On registration/login, generate a 6-digit OTP → save to `otps` table with `expiresAt = now + 10 min`.
@@ -988,22 +988,11 @@ OTP flow:
 | `isVerified` | Flipped to `true` on successful verify |
 | `attemptCount` | Incremented on each wrong attempt |
 
-### Notification table fields
-| Field | Notes |
-|---|---|
-| `target` | `ALL` / `STUDENTS` / `TEACHERS` / `CLASS` / `SPECIFIC` |
-| `targetIds` | Array of IDs when target is `CLASS` or `SPECIFIC` |
-| `scheduledAt` | Optional future datetime for deferred delivery |
-| `isSent` | Auto-set `true` after delivery |
-
 ### Endpoints (to be implemented)
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | POST | `/auth/send-otp` | public | Send OTP to mobile/email |
 | POST | `/auth/verify-otp` | public | Verify OTP code |
-| GET | `/notifications` | SUPER_ADMIN, PUBLICATION_ADMIN | List notifications |
-| POST | `/notifications` | SUPER_ADMIN, PUBLICATION_ADMIN | Create + schedule notification |
-| DELETE | `/notifications/:id` | SUPER_ADMIN | Delete unsent notification |
 
 ### Test (once controllers are implemented)
 ```powershell
@@ -1028,28 +1017,6 @@ curl -X POST http://localhost:5000/api/v1/auth/verify-otp `
 # Expired OTP
 # (insert a row with expiresAt in the past via Prisma Studio, then verify)
 # → 400 OTP_EXPIRED
-
-# Create a push notification (admin only)
-$ADMIN = "..."  # SUPER_ADMIN token
-curl -X POST http://localhost:5000/api/v1/notifications `
-  -H "Authorization: Bearer $ADMIN" -H "Content-Type: application/json" `
-  -d '{
-    "title": "New Olympiad Quiz Available!",
-    "message": "Science Olympiad 2025 is now live. Attempt before Sep 1.",
-    "type": "QUIZ",
-    "target": "STUDENTS"
-  }'
-
-# Notify a specific class only
-curl -X POST http://localhost:5000/api/v1/notifications `
-  -H "Authorization: Bearer $ADMIN" -H "Content-Type: application/json" `
-  -d '{
-    "title": "Class 6 Result Published",
-    "message": "Your Chapter 1 quiz results are out.",
-    "type": "RESULT",
-    "target": "CLASS",
-    "targetIds": ["<CLASS_ID>"]
-  }'
 ```
 
 ---
@@ -1344,11 +1311,6 @@ GET    /quiz-attempts/:id                                   owner / TEACHER / SU
 # ── Leaderboard (existing + quiz) ────────────────────────────
 GET    /leaderboard                                         any  (global assessment leaderboard)
 GET    /quizzes/:id/leaderboard                             any  (per-quiz leaderboard)
-
-# ── Notifications (Module 13) ────────────────────────────────
-GET    /notifications                                       SUPER_ADMIN, PUBLICATION_ADMIN
-POST   /notifications                                       SUPER_ADMIN, PUBLICATION_ADMIN
-DELETE /notifications/:id                                   SUPER_ADMIN
 
 # ── Upload jobs ───────────────────────────────────────────────
 GET    /question-uploads/:id                                owner / SUPER_ADMIN

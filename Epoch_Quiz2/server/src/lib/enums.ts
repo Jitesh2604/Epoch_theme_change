@@ -18,8 +18,6 @@ import {
   SubmissionStatus as PSubmissionStatus,
   AttemptStatus as PAttemptStatus,
   OtpType as POtpType,
-  NotificationType as PNotificationType,
-  NotificationTarget as PNotificationTarget,
   UploadStatus as PUploadStatus,
   BadgeType as PBadgeType,
 } from '@prisma/client';
@@ -50,10 +48,6 @@ export const AttemptStatus = PAttemptStatus;
 export type AttemptStatus = PAttemptStatus;
 export const OtpType = POtpType;
 export type OtpType = POtpType;
-export const NotificationType = PNotificationType;
-export type NotificationType = PNotificationType;
-export const NotificationTarget = PNotificationTarget;
-export type NotificationTarget = PNotificationTarget;
 export const UploadStatus = PUploadStatus;
 export type UploadStatus = PUploadStatus;
 export const BadgeType = PBadgeType;

@@ -16,6 +16,7 @@ interface NestedProfile {
   educationBoard?: string | null;
   stateBoard?: string | null;
   imageUrl?: string | null;
+  classExternalId?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -92,7 +93,7 @@ export const userApi = {
     api.patch(`/users/${id}`, data),
   deactivate: (id: string) => api.delete(`/users/${id}`),
   getMyProfile: () => api.get<FullProfile>('/users/me'),
-  updateMe: (data: { name?: string; avatarHue?: number; schoolName?: string; bio?: string; teacherCode?: string }) =>
+  updateMe: (data: { name?: string; avatarHue?: number; schoolName?: string; bio?: string; teacherCode?: string; classExternalId?: string | null }) =>
     api.patch('/users/me', data),
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.patch('/users/me/password', data),

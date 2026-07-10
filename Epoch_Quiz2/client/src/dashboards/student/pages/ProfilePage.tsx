@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
   Mail, Award, Edit3, Save, X, Trophy, Calendar,
-  Building, MapPin, User, Phone, KeyRound, Clock,
+  Building, MapPin, User, Phone, KeyRound, Clock, GraduationCap,
 } from 'lucide-react';
-import { PageHeader, Card, Button, Badge, StatCard, Avatar, Skeleton } from '../../shared/ui';
+import { PageHeader, Card, Button, Badge, StatCard, Avatar, Skeleton, Select } from '../../shared/ui';
 import { loadUser } from '../../../lib/authStore';
 import { userApi, useMyProfile } from '../../../hooks/useUsers';
 import { useMyStats } from '../../../hooks/useLeaderboard';
+import { useClasses } from '../../../hooks/useCatalog';
 import { useToasts } from '../../shared/ui';
 
 function formatDate(iso?: string | Date | null) {
@@ -26,16 +27,22 @@ export function ProfilePage() {
   const { data: statsData } = useMyStats();
   const stats = statsData as any;
   const { push, node } = useToasts();
+  const classes = useClasses();
+  const classOptions = (classes.data ?? []).map(c => ({ value: c.id, label: c.name }));
 
   // Edit state — pre-populate when profile loads
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState('');
+  const [schoolName, setSchoolName] = useState('');
+  const [classId, setClassId] = useState('');
   const [teacherCode, setTeacherCode] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (profile) {
       setName(profile.name ?? '');
+      setSchoolName(profile.studentProfile?.schoolName ?? '');
+      setClassId(profile.studentProfile?.classExternalId ?? '');
       setTeacherCode(profile.studentProfile?.teacherCode ?? '');
     } else if (cachedUser) {
       setName(cachedUser.name ?? '');
@@ -45,7 +52,12 @@ export function ProfilePage() {
   const save = async () => {
     setSaving(true);
     try {
-      await userApi.updateMe({ name, teacherCode: teacherCode || undefined });
+      await userApi.updateMe({
+        name,
+        schoolName: schoolName || undefined,
+        classExternalId: classId || null,
+        teacherCode: teacherCode || undefined,
+      });
       push({ kind: 'success', title: 'Profile updated' });
       setEditing(false);
       refetch();
@@ -102,6 +114,19 @@ export function ProfilePage() {
                     className="w-full h-10 px-3 rounded-xl bg-surface1 border border-line text-[13px] text-fg1 focus:outline-none focus:border-brand/40" />
                 </div>
                 <div>
+                  <label className="text-[11px] text-fg3 block mb-1">School / Institution</label>
+                  <input value={schoolName} onChange={e => setSchoolName(e.target.value)}
+                    placeholder="Name of your school"
+                    className="w-full h-10 px-3 rounded-xl bg-surface1 border border-line text-[13px] text-fg1 focus:outline-none focus:border-brand/40" />
+                </div>
+                <div>
+                  <label className="text-[11px] text-fg3 block mb-1">Class</label>
+                  <Select
+                    value={classId} onChange={setClassId} className="w-full"
+                    options={[{ value: '', label: '— Select your class —' }, ...classOptions]}
+                  />
+                </div>
+                <div>
                   <label className="text-[11px] text-fg3 block mb-1">Teacher code (links you to your teacher)</label>
                   <input value={teacherCode} onChange={e => setTeacherCode(e.target.value)}
                     placeholder="Optional"
@@ -134,6 +159,10 @@ export function ProfilePage() {
                         <InfoRow icon={Mail}    label="Email"       value={displayEmail} />
                         <InfoRow icon={Award}   label="Role"        value={capitalize(profile?.role ?? cachedUser?.role)} />
                         {sp?.schoolName   && <InfoRow icon={Building}  label="School / Institution" value={sp.schoolName} />}
+                        {sp?.classExternalId && (
+                          <InfoRow icon={GraduationCap} label="Class"
+                            value={classOptions.find(c => c.value === sp.classExternalId)?.label ?? sp.classExternalId} />
+                        )}
                         {sp?.teacherCode  && <InfoRow icon={KeyRound}  label="Teacher code"          value={sp.teacherCode} />}
                         {profile?.mobileNo && <InfoRow icon={Phone}   label="Phone"                  value={profile.mobileNo} />}
                         {sp?.mobileNo     && !profile?.mobileNo && <InfoRow icon={Phone} label="Phone" value={sp.mobileNo} />}

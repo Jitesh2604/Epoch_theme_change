@@ -12,14 +12,15 @@ export function StudentDashboardPage() {
   const navigate = useNavigate();
   const user = loadUser();
 
-  const { data: assessments, loading: aLoading } = useAssessments({ status: 'PUBLISHED', limit: 3 });
-  const { data: submissions, loading: sLoading }  = useMySubmissions({ limit: 5, status: 'GRADED' });
-  const { data: leaderboard, loading: lLoading }  = useGlobalLeaderboard({ limit: 5 });
-  const { data: statsData, loading: stLoading }   = useMyStats();
-  const { data: subjects,   loading: pLoading }   = usePracticeSubjects();
+  const { data: assessments, loading: aLoading, error: aError } = useAssessments({ status: 'PUBLISHED', limit: 3 });
+  const { data: submissions, loading: sLoading, error: sError }  = useMySubmissions({ limit: 5, status: 'GRADED' });
+  const { data: leaderboard, loading: lLoading, error: lError }  = useGlobalLeaderboard({ limit: 5 });
+  const { data: statsData, loading: stLoading, error: stError }   = useMyStats();
+  const { data: subjects,   loading: pLoading, error: pError }   = usePracticeSubjects();
 
   const stats = statsData as any;
   const loading = aLoading || stLoading;
+  const loadError = aError || sError || lError || stError || pError;
   const hasAssessments = (assessments?.items?.length ?? 0) > 0;
   const practiceSubjects = (subjects ?? []).slice(0, 4);
 
@@ -36,6 +37,12 @@ export function StudentDashboardPage() {
           </>
         }
       />
+
+      {loadError && (
+        <div className="mb-4 px-4 py-3 rounded-xl bg-danger/10 border border-danger/20 text-[13px] text-danger">
+          Some data could not be loaded — {loadError}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5">
         {loading ? (

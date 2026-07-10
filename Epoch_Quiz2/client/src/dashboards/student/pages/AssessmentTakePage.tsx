@@ -4,7 +4,7 @@ import {
   Clock, ChevronLeft, ChevronRight, AlertTriangle,
   X, FileText, CornerDownRight, CheckCircle2, XCircle,
 } from 'lucide-react';
-import { Card, Button, ProgressBar } from '../../shared/ui';
+import { Card, Button, ProgressBar, useToasts } from '../../shared/ui';
 import {
   assessmentTakeApi,
   type TakeSubmission,
@@ -269,6 +269,7 @@ export function AssessmentTakePage() {
   const { submissionId }   = useParams<{ submissionId: string }>();
   const location           = useLocation();
   const navigate           = useNavigate();
+  const { push, node: toastNode } = useToasts();
 
   const [submission, setSubmission]     = useState<TakeSubmission | null>(
     location.state?.submission ?? null,
@@ -280,12 +281,17 @@ export function AssessmentTakePage() {
   const [confirmOpen, setConfirmOpen]   = useState(false);
   const [exitAsk, setExitAsk]           = useState(false);
   const [timedOut, setTimedOut]         = useState(false);
+  const [autoSubmitFailed, setAutoSubmitFailed] = useState(false);
   const autoSubmitRef                   = useRef(false);
   const saveTimers                      = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // ── Load on refresh (no location.state) ─────────────────────────
   useEffect(() => {
-    if (submission || !submissionId) return;
+    if (submission) return;
+    if (!submissionId) {
+      setLoadErr('No assessment session found. Please start again from My Assessments.');
+      return;
+    }
     (async () => {
       try {
         const result = await assessmentTakeApi.getById(submissionId);
@@ -443,12 +449,15 @@ export function AssessmentTakePage() {
           state: { result, autoSubmitted: auto },
         });
       } catch (e: any) {
-        if (!auto) {
-          setSubmitting(false);
+        setSubmitting(false);
+        if (auto) {
+          setAutoSubmitFailed(true);
+        } else {
+          push({ kind: 'danger', title: 'Submit failed', sub: e?.message ?? 'Please check your connection and try again.' });
         }
       }
     },
-    [submissionId, submitting, questions, drafts, navigate],
+    [submissionId, submitting, questions, drafts, navigate, push],
   );
 
   // ── Guard states ─────────────────────────────────────────────────
@@ -481,6 +490,27 @@ export function AssessmentTakePage() {
 
   return (
     <div className="max-w-2xl mx-auto pb-10">
+      {toastNode}
+
+      {/* ── Auto-submit failure — hard blocker with a retry path ─── */}
+      {autoSubmitFailed && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <Card className="p-6 max-w-sm w-full text-center">
+            <AlertTriangle size={32} className="mx-auto text-amber-400 mb-3" />
+            <h3 className="font-display font-semibold text-[17px] text-fg1 mb-1">Time's up — submission failed</h3>
+            <p className="text-[13px] text-fg3 mb-4">
+              Your time ran out and we couldn't submit automatically — likely a connection issue.
+              Your answers are saved. Retry submitting now.
+            </p>
+            <Button
+              onClick={() => { setAutoSubmitFailed(false); doSubmit(true); }}
+              disabled={submitting}
+            >
+              {submitting ? 'Submitting…' : 'Retry submit'}
+            </Button>
+          </Card>
+        </div>
+      )}
 
       {/* ── Header ────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">

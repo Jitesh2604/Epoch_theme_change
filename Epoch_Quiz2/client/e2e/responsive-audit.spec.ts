@@ -76,7 +76,7 @@ const PUBLIC_ROUTES = [
 ];
 const ADMIN_ROUTES = [
   '/admin', '/admin/teachers', '/admin/students', '/admin/assessments',
-  '/admin/question-bank', '/admin/reports', '/admin/notifications', '/admin/settings', '/admin/help',
+  '/admin/question-bank', '/admin/reports', '/admin/settings', '/admin/help',
 ];
 const TEACHER_ROUTES = [
   '/teacher', '/teacher/create-assessment', '/teacher/assessments', '/teacher/question-bank',
@@ -85,7 +85,7 @@ const TEACHER_ROUTES = [
 ];
 const STUDENT_ROUTES = [
   '/student', '/student/practice', '/student/join', '/student/assessments',
-  '/student/results', '/student/leaderboard', '/student/notifications',
+  '/student/results', '/student/leaderboard',
   '/student/profile', '/student/settings',
 ];
 

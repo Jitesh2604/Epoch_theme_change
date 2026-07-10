@@ -64,9 +64,10 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
 
   // Live teacher-code lookup → preview the academic context the student inherits.
   const teacher = useTeacherByCode(teacherCode);
-  const codeReady   = teacherCode.trim().length >= 6;
-  const codeInvalid = codeReady && !teacher.loading && !teacher.data;
-  const codeValid   = codeReady && !teacher.loading && !!teacher.data;
+  const codeReady    = teacherCode.trim().length >= 6;
+  const codeErrored  = codeReady && !teacher.loading && !!teacher.error;
+  const codeInvalid  = codeReady && !teacher.loading && !teacher.data && !codeErrored;
+  const codeValid    = codeReady && !teacher.loading && !!teacher.data;
 
   if (!user) return null;
 
@@ -89,7 +90,8 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
     if (!educationBoard) errs.educationBoard = 'Please select your education board.';
     if (educationBoard === 'STATE_BOARD' && !stateBoard.trim()) errs.stateBoard = 'Please confirm your state board.';
     // Teacher code is optional, but if entered it must resolve to a real teacher.
-    if (codeReady && codeInvalid) errs.teacherCode = 'No teacher found for this code.';
+    if (codeReady && codeErrored) errs.teacherCode = 'Could not verify this code — check your connection and try again.';
+    else if (codeReady && codeInvalid) errs.teacherCode = 'No teacher found for this code.';
     if (teacherCode.trim() !== '' && !codeReady) errs.teacherCode = 'Teacher codes are 6 characters.';
     return errs;
   };

@@ -4,7 +4,7 @@ import { useGlobalLeaderboard } from '../../../hooks/useLeaderboard';
 import { loadUser } from '../../../lib/authStore';
 
 export function LeaderboardPage() {
-  const { data: entries, loading } = useGlobalLeaderboard({ limit: 20 });
+  const { data: entries, loading, error } = useGlobalLeaderboard({ limit: 20 });
   const user = loadUser();
 
   const topThree = entries?.slice(0, 3) ?? [];
@@ -17,6 +17,12 @@ export function LeaderboardPage() {
         title="Leaderboard"
         subtitle="Top performers across all assessments on the platform."
       />
+
+      {error && (
+        <div className="mb-4 px-4 py-3 rounded-xl bg-danger/10 border border-danger/20 text-[13px] text-danger">
+          Could not load the leaderboard — {error}
+        </div>
+      )}
 
       {loading ? (
         <Card className="p-6">

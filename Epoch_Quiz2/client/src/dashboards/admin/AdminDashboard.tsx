@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, GraduationCap, ClipboardList, BookOpen,
-  BarChart3, Bell, Settings as SettingsIcon, HelpCircle, Home,
+  BarChart3, Settings as SettingsIcon, HelpCircle, Home,
 } from 'lucide-react';
 import { Route, Routes, Navigate } from 'react-router-dom';
 import { DashboardLayout } from '../shared/DashboardLayout';
@@ -10,7 +10,6 @@ import { StudentsPage } from './pages/StudentsPage';
 import { AssessmentsPage } from './pages/AssessmentsPage';
 import { QuestionBankPage } from './pages/QuestionBankPage';
 import { ReportsPage } from './pages/ReportsPage';
-import { NotificationsPage } from './pages/NotificationsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AssessmentPreviewPage } from './pages/AssessmentPreviewPage';
 import { useAuth } from '../../lib/authStore';
@@ -33,7 +32,6 @@ export function AdminDashboard() {
               { to: '/admin/assessments', label: 'Assessments', icon: ClipboardList },
               { to: '/admin/question-bank', label: 'Question Bank', icon: BookOpen },
               { to: '/admin/reports', label: 'Reports & Analytics', icon: BarChart3 },
-              { to: '/admin/notifications', label: 'Notifications', icon: Bell },
             ]}
             footerItems={[
               { to: '/admin/settings', label: 'Settings', icon: SettingsIcon },
@@ -50,7 +48,6 @@ export function AdminDashboard() {
         <Route path="assessments/:id" element={<AssessmentPreviewPage />} />
         <Route path="question-bank" element={<QuestionBankPage />} />
         <Route path="reports" element={<ReportsPage />} />
-        <Route path="notifications" element={<NotificationsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="help" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />

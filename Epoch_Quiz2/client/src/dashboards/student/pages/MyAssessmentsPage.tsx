@@ -15,11 +15,12 @@ export function MyAssessmentsPage() {
   const navigate              = useNavigate();
   const { push, node }        = useToasts();
 
-  const { data: available, loading: aLoading } = useAssessments({ status: 'PUBLISHED', limit: 20 });
-  const { data: completed, loading: cLoading } = useMySubmissions({ status: 'GRADED', limit: 20 });
-  const { data: inProgressSubs, loading: iLoading } = useMySubmissions({ status: 'IN_PROGRESS', limit: 20 });
+  const { data: available, loading: aLoading, error: aError } = useAssessments({ status: 'PUBLISHED', limit: 20 });
+  const { data: completed, loading: cLoading, error: cError } = useMySubmissions({ status: 'GRADED', limit: 20 });
+  const { data: inProgressSubs, loading: iLoading, error: iError } = useMySubmissions({ status: 'IN_PROGRESS', limit: 20 });
 
   const loading = aLoading || cLoading || iLoading;
+  const loadError = aError || cError || iError;
 
   // Build a map of assessmentId → submissionId for in-progress attempts
   const inProgressMap = useMemo(() => {
@@ -65,6 +66,12 @@ export function MyAssessmentsPage() {
         title="My Assessments"
         subtitle="Assessments assigned to you and your recent results."
       />
+
+      {loadError && (
+        <div className="mb-4 px-4 py-3 rounded-xl bg-danger/10 border border-danger/20 text-[13px] text-danger">
+          Some data could not be loaded — {loadError}
+        </div>
+      )}
 
       <div className="flex gap-2 mb-5">
         {tabs.map((t) => (

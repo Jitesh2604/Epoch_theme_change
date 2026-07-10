@@ -38,14 +38,6 @@ test.describe('Student Dashboard', () => {
     await expect(inputs).toHaveCount(6, { timeout: 3_000 });
   });
 
-  test('Notifications page shows notification list (no admin buttons)', async ({ page }) => {
-    await page.getByRole('link', { name: 'Notifications', exact: true }).click();
-    await page.waitForURL('**/student/notifications', { timeout: 5_000 });
-    // Student page should NOT have "New notification" button
-    const newBtn = page.locator('text=New notification');
-    await expect(newBtn).toHaveCount(0);
-  });
-
   test('Profile page loads', async ({ page }) => {
     await page.goto('/student/profile');
     await expect(page.locator('text=My Profile')).toBeVisible({ timeout: 5_000 });

@@ -2,7 +2,9 @@ import { z } from 'zod';
 
 export const paginationSchema = z.object({
   page:  z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  // 500 covers the Reports & Analytics page, which pulls a larger single
+  // batch (up to 200) for client-side aggregation rather than paging.
+  limit: z.coerce.number().int().min(1).max(500).default(20),
 });
 
 export interface PageMeta {

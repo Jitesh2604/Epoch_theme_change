@@ -6,7 +6,7 @@ import { useAuth } from '../../../lib/authStore';
 
 export function DashboardOverviewPage() {
   const navigate = useNavigate();
-  const { data: stats, loading } = useDashboardStats();
+  const { data: stats, loading, error } = useDashboardStats();
   const user = useAuth();
 
   return (
@@ -21,6 +21,12 @@ export function DashboardOverviewPage() {
           </>
         }
       />
+
+      {error && (
+        <div className="mb-4 px-4 py-3 rounded-xl bg-danger/10 border border-danger/20 text-[13px] text-danger">
+          Could not load dashboard stats — {error}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         {loading ? (

@@ -257,6 +257,7 @@ model Question {
   chapterExternalId   String?
   subjectExternalId   String?
   classExternalId     String?
+  externalId          String?              @unique
   createdById         String
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -613,24 +614,6 @@ model Otp {
   @@map("otps")
 }
 
-model Notification {
-  id          String             @id @default(cuid())
-  title       String
-  message     String             @db.Text
-  type        NotificationType   @default(GENERAL)
-  target      NotificationTarget @default(ALL)
-  targetIds   String             @db.LongText
-  scheduledAt DateTime?
-  isSent      Boolean            @default(false)
-  sentAt      DateTime?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-
-  @@index([type])
-  @@index([isSent])
-  @@map("notifications")
-}
-
 model QuestionUpload {
   id           String       @id @default(cuid())
   uploadedById String
@@ -756,21 +739,6 @@ enum OtpType {
   PHONE_VERIFY
 }
 
-enum NotificationType {
-  GENERAL
-  QUIZ
-  RESULT
-  CERTIFICATE
-  REMINDER
-}
-
-enum NotificationTarget {
-  ALL
-  STUDENTS
-  TEACHERS
-  CLASS
-  SPECIFIC
-}
 
 enum UploadStatus {
   PENDING

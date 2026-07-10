@@ -10,7 +10,7 @@ export function JoinAssessmentPage() {
   const { push, node } = useToasts();
   const navigate = useNavigate();
 
-  const { data: liveData, loading } = useAssessments({ status: 'PUBLISHED', limit: 4 });
+  const { data: liveData, loading, error: liveError } = useAssessments({ status: 'PUBLISHED', limit: 4 });
   const live = liveData?.items ?? [];
 
   const setDigit = (idx: number, v: string) => {
@@ -49,6 +49,12 @@ export function JoinAssessmentPage() {
         title="Join an Assessment"
         subtitle="Enter the 6-character code your teacher shared, or pick from a live assessment below."
       />
+
+      {liveError && (
+        <div className="mb-4 px-4 py-3 rounded-xl bg-danger/10 border border-danger/20 text-[13px] text-danger">
+          Could not load live assessments — {liveError}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-5">
         <Card className="p-7 relative overflow-hidden">

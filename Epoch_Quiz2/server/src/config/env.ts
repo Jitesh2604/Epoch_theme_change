@@ -51,6 +51,8 @@ const envSchema = z.object({
   CONTENT_MAX_RETRIES:        z.coerce.number().int().min(0).max(10).default(3),
   // Short-lived in-memory cache for Content API responses (ms). Never a mirror.
   CONTENT_CACHE_TTL_MS:       z.coerce.number().int().min(0).default(300_000),
+  // Page size for the question import script (npm run sync:questions).
+  CONTENT_SYNC_PAGE_SIZE:     z.coerce.number().int().positive().default(100),
 });
 
 const parsed = envSchema.safeParse(process.env);

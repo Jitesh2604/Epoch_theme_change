@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, KeyRound, FileText, Award, Trophy, Bell, User2,
+  LayoutDashboard, KeyRound, FileText, Award, Trophy, User2,
   Settings as SettingsIcon, Zap, Home,
 } from 'lucide-react';
 import { Route, Routes, Navigate } from 'react-router-dom';
@@ -11,7 +11,6 @@ import { AssessmentTakePage } from './pages/AssessmentTakePage';
 import { AssessmentResultPage } from './pages/AssessmentResultPage';
 import { ResultsPage } from './pages/ResultsPage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
-import { NotificationsPage } from './pages/NotificationsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { PracticeQuizPage } from './pages/PracticeQuizPage';
 import { PracticePlayPage } from './pages/PracticePlayPage';
@@ -40,7 +39,6 @@ export function StudentDashboard() {
               { to: '/student/assessments',   label: 'My Assessments',  icon: FileText        },
               { to: '/student/results',       label: 'Results',         icon: Award           },
               { to: '/student/leaderboard',   label: 'Leaderboard',     icon: Trophy          },
-              { to: '/student/notifications', label: 'Notifications',   icon: Bell            },
             ]}
             footerItems={[
               { to: '/student/profile',  label: 'Profile',  icon: User2        },
@@ -60,7 +58,6 @@ export function StudentDashboard() {
         <Route path="assessment-result/:submissionId" element={<AssessmentResultPage />} />
         <Route path="results" element={<ResultsPage />} />
         <Route path="leaderboard" element={<LeaderboardPage />} />
-        <Route path="notifications" element={<NotificationsPage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="settings" element={<ProfilePage />} />
         <Route path="*" element={<Navigate to="/student" replace />} />
