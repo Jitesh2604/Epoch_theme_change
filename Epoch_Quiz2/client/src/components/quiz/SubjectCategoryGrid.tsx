@@ -10,8 +10,8 @@ import { CategoryGridSkeleton, CategoryGridError, CategoryGridEmpty } from './Ca
  */
 function metaForKind(kind: Subject['kind']): { icon: string; blurb: string } {
   switch (kind) {
-    case 'PRACTICE_OLYMPIAD':  return { icon: 'trophy',  blurb: 'A mixed quiz across all your subjects.' };
-    case 'ATTEMPTED_OLYMPIAD': return { icon: 'refresh', blurb: 'Review your past Olympiad attempts.' };
+    case 'PRACTICE_OLYMPIAD':  return { icon: 'trophy',   blurb: 'A mixed quiz across all your subjects.' };
+    case 'ATTEMPTED_OLYMPIAD': return { icon: 'fileText', blurb: 'Attempt assessments assigned to your class.' };
     default:                   return { icon: 'bookOpen', blurb: 'Practice questions for your class & board.' };
   }
 }
@@ -36,7 +36,13 @@ export const SubjectCategoryGrid: React.FC<Props> = ({ navigate, cardStyle, back
 
   const open = (s: Subject) => {
     if (s.kind === 'PRACTICE_OLYMPIAD')  { navigate('olympiad'); return; }
-    if (s.kind === 'ATTEMPTED_OLYMPIAD') { navigate('olympiad/history'); return; }
+    if (s.kind === 'ATTEMPTED_OLYMPIAD') {
+      // Assessments live in the Student Dashboard (a separate SPA mounted at
+      // /student/*), so this is a real navigation, not the marketing site's
+      // internal hash-route navigate().
+      window.location.href = '/student/assessments';
+      return;
+    }
     navigate(`play/${s.slug}/${s.id}/level`);
   };
 

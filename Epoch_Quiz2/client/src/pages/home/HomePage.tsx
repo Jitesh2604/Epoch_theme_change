@@ -78,13 +78,16 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
                   if (category.slug === 'practice-olympiad') {
                     navigate('play');
                   } else if (category.slug === 'attempted-olympiad') {
-                    navigate('olympiad/history');
+                    // Assessments live in the Student Dashboard (a separate SPA
+                    // mounted at /student/*), so this is a real navigation, not
+                    // the marketing site's internal hash-route navigate().
+                    window.location.href = '/student/assessments';
                   }
                 }}
               >
-                <div className="cat-ico"><Icon name={category.slug === 'practice-olympiad' ? 'trophy' : 'refresh'} size={20} /></div>
+                <div className="cat-ico"><Icon name={category.slug === 'practice-olympiad' ? 'trophy' : 'fileText'} size={20} /></div>
                 <h3>{category.name}</h3>
-                <p>{category.slug === 'practice-olympiad' ? 'Start a mixed Olympiad quiz across your selected subjects.' : 'Review your past Olympiad attempts and scores.'}</p>
+                <p>{category.slug === 'practice-olympiad' ? 'Start a mixed Olympiad quiz across your selected subjects.' : 'Attempt assessments assigned to your class.'}</p>
                 <span className="cat-arrow"><Icon name="arrowUpRight" size={18} /></span>
               </button>
             ))}

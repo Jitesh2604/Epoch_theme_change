@@ -10,7 +10,7 @@ import { CreateAssessmentPage } from './pages/CreateAssessmentPage';
 import { QuestionManagementPage } from './pages/QuestionManagementPage';
 import { MyAssessmentsPage } from './pages/MyAssessmentsPage';
 import { QuestionBankPage } from './pages/QuestionBankPage';
-import { UploadQuestionsPage } from './pages/UploadQuestionsPage';
+import { UploadQuestionsPage } from '../shared/UploadQuestionsPage';
 import { StudentsPage } from './pages/StudentsPage';
 import { ResultsPage } from './pages/ResultsPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';

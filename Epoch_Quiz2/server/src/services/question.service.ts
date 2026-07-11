@@ -208,9 +208,10 @@ export const QuestionService = {
       ...(excludeAssessmentId && { assessments: { none: { assessmentId: excludeAssessmentId } } }),
     };
 
-    // Teachers only ever see their own questions; admins see all unless `mine`.
-    if (actor.role === Role.TEACHER) where.createdById = actor.id;
-    else if (isAdminRole(actor.role) && mine) where.createdById = actor.id;
+    // Question Bank is a shared, central repository (per QuestionBankPage's
+    // own subtitle) — teachers and admins both see every question by default,
+    // scoped to just their own via `mine` if requested.
+    if (mine) where.createdById = actor.id;
 
     const { skip, take } = pageToSkipTake(page, limit);
 

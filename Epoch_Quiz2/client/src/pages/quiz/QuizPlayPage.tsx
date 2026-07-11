@@ -13,8 +13,9 @@ interface QuizPlayPageProps {
 /**
  * Categories page — every card comes straight from the Subjects API via the
  * shared <SubjectCategoryGrid> (the same component the Home page uses). Normal
- * subjects start a Subject Practice quiz; the special "Practice Olympiad" /
- * "Attempted Olympiad" rows route to the Olympiad flows.
+ * subjects start a Subject Practice quiz; "Practice Olympiad" starts a mixed
+ * Olympiad quiz; "Attempted Olympiad" sends the student to the Dashboard's
+ * available-assessments page.
  */
 export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate, tweaks }) => {
   const t = useT();

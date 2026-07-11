@@ -15,7 +15,7 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 const DEFAULT_CATEGORIES: Array<{ name: string; slug: string }> = [
-  { name: 'Attempted Olympiad', slug: 'attempted-olympiad' },
+  { name: 'Attempt Olympiad', slug: 'attempted-olympiad' },
   { name: 'Practice Olympiad', slug: 'practice-olympiad' },
 ];
 

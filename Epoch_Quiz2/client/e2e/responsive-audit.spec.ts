@@ -72,7 +72,7 @@ const SHOT_WIDTHS = new Set(['w320', 'w375', 'w768', 'w920', 'w1024']);
 const PUBLIC_ROUTES = [
   '/#/home', '/#/login', '/#/signup', '/#/forgot-password',
   '/#/complete-profile/student', '/#/complete-profile/teacher',
-  '/#/olympiad', '/#/olympiad/history', '/#/instruction',
+  '/#/olympiad', '/#/instruction',
 ];
 const ADMIN_ROUTES = [
   '/admin', '/admin/teachers', '/admin/students', '/admin/assessments',

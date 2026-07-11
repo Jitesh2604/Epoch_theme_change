@@ -9,6 +9,7 @@ import { TeachersPage } from './pages/TeachersPage';
 import { StudentsPage } from './pages/StudentsPage';
 import { AssessmentsPage } from './pages/AssessmentsPage';
 import { QuestionBankPage } from './pages/QuestionBankPage';
+import { UploadQuestionsPage } from '../shared/UploadQuestionsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AssessmentPreviewPage } from './pages/AssessmentPreviewPage';
@@ -47,6 +48,7 @@ export function AdminDashboard() {
         <Route path="assessments" element={<AssessmentsPage />} />
         <Route path="assessments/:id" element={<AssessmentPreviewPage />} />
         <Route path="question-bank" element={<QuestionBankPage />} />
+        <Route path="upload-questions" element={<UploadQuestionsPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="help" element={<SettingsPage />} />

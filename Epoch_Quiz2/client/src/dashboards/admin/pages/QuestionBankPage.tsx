@@ -1,7 +1,10 @@
 import { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, BookOpen, Upload, Trash2 } from 'lucide-react';
 import { PageHeader, Card, Button, SearchInput, Select, Badge, Skeleton } from '../../shared/ui';
 import { useQuestions, questionApi } from '../../../hooks/useQuestions';
+import type { Question } from '../../../hooks/useQuestions';
+import { CreateQuestionModal } from '../../shared/CreateQuestionModal';
 import { useToasts } from '../../shared/ui';
 
 const TYPE_LABEL: Record<string, string> = {
@@ -14,9 +17,12 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 export function QuestionBankPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [q, setQ] = useState('');
   const [type, setType] = useState('all');
   const [diff, setDiff] = useState('all');
+  const [createOpen, setCreateOpen] = useState(false);
 
   const { data, loading, error, refetch } = useQuestions({
     search:     q     || undefined,
@@ -38,6 +44,14 @@ export function QuestionBankPage() {
     }
   };
 
+  const handleQuestionCreated = (_created: Question) => {
+    setCreateOpen(false);
+    push({ kind: 'success', title: 'Question added to bank' });
+    refetch();
+  };
+
+  const uploadPath = location.pathname.startsWith('/teacher') ? '/teacher/upload-questions' : '/admin/upload-questions';
+
   return (
     <>
       {node}
@@ -46,8 +60,8 @@ export function QuestionBankPage() {
         title="Question Bank"
         subtitle="Central repository of questions across subjects and types."
         actions={<>
-          <Button variant="outline" icon={Upload}>Bulk upload</Button>
-          <Button icon={Plus}>New question</Button>
+          <Button variant="outline" icon={Upload} onClick={() => navigate(uploadPath)}>Bulk upload</Button>
+          <Button icon={Plus} onClick={() => setCreateOpen(true)}>New question</Button>
         </>}
       />
 
@@ -135,6 +149,12 @@ export function QuestionBankPage() {
           {rows.length === 0 && <Card><div className="text-center py-12 text-fg3 text-[13px]">No questions found</div></Card>}
         </div>
       )}
+
+      <CreateQuestionModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={handleQuestionCreated}
+      />
     </>
   );
 }

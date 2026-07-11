@@ -8,6 +8,9 @@
  */
 import { PrismaClient, Role, UserStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: '.env' });
 
 const prisma = new PrismaClient();
 

@@ -10,7 +10,6 @@ import { CategoryPage } from './pages/quiz/CategoryPage';
 import { LevelSelectPage } from './pages/quiz/LevelSelectPage';
 import { QuizInterfacePage } from './pages/quiz/QuizInterfacePage';
 import { OlympiadPlayPage } from './pages/quiz/OlympiadPlayPage';
-import { OlympiadHistoryPage } from './pages/quiz/OlympiadHistoryPage';
 import { ResultPage } from './pages/quiz/ResultPage';
 import { InstructionPage } from './pages/static/InstructionPage';
 import { StaticPage } from './pages/static/StaticPage';
@@ -129,7 +128,10 @@ export default function App() {
     if (!getAuth()) {
       page = <PlayGate targetRoute={route} />;
     } else if (parts[1] === 'history') {
-      page = <OlympiadHistoryPage navigate={navigate} />;
+      // Quiz/Olympiad results now live in the Student Dashboard's Results
+      // page, not on the marketing site.
+      window.location.href = '/student/results';
+      page = null;
     } else {
       page = <OlympiadPlayPage navigate={navigate} />;
     }

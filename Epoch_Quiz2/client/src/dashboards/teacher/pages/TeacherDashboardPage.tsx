@@ -28,7 +28,7 @@ export function TeacherDashboardPage() {
             <Button variant="outline" icon={ClipboardList} onClick={() => navigate('/teacher/assessments')}>
               My assessments
             </Button>
-            <Button icon={FilePlus2} onClick={() => navigate('/teacher/assessments/create')}>
+            <Button icon={FilePlus2} onClick={() => navigate('/teacher/create-assessment')}>
               Create assessment
             </Button>
           </>

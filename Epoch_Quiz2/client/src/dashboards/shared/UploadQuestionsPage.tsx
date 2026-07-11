@@ -1,9 +1,10 @@
 import { useState, useRef, DragEvent } from 'react';
+import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, FileSpreadsheet, CheckCircle2, XCircle, Download, FileCheck2, AlertTriangle, ArrowRight } from 'lucide-react';
-import { PageHeader, Card, Button, Badge, useToasts } from '../../shared/ui';
-import { getAccessToken } from '../../../lib/api';
-import { refreshSession } from '../../../lib/authStore';
+import { PageHeader, Card, Button, Badge, useToasts } from './ui';
+import { getAccessToken } from '../../lib/api';
+import { refreshSession } from '../../lib/authStore';
 
 type Phase = 'idle' | 'previewing' | 'uploading' | 'done' | 'error';
 
@@ -29,6 +30,8 @@ const SAMPLE_PREVIEW: SampleRow[] = [
 ];
 
 export function UploadQuestionsPage() {
+  const location = useLocation();
+  const roleLabel = location.pathname.startsWith('/teacher') ? 'Teacher' : 'Admin';
   const [phase, setPhase] = useState<Phase>('idle');
   const [fileName, setFileName] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -141,7 +144,7 @@ export function UploadQuestionsPage() {
     <>
       {node}
       <PageHeader
-        eyebrow="Teacher · Bulk Import"
+        eyebrow={`${roleLabel} · Bulk Import`}
         title="Upload Questions"
         subtitle="Drag and drop an Excel sheet to add many questions at once. We'll preview them before anything is saved."
         actions={<Button variant="outline" icon={Download} onClick={downloadTemplate}>Download template</Button>}
