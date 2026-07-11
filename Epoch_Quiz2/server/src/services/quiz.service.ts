@@ -239,8 +239,27 @@ async function buildResult(attemptId: string) {
  * the same number and collide on the unique key. We retry a few times on the
  * duplicate-key error (P2002) so start never fails for that reason.
  */
+/**
+ * Allocate the next `attemptNumber` for a (quiz, student) pair and create the
+ * attempt row — concurrency-safe.
+ *
+ * The naive "read MAX(attemptNumber) then INSERT MAX+1" is a race: requests
+ * fired at once (double-click, React StrictMode double-mount) both read the same
+ * value and collide on the `quiz_attempts_quizId_studentId_attemptNumber_key`
+ * unique constraint (Prisma P2002).
+ *
+ * We use optimistic concurrency control: compute the next number, try to INSERT,
+ * and on the unique-key race recompute and retry. A small randomised back-off
+ * disperses a lock-step herd so retries converge quickly. This holds no locks
+ * (unlike `SELECT … FOR UPDATE`, whose gap locks deadlock under contention) and
+ * ties up no extra connections, so it degrades gracefully under load while
+ * guaranteeing strictly-sequential numbers (1, 2, 3, …) with no collisions.
+ */
+const ATTEMPT_ALLOC_MAX_RETRIES = 25;
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 async function createQuizAttempt(quizId: string, studentId: string): Promise<{ attemptId: string; attemptNumber: number }> {
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for (let attempt = 0; ; attempt++) {
     const last = await prisma.quizAttempt.findFirst({
       where: { quizId, studentId }, orderBy: { attemptNumber: 'desc' }, select: { attemptNumber: true },
     });
@@ -252,11 +271,14 @@ async function createQuizAttempt(quizId: string, studentId: string): Promise<{ a
       });
       return { attemptId: created.id, attemptNumber };
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002' && attempt < 4) continue;
+      const isUniqueRace = err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+      if (isUniqueRace && attempt < ATTEMPT_ALLOC_MAX_RETRIES) {
+        await sleep(5 + Math.floor(Math.random() * 25)); // 5–30 ms jitter
+        continue;
+      }
       throw err;
     }
   }
-  throw new Error('Could not allocate a quiz attempt number');
 }
 
 export const QuizService = {
@@ -451,7 +473,11 @@ export const QuizService = {
 
   async getAttempt(attemptId: string, studentId: string) {
     const attempt = await prisma.quizAttempt.findUnique({
-      where: { id: attemptId }, select: { id: true, studentId: true, status: true, startTime: true },
+      where: { id: attemptId },
+      select: {
+        id: true, studentId: true, status: true, startTime: true, attemptNumber: true, quizId: true,
+        quiz: { select: { subjectExternalId: true } },
+      },
     });
     if (!attempt) throw ApiError.notFound('Attempt not found');
     if (attempt.studentId !== studentId) throw ApiError.forbidden('Not your attempt');
@@ -472,11 +498,24 @@ export const QuizService = {
       },
     });
 
+    // Resolve the subject so the client renders identically whether the attempt
+    // arrives via router state (from /start) or is re-fetched here on refresh /
+    // direct navigation. Missing this `subject` was crashing the play page.
+    const subExtId    = attempt.quiz?.subjectExternalId ?? null;
+    const subjectName = subExtId ? (await ContentMeta.subjects()).get(subExtId) ?? subExtId : 'Practice';
+    const questions   = answers.map((a, i) => sanitizeQuestion(a.question, i + 1));
+
     return {
-      attemptId: attempt.id,
-      status:    attempt.status,
-      startTime: attempt.startTime,
-      questions: answers.map((a, i) => sanitizeQuestion(a.question, i + 1)),
+      attemptId:     attempt.id,
+      attemptNumber: attempt.attemptNumber,
+      quizId:        attempt.quizId,
+      subject:       { id: subExtId, name: subjectName, slug: slugify(subjectName) },
+      difficulty:    null,
+      questionCount: questions.length,
+      totalMarks:    answers.reduce((sum, a) => sum + a.question.marks, 0),
+      status:        attempt.status,
+      startTime:     attempt.startTime,
+      questions,
       savedAnswers: answers.map(a => ({
         questionId:      a.questionId,
         selectedOption:  a.selectedOption,

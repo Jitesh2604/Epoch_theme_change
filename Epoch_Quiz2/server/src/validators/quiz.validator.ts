@@ -5,7 +5,10 @@ export const startPracticeSchema = z.object({
   subjectExternalId:     z.string().min(1, 'Subject is required'),
   difficulty:    z.nativeEnum(Difficulty).optional(),
   chapterExternalId:     z.string().min(1).optional(),
-  questionCount: z.number().int().min(5).max(30).default(10),
+  // Students choose how many questions to practise. Defaults to 20; the service
+  // clamps this to however many questions actually exist for the selected
+  // subject/difficulty, so requesting more than available is safe.
+  questionCount: z.number().int().min(1).max(100).default(20),
 });
 
 export const startOlympiadSchema = z.object({

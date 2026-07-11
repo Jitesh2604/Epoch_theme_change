@@ -63,7 +63,6 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
       <section className="section" style={{ paddingTop: 0 }}>
         <div className="container">
           <div className="section-head" style={{ marginBottom: 24 }}>
-            <div className="eyebrow"><span className="dot"></span>{t('home.jumpIn')}</div>
             <h2>{t('home.pickCategoryAndStart')}</h2>
           </div>
 

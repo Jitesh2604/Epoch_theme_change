@@ -131,7 +131,8 @@ export function PracticePlayPage() {
   // Keep elapsedRef in sync so submitAnswer callback can read current elapsed time
   useEffect(() => { elapsedRef.current = elapsed; }, [elapsed]);
 
-  // Load attempt from API if not in router state (e.g. page refresh)
+  // Load attempt from API if not in router state (e.g. page refresh or direct
+  // navigation). The page must not depend solely on location.state.
   useEffect(() => {
     if (attempt) return;
     if (!attemptId) {
@@ -139,7 +140,25 @@ export function PracticePlayPage() {
       return;
     }
     practiceApi.getAttempt(attemptId).then(data => {
-      setAttempt(data as PracticeAttemptData);
+      // A submitted attempt comes back as a result payload (no questions) —
+      // route to the result page instead of rendering the play screen.
+      if (!data?.questions?.length) {
+        navigate(`/student/practice/result/${attemptId}`, { replace: true });
+        return;
+      }
+      setAttempt(data);
+      // Restore already-saved selections so a refresh resumes in progress.
+      const restored: Record<string, AnswerState> = {};
+      for (const s of data.savedAnswers ?? []) {
+        if (s.selectedOption || s.selectedOptions?.length || s.textAnswer) {
+          restored[s.questionId] = {
+            selectedOption:  s.selectedOption ?? undefined,
+            selectedOptions: s.selectedOptions?.length ? s.selectedOptions : undefined,
+            textAnswer:      s.textAnswer ?? undefined,
+          };
+        }
+      }
+      if (Object.keys(restored).length) setAnswers(restored);
     }).catch(() => setLoadErr('Could not load this quiz. It may have already been submitted.'));
   }, [attemptId]); // eslint-disable-line react-hooks/exhaustive-deps
 

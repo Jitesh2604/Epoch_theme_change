@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BookOpen, Zap, ChevronRight, BarChart2, Target, Clock,
   Filter, Search, PlayCircle,
 } from 'lucide-react';
 import {
-  PageHeader, Card, Button, Badge, Modal, Select, Skeleton, EmptyState,
+  PageHeader, Card, Button, Badge, Modal, Skeleton, EmptyState,
 } from '../../shared/ui';
 import { usePracticeSubjects, practiceApi, type PracticeSubject } from '../../../hooks/usePracticeQuiz';
 import { useToasts } from '../../shared/ui';
@@ -17,12 +17,9 @@ const DIFFICULTY_OPTS = [
   { value: 'HARD',   label: 'Hard' },
 ];
 
-const COUNT_OPTS = [
-  { value: '5',  label: '5 questions  (~5 min)' },
-  { value: '10', label: '10 questions (~10 min)' },
-  { value: '15', label: '15 questions (~15 min)' },
-  { value: '20', label: '20 questions (~20 min)' },
-];
+// Default number of questions when a student opens the start dialog.
+const DEFAULT_COUNT = 20;
+const COUNT_PRESETS = [10, 20, 30, 50];
 
 const DIFF_COLORS: Record<string, string> = {
   EASY:   'success',
@@ -98,14 +95,26 @@ export function PracticeQuizPage() {
   const [filterDiff, setFilterDiff] = useState('');
   const [selected,   setSelected]   = useState<PracticeSubject | null>(null);
   const [difficulty, setDifficulty] = useState('');
-  const [count,      setCount]      = useState('10');
+  const [count,      setCount]      = useState(String(DEFAULT_COUNT));
   const [starting,   setStarting]   = useState(false);
+  const startingRef = useRef(false);
 
   const openModal = (s: PracticeSubject) => {
     setSelected(s);
     setDifficulty('');
-    setCount('10');
+    setCount(String(Math.min(DEFAULT_COUNT, Math.max(1, s.questionCount))));
   };
+
+  // How many questions exist for the current subject + difficulty selection.
+  const available = !selected
+    ? 0
+    : difficulty === 'EASY'   ? selected.easyCount
+    : difficulty === 'MEDIUM' ? selected.mediumCount
+    : difficulty === 'HARD'   ? selected.hardCount
+    : selected.questionCount;
+
+  // Requested count, clamped to what is actually available (min 1).
+  const requestedCount = Math.min(Math.max(1, Number(count) || 1), Math.max(1, available));
 
   const filtered = (subjects ?? []).filter(s => {
     const matchesSearch = !search || s.name.toLowerCase().includes(search.toLowerCase());
@@ -119,17 +128,22 @@ export function PracticeQuizPage() {
 
   const beginQuiz = async () => {
     if (!selected) return;
+    // Hard guard: a fast double-click can fire twice before `starting` re-renders
+    // the button as disabled, which would create two attempts.
+    if (startingRef.current) return;
+    startingRef.current = true;
     setStarting(true);
     try {
       const attempt = await practiceApi.start({
         subjectExternalId: selected.id,
         difficulty:    difficulty || undefined,
-        questionCount: Number(count),
+        questionCount: requestedCount,
       });
       navigate(`/student/practice/play/${attempt.attemptId}`, { state: { attempt } });
     } catch (err: any) {
       push({ kind: 'danger', title: 'Could not start quiz', sub: err?.message ?? 'Please try again' });
       setStarting(false);
+      startingRef.current = false;
     }
   };
 
@@ -265,7 +279,16 @@ export function PracticeQuizPage() {
               ].map(o => (
                 <button
                   key={o.val}
-                  onClick={() => setDifficulty(o.val)}
+                  onClick={() => {
+                    setDifficulty(o.val);
+                    // Clamp the requested count to the newly-selected pool.
+                    const avail = !selected ? 0
+                      : o.val === 'EASY'   ? selected.easyCount
+                      : o.val === 'MEDIUM' ? selected.mediumCount
+                      : o.val === 'HARD'   ? selected.hardCount
+                      : selected.questionCount;
+                    setCount(c => String(Math.min(Math.max(1, Number(c) || 1), Math.max(1, avail))));
+                  }}
                   className={`px-3 py-2.5 rounded-xl border text-left transition ${
                     difficulty === o.val
                       ? 'bg-brand-soft border-brand/40 text-brand'
@@ -280,16 +303,57 @@ export function PracticeQuizPage() {
           </div>
 
           <div>
-            <p className="text-[12px] font-semibold text-fg2 uppercase tracking-wider mb-2">
-              Number of questions
-            </p>
-            <Select value={count} onChange={setCount} options={COUNT_OPTS} className="w-full" />
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[12px] font-semibold text-fg2 uppercase tracking-wider">
+                Number of questions
+              </p>
+              <span className="text-[11px] text-fg3">{available} available</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={available || 1}
+                value={count}
+                onChange={e => setCount(e.target.value)}
+                onBlur={() => setCount(String(requestedCount))}
+                className="w-20 h-10 px-3 rounded-xl bg-surface1 border border-line text-[14px] font-semibold text-fg1 text-center focus:outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {COUNT_PRESETS.filter(n => n <= available).map(n => (
+                  <button
+                    key={n}
+                    onClick={() => setCount(String(n))}
+                    className={`px-3 h-10 rounded-xl text-[12px] font-semibold border transition ${
+                      requestedCount === n
+                        ? 'bg-brand text-brand-ink border-transparent'
+                        : 'bg-surface1 text-fg2 border-line hover:border-brand/30 hover:text-fg1'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+                {available > 0 && !COUNT_PRESETS.includes(available) && (
+                  <button
+                    onClick={() => setCount(String(available))}
+                    className={`px-3 h-10 rounded-xl text-[12px] font-semibold border transition ${
+                      requestedCount === available
+                        ? 'bg-brand text-brand-ink border-transparent'
+                        : 'bg-surface1 text-fg2 border-line hover:border-brand/30 hover:text-fg1'
+                    }`}
+                  >
+                    All ({available})
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 p-3 rounded-xl bg-surface1 border border-line">
             <Clock size={14} className="text-fg3 shrink-0" />
             <p className="text-[12px] text-fg3">
-              Estimated time: <strong className="text-fg1">~{Number(count)} minutes</strong>. No time limit enforced.
+              You'll get <strong className="text-fg1">{requestedCount} question{requestedCount !== 1 ? 's' : ''}</strong> · estimated time <strong className="text-fg1">~{requestedCount} min</strong>. No time limit enforced.
             </p>
           </div>
         </div>

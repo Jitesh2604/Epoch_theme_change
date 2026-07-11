@@ -28,8 +28,12 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
   const [busy, setBusy]         = useState(false);
   const [result, setResult]     = useState<PracticeResult | null>(null);
   const startMs = useRef(Date.now());
+  // Guard against duplicate starts (StrictMode double-invoke / remounts).
+  const startedRef = useRef(false);
 
   useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
     practiceApi.startOlympiad()
       .then(data => {
         if (!data.questions?.length) setError('__empty__');

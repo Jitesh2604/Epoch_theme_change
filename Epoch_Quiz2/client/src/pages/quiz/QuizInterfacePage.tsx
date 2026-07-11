@@ -57,9 +57,14 @@ export const QuizInterfacePage: React.FC<QuizInterfacePageProps> = ({
   const [submitting, setSubmitting] = useState(false);
 
   const startMs = useRef(Date.now());
+  // Guard against duplicate starts: React StrictMode double-invokes effects in
+  // dev, and a remount would otherwise fire a second `start` → a second attempt.
+  const startedRef = useRef(false);
 
   useEffect(() => {
     if (!lvl) return;
+    if (startedRef.current) return;
+    startedRef.current = true;
     const difficulty = level.toUpperCase() as 'EASY' | 'MEDIUM' | 'HARD';
     practiceApi
       .start({ subjectExternalId: subId, difficulty, questionCount: lvl.questions })

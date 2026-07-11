@@ -123,7 +123,7 @@ export function QuestionBankPickerModal({ open, onClose, assessmentId, onAdd }: 
 
   const { data: subjects } = useSubjects();
 
-  const { data, loading } = useQuestions({
+  const { data, loading, error } = useQuestions({
     page,
     limit: 12,
     search:   search  || undefined,
@@ -309,6 +309,12 @@ export function QuestionBankPickerModal({ open, onClose, assessmentId, onAdd }: 
                     Array.from({ length: 6 }).map((_, i) => (
                       <div key={i} className="p-4"><Skeleton className="h-16" /></div>
                     ))
+                  ) : error ? (
+                    <div className="flex flex-col items-center justify-center h-full py-16 text-fg3">
+                      <BookOpen size={32} className="mb-3 opacity-40 text-danger" />
+                      <p className="text-[13px] text-danger">Couldn’t load the question bank.</p>
+                      <p className="text-[11.5px] mt-1">{error}</p>
+                    </div>
                   ) : questions.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full py-16 text-fg3">
                       <BookOpen size={32} className="mb-3 opacity-40" />

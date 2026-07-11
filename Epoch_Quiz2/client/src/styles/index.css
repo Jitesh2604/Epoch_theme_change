@@ -28,6 +28,31 @@ body { overflow-x: hidden; min-height: 100vh; background: var(--bg); color: var(
 button { cursor: pointer; font-family: inherit; }
 input, select { font-family: inherit; }
 
+/* ===== Responsive safety net =====================================
+   Global guard against the overflow class that only appears with
+   real-world data: long emails / IDs / URLs / unbroken tokens that
+   are wider than their container. `break-word` only breaks a word
+   when it would otherwise overflow, so normal wrapping and the
+   existing per-page layout are unaffected. (Tailwind preflight already
+   caps img/video width; table overflow is handled by overflow-x-auto
+   wrappers, so those are intentionally left alone.) */
+body { overflow-wrap: break-word; }
+h1, h2, h3, h4, h5, h6, p, li, td, th, dd, dt, figcaption { overflow-wrap: break-word; }
+
+/* iOS Safari auto-zooms the whole page when a focused form control has a
+   font-size below 16px, which then leaves the layout pannable / "cut off" —
+   a real-device-only overflow source that desktop & headless testing never
+   surface (they set the layout viewport directly). Force a 16px minimum on
+   phones so focusing an input/select/textarea no longer triggers the zoom.
+   `!important` is required to beat the per-input Tailwind text-size utilities. */
+@media (max-width: 640px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* Utility: horizontally-scrollable strip (tabs, chips) without a visible bar. */
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }

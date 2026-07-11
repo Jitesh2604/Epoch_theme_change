@@ -33,6 +33,16 @@ export interface PracticeAttemptData {
   totalMarks:    number;
   startTime:     string;
   questions:     PracticeQuestion[];
+  /** Present when the attempt is re-fetched (refresh / direct nav) — lets the
+   *  play page restore in-progress selections. */
+  savedAnswers?: Array<{
+    questionId:      string;
+    selectedOption:  string | null;
+    selectedOptions: string[];
+    textAnswer:      string | null;
+    isSkipped:       boolean;
+    isMarkedReview:  boolean;
+  }>;
 }
 
 export interface SaveAnswerFeedback {

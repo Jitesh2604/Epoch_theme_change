@@ -21,6 +21,7 @@ import { CompleteProfileTeacherPage } from './pages/auth/CompleteProfileTeacherP
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
 import { getAuth } from './dashboards/shared/auth';
+import { refreshSession, getRefreshToken } from './lib/authStore';
 import { showToast } from './components/ui/Toast';
 
 function PlayGate({ targetRoute }: { targetRoute: string }) {
@@ -64,6 +65,20 @@ export default function App() {
   const [quizResult, setQuizResult] = useState<QuizResult | null>(null);
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('epoch-lang') as Lang) ?? 'EN');
 
+  // Restore the in-memory access token from the persisted refresh token before
+  // rendering. The marketing-site pages (Play / Olympiad) call authenticated
+  // endpoints; without this bootstrap the access token is null after any reload
+  // or direct navigation, so every request fires without an Authorization header
+  // → 401. Mirrors DashboardApp's session restore. Public visitors (no refresh
+  // token) render immediately with no delay.
+  const [sessionReady, setSessionReady] = useState(() => !getRefreshToken());
+  useEffect(() => {
+    if (!getRefreshToken()) return;
+    refreshSession()
+      .catch(() => { /* clearTokens already called inside refreshSession */ })
+      .finally(() => setSessionReady(true));
+  }, []);
+
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     localStorage.setItem('epoch-theme', theme);
@@ -89,6 +104,10 @@ export default function App() {
   const navigate = useCallback((path: string) => {
     window.location.hash = '#/' + path;
   }, []);
+
+  // Hold render until the session is restored so authenticated pages don't fire
+  // API calls before the access token is set.
+  if (!sessionReady) return null;
 
   const parts = route.split('/');
   const top = parts[0] || 'home';

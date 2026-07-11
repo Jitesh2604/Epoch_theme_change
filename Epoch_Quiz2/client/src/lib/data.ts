@@ -20,9 +20,9 @@ export const QUIZ_CATEGORIES: Category[] = [
 ];
 
 export const LEVELS: Level[] = [
-  { id: 'easy',   title: 'Easy',   desc: 'Accessible questions, work at your own pace.',       questions: 5  },
-  { id: 'medium', title: 'Medium', desc: 'Standard difficulty. The default mode.',              questions: 8  },
-  { id: 'hard',   title: 'Hard',   desc: 'Challenging questions with trickier distractors.',    questions: 10 },
+  { id: 'easy',   title: 'Easy',   desc: 'Accessible questions, work at your own pace.',       questions: 20 },
+  { id: 'medium', title: 'Medium', desc: 'Standard difficulty. The default mode.',              questions: 20 },
+  { id: 'hard',   title: 'Hard',   desc: 'Challenging questions with trickier distractors.',    questions: 20 },
 ];
 
 export const HERO_SLIDES: HeroSlide[] = [
