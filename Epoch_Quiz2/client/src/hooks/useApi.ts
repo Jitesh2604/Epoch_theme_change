@@ -33,30 +33,3 @@ export function useAsync<T>(
 
   return { data, loading, error, refetch: run };
 }
-
-export function useMutation<TInput, TOutput>(
-  fn: (input: TInput) => Promise<TOutput>,
-): {
-  mutate: (input: TInput) => Promise<TOutput | null>;
-  loading: boolean;
-  error: string | null;
-} {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const mutate = useCallback(async (input: TInput): Promise<TOutput | null> => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await fn(input);
-      return result;
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Something went wrong');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, [fn]);
-
-  return { mutate, loading, error };
-}

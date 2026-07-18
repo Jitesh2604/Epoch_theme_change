@@ -1,4 +1,4 @@
-import { TrendingUp, Award, Target, Clock } from 'lucide-react';
+import { TrendingUp, FileText, BarChart3, Clock } from 'lucide-react';
 import { PageHeader, Card, StatCard, Badge, ProgressBar, Skeleton } from '../../shared/ui';
 import { useSubmissions } from '../../../hooks/useSubmissions';
 import { useMyStats } from '../../../hooks/useLeaderboard';
@@ -33,8 +33,8 @@ export function AnalyticsPage() {
           Array.from({ length: 4 }).map((_, i) => <Card key={i} className="p-5"><Skeleton className="h-20" /></Card>)
         ) : (
           <>
-            <StatCard label="Assessments created" value={stats?.assessmentsCreated  ?? 0}                   icon={Target}   tone="brand"   />
-            <StatCard label="Total submissions"    value={stats?.totalSubmissions    ?? 0}                   icon={Award}    tone="violet"  />
+            <StatCard label="Assessments created" value={stats?.assessmentsCreated  ?? 0}                   icon={FileText}   tone="brand"   />
+            <StatCard label="Total submissions"    value={stats?.totalSubmissions    ?? 0}                   icon={BarChart3}    tone="violet"  />
             <StatCard label="Avg score"             value={`${Math.round(stats?.avgPercent ?? 0)}%`}        icon={TrendingUp} tone="emerald" />
             <StatCard label="Avg time (min)"        value={Math.round((stats?.avgTimeSec ?? 0) / 60)}       icon={Clock}    tone="amber"   />
           </>

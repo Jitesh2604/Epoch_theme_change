@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Users, ClipboardList, MoreVertical, Eye } from 'lucide-react';
+import { Clock, Users, ClipboardList, MoreVertical } from 'lucide-react';
 import { PageHeader, Card, Button, SearchInput, Select, Badge, EmptyState, Skeleton } from '../../shared/ui';
 import { useAssessments, assessmentApi } from '../../../hooks/useAssessments';
 import { useToasts } from '../../shared/ui';
@@ -101,10 +101,16 @@ export function AssessmentsPage() {
                   <div className="text-[10px] text-fg3 uppercase tracking-wider mt-0.5">attempts</div>
                 </div>
               </div>
+              {/* A dedicated Preview action (view-only, no management controls)
+                  used to sit next to Manage here, but both navigated to the
+                  exact same page — a confusing duplicate. Removed for now;
+                  re-add it as its own button once there's a real read-only
+                  preview distinct from Manage. Manage is the one true entry
+                  point into this assessment's page — extend that page
+                  (question editing, settings, scheduling, publishing, etc.)
+                  rather than introducing another duplicate route. */}
               <div className="flex gap-2 mt-4">
-                <Button variant="outline" size="sm" icon={Eye} className="flex-1"
-                  onClick={() => navigate(`/admin/assessments/${a.id}`)}>Preview</Button>
-                <Button variant="soft" size="sm" className="flex-1"
+                <Button size="sm" className="w-full"
                   onClick={() => navigate(`/admin/assessments/${a.id}`)}>Manage</Button>
               </div>
             </Card>

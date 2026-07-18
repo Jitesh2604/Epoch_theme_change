@@ -31,7 +31,6 @@ export const Footer: React.FC<FooterProps> = ({ navigate }) => {
           <h5>{t('footer.product')}</h5>
           <button onClick={() => navigate('home')}>{t('footer.home')}</button>
           <button onClick={() => navigate('play')}>{t('footer.quizLibrary')}</button>
-          <button onClick={() => navigate('play/daily/d-today')}>{t('footer.dailyQuiz')}</button>
           <button onClick={() => navigate('instruction')}>{t('footer.howItWorks')}</button>
         </div>
         <div className="foot-col">

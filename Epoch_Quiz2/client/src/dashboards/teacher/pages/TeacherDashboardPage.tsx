@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { FilePlus2, FileText, Users, Award, ArrowUpRight, Clock, ClipboardList } from 'lucide-react';
+import { FilePlus2, FileText, BarChart3, Award, ArrowUpRight, Clock, ClipboardList } from 'lucide-react';
 import { PageHeader, StatCard, Card, Button, Badge, Skeleton } from '../../shared/ui';
 import { useAssessments } from '../../../hooks/useAssessments';
 import { useMyStats } from '../../../hooks/useLeaderboard';
@@ -41,7 +41,7 @@ export function TeacherDashboardPage() {
         ) : (
           <>
             <StatCard label="Assessments created" value={stats?.assessmentsCreated ?? 0} icon={FileText} tone="brand"   />
-            <StatCard label="Total submissions"    value={stats?.totalSubmissions    ?? 0} icon={Users}    tone="violet"  />
+            <StatCard label="Total submissions"    value={stats?.totalSubmissions    ?? 0} icon={BarChart3}    tone="violet"  />
             <StatCard label="Avg score"             value={`${Math.round(stats?.avgPercent ?? 0)}%`} icon={Award} tone="emerald" />
             <StatCard label="Avg time (min)"        value={Math.round((stats?.avgTimeSec ?? 0) / 60)} icon={Clock} tone="amber" />
           </>

@@ -5,6 +5,7 @@ import { isAdminRole } from '../utils/roles';
 import { ApiError } from '../utils/ApiError';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
 import { ContentService, ContentMeta } from './content.service';
+import { SettingsService } from './settings.service';
 import type {
   CreateAssessmentInput,
   UpdateAssessmentInput,
@@ -39,6 +40,8 @@ function toPublic(a: AssessmentWithRel, subjectNames?: Map<string, string>) {
     duration:      a.duration,
     totalMarks:    a.totalMarks,
     passingMarks:  a.passingMarks,
+    negativeMarking:    a.negativeMarking,
+    negativeMarksValue: a.negativeMarksValue,
     status:        a.status,
     publishedAt:   a.publishedAt,
     subject:       a.subjectExternalId
@@ -149,14 +152,18 @@ export const AssessmentService = {
     if (input.subjectExternalId) await ensureSubjectExists(input.subjectExternalId);
     if (input.classExternalId)   await ensureClassExists(input.classExternalId);
 
+    const duration = input.duration ?? (Number(await SettingsService.get('assessment.defaultDuration')) || 30);
+
     const created = await prisma.$transaction(async (txc) => {
       const a = await txc.assessment.create({
         data: {
           title:             input.title,
           description:       input.description ?? null,
-          duration:          input.duration,
+          duration,
           totalMarks:        0,
           passingMarks:      input.passingMarks ?? 0,
+          negativeMarking:    input.negativeMarking ?? false,
+          negativeMarksValue: input.negativeMarksValue ?? 0,
           status:            AssessmentStatus.DRAFT,
           subjectExternalId: input.subjectExternalId ?? null,
           classExternalId:   input.classExternalId ?? null,
@@ -258,6 +265,8 @@ export const AssessmentService = {
         ...(input.duration          !== undefined && { duration: input.duration }),
         ...(input.subjectExternalId !== undefined && { subjectExternalId: input.subjectExternalId }),
         ...(input.passingMarks      !== undefined && { passingMarks: input.passingMarks }),
+        ...(input.negativeMarking      !== undefined && { negativeMarking: input.negativeMarking }),
+        ...(input.negativeMarksValue   !== undefined && { negativeMarksValue: input.negativeMarksValue }),
       },
       include: assessmentInclude,
     });

@@ -111,22 +111,14 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
         {/* RIGHT — auth buttons (desktop only; folded into the drawer below lg) */}
         <div className="nav-auth" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
           {user ? (
-            <>
-              <a
-                href={`/${toUIRole(user.role)}`}
-                className="btn btn-primary sm"
-                style={{ padding: '7px 14px', textDecoration: 'none' }}
-              >
-                <Icon name="sparkles" size={14} /> My Dashboard
-              </a>
-              <ProfileMenu
-                user={user}
-                open={profileOpen}
-                setOpen={setProfileOpen}
-                onLogout={handleLogout}
-                stop={stop}
-              />
-            </>
+            <ProfileMenu
+              user={user}
+              dashboardHref={`/${toUIRole(user.role)}`}
+              open={profileOpen}
+              setOpen={setProfileOpen}
+              onLogout={handleLogout}
+              stop={stop}
+            />
           ) : (
             <>
               <button className="btn btn-ghost sm" onClick={() => navigate('login')} style={{ padding: '7px 14px' }}>
@@ -222,13 +214,14 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
 // ── Logged-in profile menu (desktop) ─────────────────────────────
 interface ProfileMenuProps {
   user: AuthUser;
+  dashboardHref: string;
   open: boolean;
   setOpen: (v: boolean | ((p: boolean) => boolean)) => void;
   onLogout: () => void;
   stop: (e: React.MouseEvent) => void;
 }
 
-const ProfileMenu: React.FC<ProfileMenuProps> = ({ user, open, setOpen, onLogout, stop }) => (
+const ProfileMenu: React.FC<ProfileMenuProps> = ({ user, dashboardHref, open, setOpen, onLogout, stop }) => (
   <div style={{ position: 'relative' }} onClick={stop}>
     <button
       className="nav-profile-btn"
@@ -260,6 +253,9 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({ user, open, setOpen, onLogout
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-1)' }}>{user.name}</div>
           <div style={{ fontSize: 11, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</div>
         </div>
+        <a className="dropdown-item" href={dashboardHref} style={{ textDecoration: 'none' }}>
+          <Icon name="sparkles" size={14} /> Dashboard
+        </a>
         <button className="dropdown-item" onClick={onLogout} style={{ color: 'var(--danger, #FF6B6B)' }}>
           <Icon name="logout" size={14} /> Log out
         </button>

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, MinusCircle, Clock, Trophy, BookOpen,
-  ChevronDown, ChevronUp, ArrowLeft, AlertTriangle, Award,
+  ChevronDown, ChevronUp, ArrowLeft, AlertTriangle, Award, FileText, Percent,
 } from 'lucide-react';
 import { Card, Button, Badge, ProgressBar } from '../../shared/ui';
 import { assessmentTakeApi, type SubmissionResult, type ResultQuestion } from '../../../hooks/useSubmissionApi';
@@ -11,12 +11,12 @@ import { assessmentTakeApi, type SubmissionResult, type ResultQuestion } from '.
 
 const LETTERS = ['A', 'B', 'C', 'D'];
 
-function grade(pct: number): { label: string; tone: 'success' | 'warning' | 'danger'; color: string } {
-  if (pct >= 90) return { label: 'Outstanding!',   tone: 'success', color: '#22c55e' };
-  if (pct >= 75) return { label: 'Great work!',    tone: 'success', color: '#22c55e' };
-  if (pct >= 60) return { label: 'Good effort!',   tone: 'warning', color: '#f59e0b' };
-  if (pct >= 40) return { label: 'Keep going!',    tone: 'warning', color: '#f59e0b' };
-  return              { label: 'Keep practising', tone: 'danger',  color: '#f43f5e' };
+function grade(pct: number): { label: string; tone: 'success' | 'warning' | 'danger'; color: string; feedback: string } {
+  if (pct >= 90) return { label: 'Outstanding!',   tone: 'success', color: '#22c55e', feedback: "You've mastered this material — keep up the excellent work!" };
+  if (pct >= 75) return { label: 'Great work!',    tone: 'success', color: '#22c55e', feedback: 'A strong performance. A little more practice and you\'ll be at the top.' };
+  if (pct >= 60) return { label: 'Good effort!',   tone: 'warning', color: '#f59e0b', feedback: 'Solid effort — review what you missed to push your score higher.' };
+  if (pct >= 40) return { label: 'Keep going!',    tone: 'warning', color: '#f59e0b', feedback: "You're getting there — a bit more practice will make a big difference." };
+  return              { label: 'Keep practising', tone: 'danger',  color: '#f43f5e', feedback: 'Consider reviewing the topics you missed and trying again.' };
 }
 
 function fmtTime(sec: number) {
@@ -152,7 +152,7 @@ function ReviewItem({ q, idx }: { q: ResultQuestion; idx: number }) {
               {isCorrect === null && (
                 <div className="flex items-center gap-2 text-[12px] text-amber-300">
                   <AlertTriangle size={13} />
-                  Awaiting manual grading by your teacher.
+                  Awaiting manual grading by your admin.
                 </div>
               )}
             </div>
@@ -214,7 +214,7 @@ export function AssessmentResultPage() {
   }
 
   const pct              = Math.round(result.percent);
-  const { label: gradeLabel, color: gradeColor } = grade(pct);
+  const { label: gradeLabel, color: gradeColor, feedback } = grade(pct);
   const passed           = pct >= (result.assessment.passingMarks > 0
     ? (result.assessment.passingMarks / result.totalMarks) * 100
     : 60);
@@ -228,6 +228,10 @@ export function AssessmentResultPage() {
     !q.yourAnswer.textAnswer
   )).length;
 
+  const totalQuestions = result.questions.length;
+  const attempted       = totalQuestions - unanswered;
+  const accuracyPct     = attempted > 0 ? Math.round((correct / attempted) * 100) : 0;
+
   return (
     <div className="max-w-2xl mx-auto pb-10">
 
@@ -239,6 +243,10 @@ export function AssessmentResultPage() {
         <ArrowLeft size={13} />
         Back to Assessments
       </button>
+
+      {/* Assessment title */}
+      <p className="text-[11px] text-fg3 uppercase tracking-wide mb-1">Assessment Result</p>
+      <h1 className="font-display font-semibold text-xl text-fg1 mb-4">{result.assessment.title}</h1>
 
       {/* ── Score hero ─────────────────────────────────────────── */}
       <Card className="p-6 mb-4 text-center relative overflow-hidden">
@@ -270,17 +278,20 @@ export function AssessmentResultPage() {
 
           {isPending ? (
             <p className="text-[13px] text-fg3">
-              Some questions need manual grading. Your final score will update once your teacher grades them.
+              Some questions need manual grading. Your final score will update once your admin grades them.
             </p>
           ) : (
-            <p className="text-[13px] text-fg3">
-              You scored{' '}
-              <strong className="text-fg1">{result.score}</strong> out of{' '}
-              <strong className="text-fg1">{result.totalMarks}</strong> marks
-              {result.assessment.subject && (
-                <> · {result.assessment.subject.name}</>
-              )}
-            </p>
+            <>
+              <p className="text-[13px] text-fg3">
+                You scored{' '}
+                <strong className="text-fg1">{result.score}</strong> out of{' '}
+                <strong className="text-fg1">{result.totalMarks}</strong> marks
+                {result.assessment.subject && (
+                  <> · {result.assessment.subject.name}</>
+                )}
+              </p>
+              <p className="text-[12.5px] text-fg3 mt-1.5">{feedback}</p>
+            </>
           )}
 
           {/* Pass / Fail badge */}
@@ -291,16 +302,37 @@ export function AssessmentResultPage() {
               </Badge>
             </div>
           )}
+
+          {result.submittedAt && (
+            <p className="text-[11px] text-fg4 mt-3">
+              Submitted {new Date(result.submittedAt).toLocaleString()}
+            </p>
+          )}
         </div>
       </Card>
 
       {/* ── Stats row ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
         {[
           { icon: CheckCircle2, value: correct,               label: 'Correct',     color: 'text-emerald-400' },
           { icon: XCircle,      value: wrong,                 label: 'Incorrect',   color: 'text-rose-400'    },
           { icon: MinusCircle,  value: unanswered,            label: 'Unanswered',  color: 'text-fg3'         },
           { icon: Clock,        value: fmtTime(result.timeTakenSec), label: 'Time taken', color: 'text-fg2'  },
+        ].map(({ icon: Icon, value, label, color }) => (
+          <Card key={label} className="p-4 text-center">
+            <Icon size={18} className={`${color} mx-auto mb-1.5`} />
+            <div className="font-display font-semibold text-[18px] text-fg1">{value}</div>
+            <div className="text-[11px] text-fg3 mt-0.5">{label}</div>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        {[
+          { icon: FileText, value: totalQuestions,                 label: 'Total questions', color: 'text-fg2' },
+          { icon: Award,    value: attempted,                      label: 'Attempted',       color: 'text-fg2' },
+          { icon: Clock,    value: `${result.assessment.duration}m`, label: 'Total duration', color: 'text-fg2' },
+          { icon: Percent,  value: `${accuracyPct}%`,               label: 'Accuracy',        color: 'text-fg2' },
         ].map(({ icon: Icon, value, label, color }) => (
           <Card key={label} className="p-4 text-center">
             <Icon size={18} className={`${color} mx-auto mb-1.5`} />

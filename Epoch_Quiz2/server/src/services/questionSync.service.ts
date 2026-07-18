@@ -23,7 +23,7 @@
  * embedded chapter/book.
  */
 import { prisma } from '../lib/prisma';
-import { Difficulty, QuestionType, Role } from '../lib/enums';
+import { Difficulty, QuestionType, Role, DEFAULT_LANGUAGE } from '../lib/enums';
 import { toJson } from '../utils/json';
 import { logger } from '../utils/logger';
 import { env } from '../config';
@@ -228,7 +228,7 @@ export const QuestionSyncService = {
           correctOptions,
           explanation: q.explanation,
           difficulty: toDifficulty(q.level),
-          language: 'English',
+          language: DEFAULT_LANGUAGE,
           tags: '[]',
           status: 'ACTIVE' as const,
           bookExternalId: bookCtx?.bookExternalId ?? null,

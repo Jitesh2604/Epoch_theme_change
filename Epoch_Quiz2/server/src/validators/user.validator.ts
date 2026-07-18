@@ -11,7 +11,13 @@ export const adminCreateUserSchema = z.object({
   name:        nameSchema,
   email:       emailSchema,
   password:    passwordSchema,
-  role:        z.nativeEnum(Role),
+  // The Teacher module is temporarily disabled — TEACHER is rejected here so
+  // admins can't create an account that can never sign in (see the matching
+  // block in AuthService.login/refresh). Drop this .refine() to re-enable
+  // teacher account creation once the module returns; no other change needed.
+  role:        z.nativeEnum(Role).refine(r => r !== Role.TEACHER, {
+    message: 'Teacher accounts cannot be created while the Teacher module is disabled',
+  }),
   status:      z.nativeEnum(UserStatus).optional(),
   avatarHue:   z.number().int().min(0).max(360).optional(),
   schoolName:  z.string().trim().min(1).max(120).optional(),

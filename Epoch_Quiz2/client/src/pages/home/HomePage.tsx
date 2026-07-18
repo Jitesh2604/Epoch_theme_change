@@ -35,7 +35,7 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
                 <h1 dangerouslySetInnerHTML={{ __html: cur.title }} />
                 <p>{cur.body}</p>
                 <div className="hero-actions">
-                  <button className="btn btn-primary lg" onClick={() => navigate(cur.sub ? `play/daily/${cur.sub}/level` : 'play')}>
+                  <button className="btn btn-primary lg" onClick={() => navigate('play')}>
                     {cur.cta} <Icon name="arrowRight" size={16} />
                   </button>
                   <button className="btn btn-ghost lg" onClick={() => navigate('instruction')}>{t('home.howItWorks')}</button>
@@ -75,7 +75,9 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
                 className="cat-card"
                 onClick={() => {
                   if (category.slug === 'practice-olympiad') {
-                    navigate('play');
+                    // The real mixed-subject Olympiad flow — matches this
+                    // card's own description below.
+                    navigate('olympiad');
                   } else if (category.slug === 'attempted-olympiad') {
                     // Assessments live in the Student Dashboard (a separate SPA
                     // mounted at /student/*), so this is a real navigation, not
@@ -100,16 +102,16 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
           <div className="section-head">
             <div className="eyebrow"><span className="dot"></span>{t('home.whyChooseUs')}</div>
             <h2>Built on the same workspace publishers already trust.</h2>
-            <p>Olympaid Epoch Quiz inherits the question-bank infrastructure powering thousands of textbooks, with end-to-end review, taxonomy tags, and answer-key generation built in.</p>
+            <p>Olympaid Epoch Quiz inherits the question-bank infrastructure our editorial team already uses — reviewed content, taxonomy tags, and curriculum-board tagging built in.</p>
           </div>
           <div className="grid-3">
             {[
-              { ic: 'bolt',       t: 'Adaptive sets',       d: 'Questions adjust to your level after every session — no more flat difficulty curves.' },
-              { ic: 'shield',     t: 'Audited content',      d: 'Every item passes through editorial review. SOC 2 Type II, ISO 27001, FERPA, GDPR.' },
-              { ic: 'trophy',     t: 'Real leaderboards',    d: 'Compete with the people around your level. Updates the instant your quiz ends.' },
-              { ic: 'chart',      t: 'Honest analytics',     d: 'Time-on-question, distractor pulls, and topic strength. The numbers that actually help.' },
-              { ic: 'layers',     t: 'Five quiz modes',      d: 'Daily, GK, tech, practice, and curated Quiz Zone — all in one workspace.' },
-              { ic: 'graduation', t: 'Curriculum-aligned',   d: 'Tagged to CBSE, IB, Cambridge, and major state boards out of the box.' },
+              { ic: 'bolt',       t: 'Instant results',      d: 'Your score, correct answers, and full explanations the moment you submit — no waiting.' },
+              { ic: 'shield',     t: 'Editorially reviewed',  d: 'Every question is authored and reviewed by our editorial team before it reaches students.' },
+              { ic: 'trophy',     t: 'Real leaderboards',     d: 'Graded assessments feed a live leaderboard. Updates the instant results are in.' },
+              { ic: 'chart',      t: 'Clear results',         d: 'Score, accuracy, and a full per-question breakdown after every attempt — the numbers that actually help.' },
+              { ic: 'layers',     t: 'Practice, Olympiad, and Assessments', d: 'Subject Practice for focused study, Practice Olympiad for a mixed challenge, and school-assigned Assessments — all in one place.' },
+              { ic: 'graduation', t: 'Curriculum-aligned',    d: 'Tagged to CBSE, IB, Cambridge, and major state boards out of the box.' },
             ].map((f, i) => (
               <div key={i} className="feature">
                 <div className="f-ico"><Icon name={f.ic} size={20} /></div>
@@ -131,9 +133,9 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
           </div>
           <div className="grid-3">
             {[
-              { ic: 'rocket',  t: 'Streak engine',          d: 'Daily streaks survive timezones, time-outs, and travel days. The way a streak should.' },
-              { ic: 'brain',   t: 'Reasoning explanations', d: 'Every answer comes with a worked explanation — written by humans, reviewed by AI.' },
-              { ic: 'refresh', t: 'Smart re-test',          d: 'Missed a question? It comes back in the right window, spaced for memory.' },
+              { ic: 'rocket',  t: 'Know before you start',  d: 'Every Assessment and Practice Olympiad opens with a clear overview — subject, marks, duration, and instructions — before you begin.' },
+              { ic: 'brain',   t: 'Explanations included',  d: 'Many questions come with a worked explanation, so a wrong answer still teaches you something.' },
+              { ic: 'refresh', t: 'Full result breakdown',  d: 'See exactly what you got right, wrong, or skipped — with accuracy, timing, and a question-by-question review.' },
             ].map((f, i) => (
               <div key={i} className="feature animated">
                 <div className="f-ico"><Icon name={f.ic} size={20} /></div>
@@ -172,10 +174,10 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
             </div>
             <div className="stat-grid">
               {[
-                { n: '38k',   l: 'Quizzes played this week' },
-                { n: '12+',   l: 'Curriculum boards'        },
-                { n: '95%',   l: 'User satisfaction (NPS)'  },
-                { n: '< 60s', l: 'Avg. quiz start time'     },
+                { n: '3',  l: 'Ways to practice — Subject, Olympiad, Assessments' },
+                { n: '3',  l: 'Difficulty levels'         },
+                { n: '0',  l: 'Time pressure in Practice modes' },
+                { n: '1',  l: 'Live leaderboard, updated instantly' },
               ].map((s, i) => (
                 <div key={i} className="stat">
                   <div className="s-num">{s.n}</div>
@@ -217,9 +219,9 @@ const HeroIllustration: React.FC<{ variant?: number }> = ({ variant = 0 }) => {
         <text x="240" y="141" textAnchor="middle" fontSize="20" fill="white" opacity="0.9">★</text>
         {/* Score pills */}
         <rect x="92" y="200" width="106" height="24" rx="12" fill="rgba(136,144,99,0.18)" stroke="#889063" strokeWidth="1"/>
-        <text x="145" y="216" textAnchor="middle" fontSize="11" fontWeight="600" fontFamily="Inter,sans-serif" fill="#4A5A32">+850 pts</text>
+        <rect x="104" y="208" width="82" height="8" rx="4" fill="#4A5A32" opacity="0.55"/>
         <rect x="282" y="230" width="106" height="24" rx="12" fill="rgba(207,187,153,0.22)" stroke="#CFBB99" strokeWidth="1"/>
-        <text x="335" y="246" textAnchor="middle" fontSize="11" fontWeight="600" fontFamily="Inter,sans-serif" fill="#6B5525">+620 pts</text>
+        <rect x="294" y="238" width="82" height="8" rx="4" fill="#6B5525" opacity="0.55"/>
         {/* Decorative dots */}
         <circle cx="170" cy="82" r="4" fill="#354024" opacity="0.35"/>
         <circle cx="310" cy="88" r="3" fill="#889063" opacity="0.40"/>
@@ -244,8 +246,8 @@ const HeroIllustration: React.FC<{ variant?: number }> = ({ variant = 0 }) => {
                 strokeLinecap="round" strokeDasharray="497 565"
                 fill="none" transform="rotate(-90 240 168)"/>
         <circle cx="240" cy="168" r="74" fill="rgba(53,64,36,0.04)" stroke="rgba(53,64,36,0.12)" strokeWidth="1"/>
-        <text x="240" y="155" textAnchor="middle" fontSize="44" fontWeight="700" fontFamily="Lora,Georgia,serif" fill="#354024">88%</text>
-        <text x="240" y="178" textAnchor="middle" fontSize="10" letterSpacing="2.5" fill="rgba(76,61,25,0.50)" fontFamily="Inter,sans-serif">SCORE</text>
+        <text x="240" y="164" textAnchor="middle" fontSize="30" fontWeight="700" fontFamily="Lora,Georgia,serif" fill="#354024">?</text>
+        <text x="240" y="188" textAnchor="middle" fontSize="10" letterSpacing="2.5" fill="rgba(76,61,25,0.50)" fontFamily="Inter,sans-serif">SCORE</text>
         {/* Stars */}
         <text x="198" y="310" fontSize="26" fill="#B45309" opacity="0.80">★</text>
         <text x="230" y="316" fontSize="32" fill="#354024">★</text>
@@ -253,10 +255,10 @@ const HeroIllustration: React.FC<{ variant?: number }> = ({ variant = 0 }) => {
         {/* Stat cards */}
         <rect x="48" y="288" width="114" height="50" rx="10" fill="rgba(53,64,36,0.06)" stroke="rgba(53,64,36,0.20)" strokeWidth="1.5"/>
         <text x="105" y="306" textAnchor="middle" fontSize="9" letterSpacing="1.2" fill="rgba(76,61,25,0.50)" fontFamily="Inter,sans-serif">CORRECT</text>
-        <text x="105" y="326" textAnchor="middle" fontSize="20" fontWeight="700" fontFamily="Lora,Georgia,serif" fill="#354024">9 / 10</text>
+        <rect x="80" y="316" width="50" height="10" rx="5" fill="#354024" opacity="0.30"/>
         <rect x="318" y="288" width="114" height="50" rx="10" fill="rgba(136,144,99,0.10)" stroke="rgba(136,144,99,0.28)" strokeWidth="1.5"/>
         <text x="375" y="306" textAnchor="middle" fontSize="9" letterSpacing="1.2" fill="rgba(76,61,25,0.45)" fontFamily="Inter,sans-serif">AVG TIME</text>
-        <text x="375" y="326" textAnchor="middle" fontSize="20" fontWeight="700" fontFamily="Lora,Georgia,serif" fill="#889063">4.2 s</text>
+        <rect x="350" y="316" width="50" height="10" rx="5" fill="#889063" opacity="0.35"/>
         {/* Dots */}
         <circle cx="76" cy="96" r="4" fill="#354024" opacity="0.30"/>
         <circle cx="412" cy="112" r="3" fill="#889063" opacity="0.35"/>

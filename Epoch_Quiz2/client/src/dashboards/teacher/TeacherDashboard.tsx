@@ -11,6 +11,7 @@ import { QuestionManagementPage } from './pages/QuestionManagementPage';
 import { MyAssessmentsPage } from './pages/MyAssessmentsPage';
 import { QuestionBankPage } from './pages/QuestionBankPage';
 import { UploadQuestionsPage } from '../shared/UploadQuestionsPage';
+import { UploadHistoryPage } from '../shared/UploadHistoryPage';
 import { StudentsPage } from './pages/StudentsPage';
 import { ResultsPage } from './pages/ResultsPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
@@ -55,6 +56,7 @@ export function TeacherDashboard() {
         <Route path="assessments" element={<MyAssessmentsPage />} />
         <Route path="question-bank" element={<QuestionBankPage />} />
         <Route path="upload-questions" element={<UploadQuestionsPage />} />
+        <Route path="upload-questions/history" element={<UploadHistoryPage />} />
         <Route path="students" element={<StudentsPage />} />
         <Route path="results" element={<ResultsPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />

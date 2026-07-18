@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { UploadStatus } from '../lib/enums';
+import { paginationSchema } from '../utils/pagination';
 
 export const uploadQuerySchema = z.object({
   dryRun:       z.coerce.boolean().optional().default(false),
@@ -8,4 +10,9 @@ export const uploadQuerySchema = z.object({
   stopOnError:  z.coerce.boolean().optional().default(false),
 });
 
-export type UploadQuery = z.infer<typeof uploadQuerySchema>;
+export const listUploadsQuerySchema = paginationSchema.extend({
+  status: z.nativeEnum(UploadStatus).optional(),
+});
+
+export type UploadQuery      = z.infer<typeof uploadQuerySchema>;
+export type ListUploadsQuery = z.infer<typeof listUploadsQuerySchema>;

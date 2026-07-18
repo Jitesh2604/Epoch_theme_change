@@ -1,15 +1,17 @@
 import {
-  LayoutDashboard, Users, GraduationCap, ClipboardList, BookOpen,
-  BarChart3, Settings as SettingsIcon, HelpCircle, Home,
+  LayoutDashboard, GraduationCap, ClipboardList, BookOpen,
+  BarChart3, Settings as SettingsIcon, Home,
 } from 'lucide-react';
 import { Route, Routes, Navigate } from 'react-router-dom';
 import { DashboardLayout } from '../shared/DashboardLayout';
 import { DashboardOverviewPage } from './pages/DashboardOverviewPage';
-import { TeachersPage } from './pages/TeachersPage';
+// Teacher module is temporarily hidden — see nav items/routes below.
+// import { TeachersPage } from './pages/TeachersPage';
 import { StudentsPage } from './pages/StudentsPage';
 import { AssessmentsPage } from './pages/AssessmentsPage';
 import { QuestionBankPage } from './pages/QuestionBankPage';
 import { UploadQuestionsPage } from '../shared/UploadQuestionsPage';
+import { UploadHistoryPage } from '../shared/UploadHistoryPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AssessmentPreviewPage } from './pages/AssessmentPreviewPage';
@@ -28,7 +30,9 @@ export function AdminDashboard() {
             user={{ name: user?.name ?? 'Admin', subtitle: 'Publication Admin', avatarHue: user?.avatarHue ?? 320 }}
             navItems={[
               { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-              { to: '/admin/teachers', label: 'Teachers', icon: Users },
+              // Teacher module is temporarily hidden — restore this nav item
+              // (and the Users icon import) to bring it back.
+              // { to: '/admin/teachers', label: 'Teachers', icon: Users },
               { to: '/admin/students', label: 'Students', icon: GraduationCap },
               { to: '/admin/assessments', label: 'Assessments', icon: ClipboardList },
               { to: '/admin/question-bank', label: 'Question Bank', icon: BookOpen },
@@ -36,22 +40,29 @@ export function AdminDashboard() {
             ]}
             footerItems={[
               { to: '/admin/settings', label: 'Settings', icon: SettingsIcon },
-              { to: '/admin/help', label: 'Help center', icon: HelpCircle },
+              // Help Center is hidden until it has real content of its own —
+              // it used to just reopen the Settings page under a different
+              // label. Restore this item (and the HelpCircle icon import
+              // above) once a real Help Center/FAQ/docs page exists.
+              // { to: '/admin/help', label: 'Help center', icon: HelpCircle },
               { to: '/', label: 'Home', icon: Home, href: '/#/home' },
             ]}
           />
         }
       >
         <Route index element={<DashboardOverviewPage />} />
-        <Route path="teachers" element={<TeachersPage />} />
+        {/* <Route path="teachers" element={<TeachersPage />} /> */}
         <Route path="students" element={<StudentsPage />} />
         <Route path="assessments" element={<AssessmentsPage />} />
         <Route path="assessments/:id" element={<AssessmentPreviewPage />} />
         <Route path="question-bank" element={<QuestionBankPage />} />
         <Route path="upload-questions" element={<UploadQuestionsPage />} />
+        <Route path="upload-questions/history" element={<UploadHistoryPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="settings" element={<SettingsPage />} />
-        <Route path="help" element={<SettingsPage />} />
+        {/* <Route path="help" element={<SettingsPage />} /> — was only an alias
+            for Settings, not a real Help Center. Point this at a dedicated
+            HelpCenterPage when one exists. */}
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Route>
     </Routes>

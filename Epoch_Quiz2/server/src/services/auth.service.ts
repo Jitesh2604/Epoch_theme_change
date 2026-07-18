@@ -13,6 +13,7 @@ import {
 import { env, isDev } from '../config';
 import { EmailService } from './email.service';
 import { ContentMeta } from './content.service';
+import { SettingsService, assertMinPasswordLength } from './settings.service';
 import type { RegisterInput, LoginInput } from '../validators/auth.validator';
 
 function slugifySubject(name: string): string {
@@ -29,7 +30,6 @@ export interface DbUser {
   status:          UserStatus;
   avatarHue:       number;
   profileComplete: boolean;
-  publicationId:   string | null;
   createdAt:       Date;
   updatedAt:       Date;
 }
@@ -93,6 +93,13 @@ async function generateTeacherCode(): Promise<string> {
 
 export const AuthService = {
   async register(input: RegisterInput): Promise<AuthResponse> {
+    // Registration is always for Role.STUDENT while the Teacher module is
+    // disabled (see auth.validator.ts), so this is effectively the master
+    // switch for public self-signup.
+    if ((await SettingsService.get('users.studentRegistration')) === 'false') {
+      throw ApiError.forbidden('Self-registration is currently disabled. Contact an administrator.');
+    }
+
     const existing = await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } });
     if (existing) throw ApiError.conflict('Email is already registered');
 
@@ -101,11 +108,18 @@ export const AuthService = {
       if (mobileExists) throw ApiError.conflict('Mobile number is already registered');
     }
 
+    await assertMinPasswordLength(input.password);
+
     const passwordHash = await hashPassword(input.password);
     const avatarHue    = Math.floor(Math.random() * 360);
 
+    // `input.role` is typed as Role.STUDENT while the Teacher module is
+    // hidden (see auth.validator.ts); widen it so the dormant teacher branch
+    // below still type-checks and can be re-enabled by reverting that schema.
+    const role = input.role as Role;
+
     let teacherCode: string | undefined;
-    if (input.role === Role.TEACHER) teacherCode = await generateTeacherCode();
+    if (role === Role.TEACHER) teacherCode = await generateTeacherCode();
 
     const user = await prisma.user.create({
       data: {
@@ -113,13 +127,13 @@ export const AuthService = {
         mobileNo:        input.mobileNo ?? null,
         passwordHash,
         name:            input.name,
-        role:            input.role,
+        role,
         status:          UserStatus.ACTIVE,
         avatarHue,
         profileComplete: false,
-        ...(input.role === Role.TEACHER
+        ...(role === Role.TEACHER
           ? { teacherProfile: { create: { teacherCode } } }
-          : input.role === Role.STUDENT
+          : role === Role.STUDENT
             ? { studentProfile: { create: {} } }
             : {}),
       },
@@ -135,6 +149,9 @@ export const AuthService = {
     if (!user) throw ApiError.unauthorized('Invalid email or password');
 
     if (user.status === UserStatus.INACTIVE) throw ApiError.forbidden('Account is inactive');
+    // The Teacher module is temporarily hidden. Remove this check to re-enable
+    // teacher sign-in for existing accounts.
+    if (user.role === Role.TEACHER) throw ApiError.forbidden('Teacher accounts are currently unavailable.');
 
     const ok = await comparePassword(input.password, user.passwordHash);
     if (!ok) throw ApiError.unauthorized('Invalid email or password');
@@ -157,6 +174,9 @@ export const AuthService = {
 
     const user = await prisma.user.findUnique({ where: { id: stored.userId } });
     if (!user) throw ApiError.unauthorized('User no longer exists');
+    // The Teacher module is temporarily hidden — this also cuts off any
+    // already-issued teacher session once its access token expires.
+    if (user.role === Role.TEACHER) throw ApiError.forbidden('Teacher accounts are currently unavailable.');
 
     await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
     return issueTokens(user);
@@ -184,7 +204,7 @@ export const AuthService = {
       data:  { isVerified: true },
     });
     await prisma.otp.create({
-      data: { mobileOrEmail: email, otpCode: token, otpType: OtpType.PASSWORD_RESET, expiresAt, isVerified: false, attemptCount: 0 },
+      data: { mobileOrEmail: email, otpCode: token, otpType: OtpType.PASSWORD_RESET, expiresAt, isVerified: false },
     });
 
     EmailService.sendPasswordReset(email, token, user.name).catch(() => {});
@@ -200,6 +220,8 @@ export const AuthService = {
 
     const user = await prisma.user.findUnique({ where: { email: otp.mobileOrEmail } });
     if (!user) throw ApiError.notFound('User not found');
+
+    await assertMinPasswordLength(newPassword);
 
     const passwordHash = await hashPassword(newPassword);
 

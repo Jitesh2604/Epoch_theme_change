@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
-  Mail, Award, Edit3, Save, X, Trophy, Calendar,
-  Building, MapPin, User, Phone, KeyRound, Clock, GraduationCap,
+  Mail, Award, Edit3, Save, X, Trophy, Calendar, FileText,
+  Building, MapPin, User, Phone, Clock, GraduationCap,
 } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, StatCard, Avatar, Skeleton, Select } from '../../shared/ui';
 import { loadUser } from '../../../lib/authStore';
@@ -35,7 +35,6 @@ export function ProfilePage() {
   const [name, setName] = useState('');
   const [schoolName, setSchoolName] = useState('');
   const [classId, setClassId] = useState('');
-  const [teacherCode, setTeacherCode] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -43,7 +42,6 @@ export function ProfilePage() {
       setName(profile.name ?? '');
       setSchoolName(profile.studentProfile?.schoolName ?? '');
       setClassId(profile.studentProfile?.classExternalId ?? '');
-      setTeacherCode(profile.studentProfile?.teacherCode ?? '');
     } else if (cachedUser) {
       setName(cachedUser.name ?? '');
     }
@@ -56,7 +54,6 @@ export function ProfilePage() {
         name,
         schoolName: schoolName || undefined,
         classExternalId: classId || null,
-        teacherCode: teacherCode || undefined,
       });
       push({ kind: 'success', title: 'Profile updated' });
       setEditing(false);
@@ -126,12 +123,6 @@ export function ProfilePage() {
                     options={[{ value: '', label: '— Select your class —' }, ...classOptions]}
                   />
                 </div>
-                <div>
-                  <label className="text-[11px] text-fg3 block mb-1">Teacher code (links you to your teacher)</label>
-                  <input value={teacherCode} onChange={e => setTeacherCode(e.target.value)}
-                    placeholder="Optional"
-                    className="w-full h-10 px-3 rounded-xl bg-surface1 border border-line text-[13px] text-fg1 focus:outline-none focus:border-brand/40" />
-                </div>
               </div>
             ) : (
               <>
@@ -163,7 +154,6 @@ export function ProfilePage() {
                           <InfoRow icon={GraduationCap} label="Class"
                             value={classOptions.find(c => c.value === sp.classExternalId)?.label ?? sp.classExternalId} />
                         )}
-                        {sp?.teacherCode  && <InfoRow icon={KeyRound}  label="Teacher code"          value={sp.teacherCode} />}
                         {profile?.mobileNo && <InfoRow icon={Phone}   label="Phone"                  value={profile.mobileNo} />}
                         {sp?.mobileNo     && !profile?.mobileNo && <InfoRow icon={Phone} label="Phone" value={sp.mobileNo} />}
                         {sp?.dob          && <InfoRow icon={Calendar}  label="Date of birth"          value={formatDate(sp.dob)} />}
@@ -183,8 +173,8 @@ export function ProfilePage() {
         {/* ── Right: Stats + account details ──────────────────────── */}
         <div className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <StatCard label="Assessments taken" value={stats?.attempted    ?? 0}                    icon={Award}  tone="brand"   />
-            <StatCard label="Avg score"          value={`${Math.round(stats?.avgPercent ?? 0)}%`}  icon={Trophy} tone="emerald" />
+            <StatCard label="Assessments taken" value={stats?.attempted    ?? 0}                    icon={FileText} tone="brand"   />
+            <StatCard label="Avg score"          value={`${Math.round(stats?.avgPercent ?? 0)}%`}  icon={Award} tone="emerald" />
             <StatCard label="Current rank"       value={stats?.rank ? `#${stats.rank}` : '—'}       icon={Trophy} tone="amber"   />
           </div>
 

@@ -91,15 +91,15 @@ export const AuthIllustration: React.FC = () => (
       <rect x="290" y="131" width="82" height="5.5" rx="2.75" fill="rgba(53,64,36,0.12)"/>
       <rect x="290" y="143" width="64" height="5.5" rx="2.75" fill="rgba(53,64,36,0.08)"/>
 
-      {/* Score card */}
+      {/* Bottom-left mockup card */}
       <rect x="28" y="356" width="136" height="50" rx="12" fill="rgba(53,64,36,0.07)" stroke="rgba(53,64,36,0.22)" strokeWidth="1.5"/>
-      <text x="96" y="374" textAnchor="middle" fontSize="9" letterSpacing="1.5" fill="rgba(76,61,25,0.55)" fontFamily="Inter, sans-serif">TOP SCORE</text>
-      <text x="96" y="395" textAnchor="middle" fontSize="20" fontWeight="700" fontFamily="Lora, Georgia, serif" fill="#354024">9,840</text>
+      <rect x="42" y="370" width="46" height="7" rx="3.5" fill="rgba(53,64,36,0.35)"/>
+      <rect x="42" y="385" width="90" height="5.5" rx="2.75" fill="rgba(53,64,36,0.14)"/>
 
-      {/* Streak card */}
+      {/* Bottom-right mockup card */}
       <rect x="256" y="356" width="136" height="50" rx="12" fill="rgba(136,144,99,0.10)" stroke="rgba(136,144,99,0.30)" strokeWidth="1.5"/>
-      <text x="324" y="374" textAnchor="middle" fontSize="9" letterSpacing="1.5" fill="rgba(76,61,25,0.50)" fontFamily="Inter, sans-serif">STREAK</text>
-      <text x="324" y="395" textAnchor="middle" fontSize="20" fontWeight="700" fontFamily="Lora, Georgia, serif" fill="#889063">🔥 14</text>
+      <rect x="270" y="370" width="46" height="7" rx="3.5" fill="rgba(136,144,99,0.50)"/>
+      <rect x="270" y="385" width="90" height="5.5" rx="2.75" fill="rgba(53,64,36,0.10)"/>
 
       {/* Decorative dots — olive tones */}
       {([
@@ -120,7 +120,7 @@ export const AuthIllustration: React.FC = () => (
       <h3>Quiz. Learn. <em>Excel.</em></h3>
       <p>Join the Epoch Quiz platform — olympiad-level assessments, practice quizzes, and real leaderboards.</p>
       <div className="auth-aside-stats">
-        {[['50k+','Active learners'],['200+','Quiz topics'],['3','Difficulty levels']].map(([n,l]) => (
+        {[['3','Ways to practice'],['3','Difficulty levels'],['0','Time pressure']].map(([n,l]) => (
           <div key={l} className="auth-aside-stat">
             <strong>{n}</strong><span>{l}</span>
           </div>

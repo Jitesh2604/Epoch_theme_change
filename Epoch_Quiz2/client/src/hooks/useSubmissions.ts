@@ -32,11 +32,3 @@ export function useSubmissions(params: { page?: number; limit?: number; assessme
     [JSON.stringify(params)],
   );
 }
-
-export const submissionApi = {
-  start:      (assessmentId: string) => api.post(`/assessments/${assessmentId}/start`),
-  saveAnswer: (id: string, data: { questionId: string; selectedOption?: number | null; selectedBoolean?: boolean | null; textAnswer?: string | null; timeMs?: number }) =>
-    api.post(`/submissions/${id}/answer`, data),
-  submit:     (id: string, answers: Array<{ questionId: string; selectedOption?: number | null; selectedBoolean?: boolean | null; textAnswer?: string | null }>) =>
-    api.post(`/submissions/${id}/submit`, { answers }),
-};

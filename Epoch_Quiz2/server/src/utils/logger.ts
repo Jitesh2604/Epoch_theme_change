@@ -21,8 +21,3 @@ export const logger = winston.createLogger({
   transports: [new winston.transports.Console()],
   exitOnError: false,
 });
-
-// Stream object for morgan to pipe HTTP logs into winston.
-export const morganStream = {
-  write: (message: string) => logger.http(message.trim()),
-};

@@ -155,6 +155,11 @@ export function AssessmentPreviewPage() {
                           {q.subject && <Badge tone="neutral" dot={false}>{q.subject.name}</Badge>}
                           <span className="text-[11px] text-fg3 ml-auto">
                             {aq.marksOverride ?? q.marks} marks
+                            {assessment?.negativeMarking && (
+                              <span className="text-rose-400">
+                                {' '}· −{aq.negMarksOverride ?? assessment.negativeMarksValue}
+                              </span>
+                            )}
                           </span>
                         </div>
                         <p className="text-[14px] text-fg1 leading-relaxed font-medium">{q.prompt}</p>

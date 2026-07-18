@@ -47,7 +47,6 @@ export interface TeacherRow {
   schoolName: string | null;
   bio: string | null;
   assessments: number;
-  students: number;
   status: 'ACTIVE' | 'PENDING' | 'INACTIVE';
   joinedAt: string;
   avatarHue: number;
@@ -89,13 +88,18 @@ export function useStudents(params: { page?: number; limit?: number; search?: st
 export const userApi = {
   create: (data: { name: string; email: string; password: string; role: string; schoolName?: string }) =>
     api.post('/users', data),
+  // Backend (PATCH/DELETE /users/:id) is fully implemented — admin-only,
+  // covers name/email/status/avatarHue edits and a soft "deactivate" (not a
+  // hard delete). There is no admin "Edit user" / "Deactivate user" UI yet.
+  // Keep these wrappers for when that screen is built; they are not dead code.
   update: (id: string, data: { name?: string; status?: string; schoolName?: string }) =>
     api.patch(`/users/${id}`, data),
   deactivate: (id: string) => api.delete(`/users/${id}`),
-  getMyProfile: () => api.get<FullProfile>('/users/me'),
   updateMe: (data: { name?: string; avatarHue?: number; schoolName?: string; bio?: string; teacherCode?: string; classExternalId?: string | null }) =>
     api.patch('/users/me', data),
+  // Backend (PATCH /users/me/password) is fully implemented (self-service
+  // password change). No "Change password" UI exists on the Profile pages
+  // yet. Keep this wrapper for when that form is built.
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.patch('/users/me/password', data),
-  myStats: () => api.get('/users/me/stats'),
 };

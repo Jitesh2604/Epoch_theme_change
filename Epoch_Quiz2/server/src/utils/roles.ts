@@ -10,7 +10,3 @@ export const ADMIN_ROLES = [
 export function isAdminRole(role: Role): boolean {
   return (ADMIN_ROLES as readonly Role[]).includes(role);
 }
-
-export function isTeacherOrAdmin(role: Role): boolean {
-  return role === Role.TEACHER || isAdminRole(role);
-}

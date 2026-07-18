@@ -43,7 +43,11 @@ export const SubjectCategoryGrid: React.FC<Props> = ({ navigate, cardStyle, back
       window.location.href = '/student/assessments';
       return;
     }
-    navigate(`play/${s.slug}/${s.id}/level`);
+    // Subject practice quizzes are played entirely inside the Student
+    // Dashboard's Practice Quiz page — this grid is just an entry point, not
+    // a second implementation. ?subject= lets that page preselect the card
+    // and jump straight to the start-quiz modal.
+    window.location.href = `/student/practice?subject=${encodeURIComponent(s.id)}`;
   };
 
   if (loading)      return <CategoryGridSkeleton cardStyle={cardStyle} count={6} />;

@@ -13,7 +13,7 @@ import {
   listQuestionsQuerySchema,
   questionIdParamsSchema,
 } from '../validators/question.validator';
-import { uploadQuerySchema } from '../validators/upload.validator';
+import { uploadQuerySchema, listUploadsQuerySchema } from '../validators/upload.validator';
 
 const router = new Router();
 
@@ -31,6 +31,15 @@ router.post(
   validate(uploadQuerySchema, 'query'),
   excelUpload,
   UploadController.importQuestions,
+);
+
+// Own uploads for a teacher, every upload for an admin — see
+// ExcelService.listUploads.
+router.get(
+  '/upload/history',
+  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  validate(listUploadsQuerySchema, 'query'),
+  UploadController.listUploads,
 );
 
 router.get(

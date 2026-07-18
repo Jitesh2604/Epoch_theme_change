@@ -11,15 +11,34 @@ import {
 
 interface Props { navigate: NavigateFn; }
 
+function fmtTime(sec: number) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+function performanceMessage(pct: number): string {
+  if (pct >= 90) return "Outstanding! You've mastered this material.";
+  if (pct >= 75) return 'Great work — a strong performance.';
+  if (pct >= 60) return 'Good effort — review what you missed to improve further.';
+  if (pct >= 40) return 'Keep going — a bit more practice will help.';
+  return 'Keep practising — review the topics you missed and try again.';
+}
+
 /**
  * Practice Olympiad — starts a mixed quiz across the student's selected
  * subjects (backend-generated, class + board scoped) and plays it. No subject
  * is chosen here; the backend reads the profile.
+ *
+ * The attempt is created as soon as it loads (unchanged from before), but the
+ * student sees an overview screen first and only moves into question 1 once
+ * they click "Start Test" — no extra network call, just a later reveal.
  */
 export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
   const [session, setSession] = useState<OlympiadAttemptData | null>(null);
   const [error, setError]     = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [phase, setPhase]     = useState<'preview' | 'playing'>('preview');
 
   const [idx, setIdx]           = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
@@ -27,6 +46,7 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
   const [feedback, setFeedback] = useState<SaveAnswerFeedback | null>(null);
   const [busy, setBusy]         = useState(false);
   const [result, setResult]     = useState<PracticeResult | null>(null);
+  const [submittedAt, setSubmittedAt] = useState<Date | null>(null);
   const startMs = useRef(Date.now());
   // Guard against duplicate starts (StrictMode double-invoke / remounts).
   const startedRef = useRef(false);
@@ -57,7 +77,7 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
         <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>{empty ? 'No Olympiad questions yet' : 'Could not start'}</h2>
         <p style={{ color: 'var(--fg-3)', fontSize: 14, maxWidth: 380, margin: '0 auto 20px' }}>
           {empty
-            ? 'There are no questions for your class and board in your selected subjects yet. Make sure your profile has subjects selected, then ask a teacher to add questions.'
+            ? 'There are no questions for your class and board in your selected subjects yet. Make sure your profile has subjects selected, then ask your admin to add questions.'
             : error}
         </p>
         <button className="btn btn-ghost" onClick={() => navigate('play')}>Back to categories</button>
@@ -67,22 +87,138 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
 
   // ── Result summary ────────────────────────────────────────────
   if (result) {
+    const correct = result.correctAnswers;
+    const wrong = result.wrongAnswers;
+    const skipped = result.skipped;
+    const attempted = correct + wrong;
+    const accuracyPct = attempted > 0 ? Math.round((correct / attempted) * 100) : 0;
+    const pct = Math.round(result.percent);
+
     return (
       <Centered>
-        <div style={{ maxWidth: 440, width: '100%', textAlign: 'center' }}>
-          <Icon name="trophy" size={40} style={{ color: 'var(--brand)', marginBottom: 12 } as React.CSSProperties} />
-          <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>Olympiad complete</h2>
-          <p style={{ color: 'var(--fg-3)', fontSize: 14, marginBottom: 20 }}>
-            Score <strong style={{ color: 'var(--fg-1)' }}>{result.score}/{result.totalMarks}</strong> · {Math.round(result.percent)}%
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 24 }}>
-            <Stat label="Correct" value={result.correctAnswers} />
-            <Stat label="Wrong"   value={result.wrongAnswers} />
-            <Stat label="Skipped" value={result.skipped} />
+        <div style={{ maxWidth: 520, width: '100%' }}>
+          <div style={{ textAlign: 'center', marginBottom: 22 }}>
+            <Icon name="trophy" size={40} style={{ color: 'var(--brand)', marginBottom: 12 } as React.CSSProperties} />
+            <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>Practice Olympiad — Complete</h2>
+            <p style={{ color: 'var(--fg-3)', fontSize: 14 }}>
+              Score <strong style={{ color: 'var(--fg-1)' }}>{result.score}/{result.totalMarks}</strong> · {pct}%
+            </p>
+            <p style={{ color: 'var(--fg-2)', fontSize: 13.5, marginTop: 8 }}>{performanceMessage(pct)}</p>
           </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 10 }}>
+            <Stat label="Correct" value={correct} />
+            <Stat label="Wrong"   value={wrong} />
+            <Stat label="Skipped" value={skipped} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 20 }}>
+            <Stat label="Attempted" value={attempted} />
+            <Stat label="Accuracy" value={`${accuracyPct}%`} />
+            <Stat label="Time taken" value={fmtTime(result.timeTakenSec)} />
+          </div>
+
+          <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border-1)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--fg-3)', marginBottom: 8 }}>
+              <span>Total questions</span>
+              <span style={{ color: 'var(--fg-1)', fontWeight: 600 }}>{session?.questionCount ?? attempted + skipped}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--fg-3)', marginBottom: submittedAt ? 8 : 0 }}>
+              <span>Duration</span>
+              <span style={{ color: 'var(--fg-1)', fontWeight: 600 }}>No Time Limit – Self-Paced</span>
+            </div>
+            {submittedAt && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--fg-3)' }}>
+                <span>Submitted</span>
+                <span style={{ color: 'var(--fg-1)', fontWeight: 600 }}>{submittedAt.toLocaleString()}</span>
+              </div>
+            )}
+          </div>
+
+          {!!session?.distribution?.length && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 11, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                Subjects covered
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {session.distribution.map(d => (
+                  <span key={d.subjectId} style={{
+                    fontSize: 12, fontWeight: 600, padding: '5px 10px', borderRadius: 999,
+                    background: 'var(--surface-1)', border: '1px solid var(--border-1)', color: 'var(--fg-2)',
+                  }}>
+                    {d.subject} · {d.count}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
             <button className="btn btn-ghost"   onClick={() => { window.location.href = '/student/results'; }}>View history</button>
             <button className="btn btn-primary" onClick={() => navigate('play')}>Back to categories</button>
+          </div>
+        </div>
+      </Centered>
+    );
+  }
+
+  // ── Pre-test overview ─────────────────────────────────────────
+  if (phase === 'preview' && session) {
+    return (
+      <Centered>
+        <div style={{ maxWidth: 480, width: '100%', textAlign: 'center' }}>
+          <Icon name="trophy" size={40} style={{ color: 'var(--brand)', marginBottom: 12 } as React.CSSProperties} />
+          <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 6 }}>Practice Olympiad</h2>
+          <p style={{ color: 'var(--fg-3)', fontSize: 13.5, marginBottom: 20 }}>
+            A mixed quiz drawn from all your selected subjects, scoped to your class and board.
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginBottom: 18 }}>
+            <Stat label="Questions" value={session.questionCount} />
+            <Stat label="Total marks" value={session.totalMarks} />
+          </div>
+
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            fontSize: 13, fontWeight: 600, color: 'var(--brand)',
+            background: 'var(--surface-1)', border: '1px solid var(--border-1)',
+            borderRadius: 10, padding: '10px 14px', marginBottom: 20,
+          }}>
+            <Icon name="clock" size={15} />
+            No Time Limit – Self-Paced
+          </div>
+
+          {!!session.distribution?.length && (
+            <div style={{ textAlign: 'left', marginBottom: 24 }}>
+              <div style={{ fontSize: 11, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                Subjects in this quiz
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {session.distribution.map(d => (
+                  <span key={d.subjectId} style={{
+                    fontSize: 12, fontWeight: 600, padding: '5px 10px', borderRadius: 999,
+                    background: 'var(--surface-1)', border: '1px solid var(--border-1)', color: 'var(--fg-2)',
+                  }}>
+                    {d.subject} · {d.count}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ textAlign: 'left', marginBottom: 24 }}>
+            <div style={{ fontSize: 11, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+              Instructions
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--fg-2)', fontSize: 13, lineHeight: 1.7 }}>
+              <li>Read each question carefully before answering.</li>
+              <li>You can skip a question if you're unsure.</li>
+              <li>Take your time — there's no clock running.</li>
+            </ul>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+            <button className="btn btn-ghost" onClick={() => navigate('play')}>Back to categories</button>
+            <button className="btn btn-primary" onClick={() => setPhase('playing')}>Start Test</button>
           </div>
         </div>
       </Centered>
@@ -122,7 +258,9 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
     setBusy(true);
     try {
       const timeTakenSec = Math.floor((Date.now() - startMs.current) / 1000);
-      setResult(await practiceApi.submit(session!.attemptId, timeTakenSec));
+      const finalResult = await practiceApi.submit(session!.attemptId, timeTakenSec);
+      setSubmittedAt(new Date());
+      setResult(finalResult);
     } catch (e: any) {
       showToast(e?.message ?? 'Could not submit', 'danger');
       setBusy(false);
@@ -201,7 +339,7 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
 function Centered({ children }: { children: React.ReactNode }) {
   return <div className="container" style={{ padding: 80, textAlign: 'center', display: 'grid', placeItems: 'center', minHeight: '50vh' }}>{children}</div>;
 }
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value }: { label: string; value: number | string }) {
   return (
     <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border-1)', borderRadius: 12, padding: '14px 8px' }}>
       <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--fg-1)' }}>{value}</div>

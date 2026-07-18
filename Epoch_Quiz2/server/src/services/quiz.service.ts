@@ -453,19 +453,6 @@ export const QuizService = {
           skipped, percentage, timeTakenSec, endTime: new Date(), isSubmitted: true,
         },
       });
-
-      // Upsert leaderboard — keep best score per (quiz, student).
-      const lbEntry = await txc.leaderboard.findUnique({
-        where: { quizId_studentId: { quizId: attempt.quizId, studentId } }, select: { score: true },
-      });
-      if (!lbEntry || score > lbEntry.score) {
-        const lbData = { attemptId, score, percentage, timeTakenSec: input.timeTakenSec ?? 0, attemptDate: new Date() };
-        await txc.leaderboard.upsert({
-          where:  { quizId_studentId: { quizId: attempt.quizId, studentId } },
-          create: { quizId: attempt.quizId, studentId, ...lbData },
-          update: lbData,
-        });
-      }
     });
 
     return buildResult(attemptId);

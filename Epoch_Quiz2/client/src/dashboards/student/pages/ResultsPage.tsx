@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Award, Trophy, Clock, CheckCircle2, XCircle, MinusCircle } from 'lucide-react';
+import { Award, Trophy, Medal, FileText, TrendingUp, Zap, Clock, CheckCircle2, XCircle, MinusCircle } from 'lucide-react';
 import { PageHeader, Card, StatCard, ProgressBar, Badge, Skeleton } from '../../shared/ui';
 import { useMySubmissions } from '../../../hooks/useSubmissions';
 import { useMyStats } from '../../../hooks/useLeaderboard';
@@ -64,9 +64,9 @@ export function ResultsPage() {
               Array.from({ length: 3 }).map((_, i) => <Card key={i} className="p-5"><Skeleton className="h-20" /></Card>)
             ) : (
               <>
-                <StatCard label="Assessments taken" value={stats?.attempted    ?? 0}                   icon={Award} tone="brand"   />
+                <StatCard label="Assessments taken" value={stats?.attempted    ?? 0}                   icon={FileText} tone="brand"   />
                 <StatCard label="Average score"      value={`${Math.round(stats?.avgPercent ?? 0)}%`} icon={Award} tone="emerald" />
-                <StatCard label="Total score"        value={stats?.totalScore ?? 0}                   icon={Award} tone="amber"   />
+                <StatCard label="Total score"        value={stats?.totalScore ?? 0}                   icon={Medal} tone="amber"   />
               </>
             )}
           </div>
@@ -114,10 +114,10 @@ export function ResultsPage() {
               Array.from({ length: 4 }).map((_, i) => <Card key={i} className="p-5"><Skeleton className="h-20" /></Card>)
             ) : (
               <>
-                <StatCard label="Quizzes played" value={attempts?.length ?? 0}      icon={Trophy} tone="brand"   />
+                <StatCard label="Quizzes played" value={attempts?.length ?? 0}      icon={Zap} tone="brand"   />
                 <StatCard label="Completed"       value={completedAttempts.length}  icon={CheckCircle2} tone="emerald" />
                 <StatCard label="Best score"      value={bestScore}                 icon={Award}  tone="amber"   />
-                <StatCard label="Avg %"           value={`${averagePercent}%`}      icon={Award}  tone="violet"  />
+                <StatCard label="Avg %"           value={`${averagePercent}%`}      icon={TrendingUp}  tone="violet"  />
               </>
             )}
           </div>

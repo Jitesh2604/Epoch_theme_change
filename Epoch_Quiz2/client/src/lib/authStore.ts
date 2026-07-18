@@ -46,12 +46,6 @@ export interface ProfileUpdateData {
   teacherCode?: string | null;   // Student only
 }
 
-export interface AuthState {
-  user: AuthUser | null;
-  accessToken: string | null;
-  isLoading: boolean;
-}
-
 const USER_KEY = 'epoch-user';
 
 // ── Role mapping ─────────────────────────────────────────────────

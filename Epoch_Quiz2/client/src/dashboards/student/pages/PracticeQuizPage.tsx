@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BookOpen, Zap, ChevronRight, BarChart2, Target, Clock,
   Filter, Search, PlayCircle,
@@ -87,6 +87,7 @@ function SubjectCard({
 
 export function PracticeQuizPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { push, node: toastNode } = useToasts();
 
   const { data: subjects, loading } = usePracticeSubjects();
@@ -104,6 +105,18 @@ export function PracticeQuizPage() {
     setDifficulty('');
     setCount(String(Math.min(DEFAULT_COUNT, Math.max(1, s.questionCount))));
   };
+
+  // Deep link from the marketing Categories grid (?subject=<externalId>) —
+  // preselect that subject's start-quiz modal instead of making the visitor
+  // find it again in the grid below.
+  useEffect(() => {
+    const subjectId = searchParams.get('subject');
+    if (!subjectId || !subjects) return;
+    const match = subjects.find(s => s.id === subjectId);
+    if (match) openModal(match);
+    setSearchParams(prev => { prev.delete('subject'); return prev; }, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjects]);
 
   // How many questions exist for the current subject + difficulty selection.
   const available = !selected

@@ -52,7 +52,7 @@ export const StaticPage: React.FC<StaticPageProps> = ({ navigate, kind }) => {
       sections: [
         { h: 'What we collect',        p: "Account info (name, email), quiz history (scores and answers), and basic analytics (device type, anonymised usage). That's it." },
         { h: 'What we do not collect', p: 'We do not track you across the web, build advertising profiles, or share data with third-party advertisers. There is no third-party advertising network on Olympaid Epoch Quiz.' },
-        { h: 'Your rights',            p: 'You can export all your data or delete your account at any time from Settings. Deletes are permanent within 30 days. We are GDPR, FERPA, and India DPDP compliant.' },
+        { h: 'Your rights',            p: 'You can request a copy of your data or ask us to delete your account by contacting us — see the Contact page. We process these requests within 30 days.' },
         { h: 'Cookies',                p: 'We use a minimal set of first-party cookies for authentication and remembering your preferences. No third-party tracking cookies.' },
       ],
     },

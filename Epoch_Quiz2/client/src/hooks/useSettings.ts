@@ -14,7 +14,5 @@ export function useSettings() {
 }
 
 export const settingsApi = {
-  getAll:     () => api.get<Setting[]>('/settings'),
-  getCategory:(category: string) => api.get<Setting[]>(`/settings/${category}`),
   updateMany: (updates: Record<string, string>) => api.patch<Setting[]>('/settings', updates),
 };

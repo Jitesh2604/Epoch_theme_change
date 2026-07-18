@@ -7,25 +7,10 @@ import { Section, ProfileField, SelectField, ImagePicker, EducationBoardField } 
 import { loadUser, updateProfile, toUIRole } from '../../lib/authStore';
 import { ApiError } from '../../lib/api';
 import type { ProfileUpdateData } from '../../lib/authStore';
-import { catalogPresets, useClasses, useTeacherByCode } from '../../hooks/useCatalog';
+import { catalogPresets, useClasses } from '../../hooks/useCatalog';
 import { useRealSubjects } from '../../hooks/useSubjects';
 
 interface Props { navigate: NavigateFn; }
-
-// Inherited-context chip row
-const Chips: React.FC<{ label: string; items: string[] }> = ({ label, items }) =>
-  items.length === 0 ? null : (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap', marginTop: 4 }}>
-      <span style={{ fontSize: 11, color: 'var(--fg-3)', minWidth: 52 }}>{label}</span>
-      {items.map(t => (
-        <span key={t} style={{
-          fontSize: 11, fontWeight: 600,
-          background: 'var(--surface-2)', color: 'var(--fg-2)',
-          borderRadius: 8, padding: '2px 8px',
-        }}>{t}</span>
-      ))}
-    </div>
-  );
 
 export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
   const user = loadUser();
@@ -44,7 +29,6 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
   const [subjectIds,  setSubjectIds]  = useState<string[]>([]);
   const [educationBoard, setEducationBoard] = useState('');
   const [stateBoard,  setStateBoard]  = useState('');
-  const [teacherCode, setTeacherCode] = useState('');
   const [country,     setCountry]     = useState('');
   const [state,       setState]       = useState('');
   const [city,        setCity]        = useState('');
@@ -61,13 +45,6 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
   const subjects = useRealSubjects();
   const toggleSubject = (id: string) =>
     setSubjectIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-
-  // Live teacher-code lookup → preview the academic context the student inherits.
-  const teacher = useTeacherByCode(teacherCode);
-  const codeReady    = teacherCode.trim().length >= 6;
-  const codeErrored  = codeReady && !teacher.loading && !!teacher.error;
-  const codeInvalid  = codeReady && !teacher.loading && !teacher.data && !codeErrored;
-  const codeValid    = codeReady && !teacher.loading && !!teacher.data;
 
   if (!user) return null;
 
@@ -89,10 +66,6 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
     if ((subjects.data?.length ?? 0) > 0 && subjectIds.length === 0) errs.subjects = 'Select at least one subject.';
     if (!educationBoard) errs.educationBoard = 'Please select your education board.';
     if (educationBoard === 'STATE_BOARD' && !stateBoard.trim()) errs.stateBoard = 'Please confirm your state board.';
-    // Teacher code is optional, but if entered it must resolve to a real teacher.
-    if (codeReady && codeErrored) errs.teacherCode = 'Could not verify this code — check your connection and try again.';
-    else if (codeReady && codeInvalid) errs.teacherCode = 'No teacher found for this code.';
-    if (teacherCode.trim() !== '' && !codeReady) errs.teacherCode = 'Teacher codes are 6 characters.';
     return errs;
   };
 
@@ -107,8 +80,6 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
 
     setLoading(true);
     try {
-      // Note: board / series / books are intentionally omitted — the backend
-      // derives them from the teacher code. Class is the student's own choice.
       const payload: ProfileUpdateData = {
         name:        name.trim() || undefined,
         dob:         dob || null,
@@ -117,7 +88,6 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
         subjectExternalIds: subjectIds,
         educationBoard: educationBoard || null,
         stateBoard:  educationBoard === 'STATE_BOARD' ? (stateBoard.trim() || null) : null,
-        teacherCode: teacherCode.trim() || null,
         country:     country || null,
         state:       state.trim() || null,
         city:        city.trim() || null,
@@ -151,8 +121,7 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
         <div className="auth-head">
           <h2 className="auth-title">Complete your profile</h2>
           <p className="auth-sub">
-            One quick step before you start learning. Enter your teacher's code to
-            join their class — we'll set up your board, class, series and books for you.
+            One quick step before you start learning.
           </p>
         </div>
 
@@ -218,34 +187,6 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
               state={state} error={errors.educationBoard} stateBoardError={errors.stateBoard}
             />
             <ImagePicker value={imageUrl} hue={user.avatarHue} onChange={setImageUrl} />
-          </Section>
-
-          {/* ── Teacher ────────────────────────────────────────── */}
-          <Section title="Your teacher">
-            <ProfileField
-              label="Teacher code" value={teacherCode}
-              onChange={v => setTeacherCode(v.toUpperCase())}
-              placeholder="e.g. AB12CD" icon="key" optional
-              error={errors.teacherCode}
-              hint="Enter your teacher's 6-character code to join their class. Your board, class, series and books are assigned automatically."
-            />
-            {teacher.loading && codeReady && (
-              <p style={{ fontSize: 12.5, color: 'var(--fg-3)', margin: '2px 0' }}>Checking code…</p>
-            )}
-            {codeValid && teacher.data && (
-              <div style={{
-                border: '1px solid var(--border-1)', borderRadius: 10,
-                padding: '10px 12px', background: 'var(--surface-1)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: 'var(--fg-1)' }}>
-                  <Icon name="check" size={14} /> Linked to {teacher.data.teacherName}
-                </div>
-                <Chips label="Board"   items={teacher.data.board ? [teacher.data.board.name] : []} />
-                <Chips label="Classes" items={teacher.data.classes} />
-                <Chips label="Series"  items={teacher.data.series} />
-                <Chips label="Books"   items={teacher.data.books} />
-              </div>
-            )}
           </Section>
 
           {/* ── Location ───────────────────────────────────────── */}

@@ -32,7 +32,7 @@ function SettingField({ setting, value, onChange }: { setting: Setting; value: s
       <select value={value} onChange={e => onChange(e.target.value)} className={base}>
         <option value='IMMEDIATELY'>Immediately after submission</option>
         <option value='AFTER_END_DATE'>After end date</option>
-        <option value='MANUALLY'>Manually by teacher</option>
+        <option value='MANUALLY'>Manually</option>
       </select>
     );
   }

@@ -12,10 +12,14 @@ type QuestionType = 'MCQ_SINGLE' | 'TRUE_FALSE' | 'DESCRIPTIVE';
 interface DraftQuestion {
   type: QuestionType;
   prompt: string;
+  promptImageUrl: string;
   options?: string[];
+  optionImageUrls?: string[];
   correctIndex?: number;
   correctBool?: boolean;
   answer?: string;
+  explanation: string;
+  explanationImageUrl: string;
   marks: number;
   difficulty: 'EASY' | 'MEDIUM' | 'HARD';
   subjectId: string;
@@ -49,13 +53,14 @@ export function CreateQuestionModal({ open, onClose, onCreated, defaultSubjectId
 
   const startDraft = (type: QuestionType) => {
     const base: DraftQuestion = {
-      type, marks: 1, prompt: '',
+      type, marks: 1, prompt: '', promptImageUrl: '',
+      explanation: '', explanationImageUrl: '',
       difficulty: 'MEDIUM',
       subjectId: defaultSubjectId ?? '',
       classId: '',
       educationBoard: '',
     };
-    if (type === 'MCQ_SINGLE') { base.options = ['', '', '', '']; base.correctIndex = 0; }
+    if (type === 'MCQ_SINGLE') { base.options = ['', '', '', '']; base.optionImageUrls = ['', '', '', '']; base.correctIndex = 0; }
     if (type === 'TRUE_FALSE') base.correctBool = true;
     if (type === 'DESCRIPTIVE') base.answer = '';
     setDraft(base);
@@ -75,6 +80,9 @@ export function CreateQuestionModal({ open, onClose, onCreated, defaultSubjectId
       const payload: any = {
         type:              draft.type,
         prompt:            draft.prompt,
+        promptImageUrl:    draft.promptImageUrl.trim() || undefined,
+        explanation:          draft.explanation.trim() || undefined,
+        explanationImageUrl:  draft.explanationImageUrl.trim() || undefined,
         marks:             draft.marks,
         difficulty:        draft.difficulty,
         subjectExternalId: draft.subjectId,
@@ -85,6 +93,11 @@ export function CreateQuestionModal({ open, onClose, onCreated, defaultSubjectId
       if (draft.type === 'MCQ_SINGLE') {
         payload.options       = draft.options ?? [];
         payload.correctOption = draft.correctIndex ?? 0;
+        const imgs = draft.optionImageUrls ?? [];
+        payload.optionAImageUrl = imgs[0]?.trim() || undefined;
+        payload.optionBImageUrl = imgs[1]?.trim() || undefined;
+        payload.optionCImageUrl = imgs[2]?.trim() || undefined;
+        payload.optionDImageUrl = imgs[3]?.trim() || undefined;
       } else if (draft.type === 'TRUE_FALSE') {
         payload.correctBoolean = draft.correctBool;
       } else if (draft.type === 'DESCRIPTIVE') {
@@ -152,7 +165,13 @@ export function CreateQuestionModal({ open, onClose, onCreated, defaultSubjectId
               onChange={e => setDraft(d => d ? { ...d, prompt: e.target.value } : d)}
               placeholder="Type your question here…"
               rows={3}
-              className="w-full px-3 py-2.5 rounded-lg bg-surface1 border border-line text-[14px] text-fg1 focus:outline-none focus:border-brand/40 mb-3"
+              className="w-full px-3 py-2.5 rounded-lg bg-surface1 border border-line text-[14px] text-fg1 focus:outline-none focus:border-brand/40 mb-2"
+            />
+            <input
+              value={draft.promptImageUrl}
+              onChange={e => setDraft(d => d ? { ...d, promptImageUrl: e.target.value } : d)}
+              placeholder="Question image URL (optional)"
+              className="w-full h-8 px-3 rounded-md bg-surface1 border border-line text-[12px] text-fg2 focus:outline-none focus:border-brand/40 mb-3"
             />
 
             {draft.type === 'MCQ_SINGLE' && draft.options && (
@@ -161,7 +180,7 @@ export function CreateQuestionModal({ open, onClose, onCreated, defaultSubjectId
                   <div key={k} className="flex items-center gap-2">
                     <button
                       onClick={() => setDraft(d => d ? { ...d, correctIndex: k } : d)}
-                      className={`w-7 h-7 rounded-md border ${
+                      className={`w-7 h-7 rounded-md border shrink-0 ${
                         draft.correctIndex === k
                           ? 'bg-brand text-brand-ink border-brand'
                           : 'bg-surface1 border-line text-fg3'
@@ -178,6 +197,16 @@ export function CreateQuestionModal({ open, onClose, onCreated, defaultSubjectId
                       }}
                       placeholder={`Option ${String.fromCharCode(65 + k)}`}
                       className="flex-1 h-9 px-3 rounded-md bg-surface1 border border-line text-[13px] text-fg1 focus:outline-none focus:border-brand/40"
+                    />
+                    <input
+                      value={draft.optionImageUrls?.[k] ?? ''}
+                      onChange={e => {
+                        const next = [...(draft.optionImageUrls ?? ['', '', '', ''])];
+                        next[k] = e.target.value;
+                        setDraft(d => d ? { ...d, optionImageUrls: next } : d);
+                      }}
+                      placeholder="Image URL (optional)"
+                      className="w-40 h-9 px-2.5 rounded-md bg-surface1 border border-line text-[11.5px] text-fg3 focus:outline-none focus:border-brand/40 shrink-0"
                     />
                   </div>
                 ))}
@@ -209,6 +238,23 @@ export function CreateQuestionModal({ open, onClose, onCreated, defaultSubjectId
                 className="w-full px-3 py-2.5 rounded-lg bg-surface1 border border-line text-[13px] text-fg1 focus:outline-none focus:border-brand/40 mb-3"
               />
             )}
+
+            {/* Explanation shown to the student after grading — optional, any type. */}
+            <div className="mb-3">
+              <textarea
+                value={draft.explanation}
+                onChange={e => setDraft(d => d ? { ...d, explanation: e.target.value } : d)}
+                placeholder="Explanation shown after grading (optional)…"
+                rows={2}
+                className="w-full px-3 py-2 rounded-lg bg-surface1 border border-line text-[13px] text-fg1 focus:outline-none focus:border-brand/40 mb-2"
+              />
+              <input
+                value={draft.explanationImageUrl}
+                onChange={e => setDraft(d => d ? { ...d, explanationImageUrl: e.target.value } : d)}
+                placeholder="Explanation image URL (optional)"
+                className="w-full h-8 px-3 rounded-md bg-surface1 border border-line text-[12px] text-fg2 focus:outline-none focus:border-brand/40"
+              />
+            </div>
 
             {/* Academic tagging — Subject, Class and Board are required so the
                 question is scoped correctly for practice & olympiad. */}

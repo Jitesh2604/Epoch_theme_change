@@ -8,6 +8,12 @@ export interface Assessment {
   duration: number;
   totalMarks: number;
   passingMarks: number;
+  // Enforced end-to-end: a wrong, attempted answer is docked
+  // negativeMarksValue marks during grading (or a per-question override —
+  // see AssessmentQuestion.negMarksOverride); skipped questions are never
+  // penalized; a submission's total score floors at 0.
+  negativeMarking: boolean;
+  negativeMarksValue: number;
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   publishedAt: string | null;
   subject: { id: string; name: string; slug: string } | null;
@@ -46,9 +52,14 @@ export interface AssessmentAssignments {
 }
 
 export const assessmentApi = {
-  create:    (data: { title: string; description?: string; duration: number; subjectExternalId?: string; classExternalId?: string; passingMarks?: number; assignedClassIds?: string[]; assignedStudentIds?: string[] }) =>
+  create:    (data: { title: string; description?: string; duration: number; subjectExternalId?: string; classExternalId?: string; passingMarks?: number; negativeMarking?: boolean; negativeMarksValue?: number; assignedClassIds?: string[]; assignedStudentIds?: string[] }) =>
                api.post<Assessment>('/assessments', data),
-  update:    (id: string, data: Partial<{ title: string; description: string; duration: number; subjectExternalId: string; classExternalId: string; passingMarks: number }>) =>
+  // Backend (PATCH/DELETE /assessments/:id) is fully implemented — including
+  // the "archived assessments can't be edited" and "can't delete an
+  // assessment with submissions" business rules — but there is no "Edit
+  // assessment" or "Delete assessment" UI yet. Keep these wrappers for when
+  // those screens are built; they are not dead code.
+  update:    (id: string, data: Partial<{ title: string; description: string; duration: number; subjectExternalId: string; classExternalId: string; passingMarks: number; negativeMarking: boolean; negativeMarksValue: number }>) =>
                api.patch<Assessment>(`/assessments/${id}`, data),
   remove:    (id: string) => api.delete(`/assessments/${id}`),
   publish:   (id: string) => api.post<Assessment>(`/assessments/${id}/publish`),

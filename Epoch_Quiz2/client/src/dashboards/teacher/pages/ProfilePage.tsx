@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Mail, BookOpen, Edit3, Save, X, Calendar,
-  Building, MapPin, User, Phone, FileText, Clock, Award, KeyRound,
+  Building, MapPin, User, Phone, FileText, Clock, Award, KeyRound, TrendingUp, BarChart3,
 } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, StatCard, Avatar, Skeleton } from '../../shared/ui';
 import { loadUser } from '../../../lib/authStore';
@@ -164,8 +164,8 @@ export function ProfilePage() {
         <div className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <StatCard label="Assessments created" value={stats?.assessmentsCreated ?? 0}           icon={FileText} tone="brand"  />
-            <StatCard label="Total submissions"    value={stats?.totalSubmissions    ?? 0}          icon={Award}    tone="violet" />
-            <StatCard label="Avg score"            value={`${Math.round(stats?.avgPercent ?? 0)}%`} icon={Edit3}    tone="amber"  />
+            <StatCard label="Total submissions"    value={stats?.totalSubmissions    ?? 0}          icon={BarChart3}    tone="violet" />
+            <StatCard label="Avg score"            value={`${Math.round(stats?.avgPercent ?? 0)}%`} icon={TrendingUp} tone="amber"  />
           </div>
 
           <Card className="p-6">

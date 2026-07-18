@@ -7,33 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Publication {
-  id           String       @id @default(cuid())
-  name         String
-  mobileNo     String?
-  email        String?      @unique
-  passwordHash String?
-  gstNo        String?
-  panNo        String?
-  address      String?      @db.Text
-  country      String?
-  state        String?
-  city         String?
-  zip          String?
-  logoUrl      String?
-  status       UserStatus   @default(PENDING)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  assessments  Assessment[]
-  quizzes      Quiz[]
-  users        User[]       @relation("PublicationUsers")
-
-  @@map("publications")
-}
-
-// The app-owned Olympiad "mode" rows. These are NOT catalog data — they are an
-// application concept surfaced alongside the (Content API) subjects list. Real
-// subjects come from the Content API and are never stored here.
 model OlympiadMode {
   id        String     @id @default(cuid())
   name      String     @unique
@@ -68,12 +41,10 @@ model User {
   status                     UserStatus                  @default(ACTIVE)
   avatarHue                  Int                         @default(180)
   profileComplete            Boolean                     @default(false)
-  publicationId              String?
   createdAt                  DateTime                    @default(now())
   updatedAt                  DateTime                    @updatedAt
   assessmentAssignedStudents AssessmentAssignedStudent[]
   createdAssessments         Assessment[]                @relation("AssessmentCreatedBy")
-  leaderboardEntries         Leaderboard[]               @relation("StudentLeaderboard")
   questionUploads            QuestionUpload[]            @relation("UploaderQuestions")
   createdQuestions           Question[]                  @relation("QuestionCreatedBy")
   quizAssignedStudents       QuizAssignedStudent[]
@@ -83,11 +54,9 @@ model User {
   studentProfile             StudentProfile?
   submissions                Submission[]
   teacherProfile             TeacherProfile?
-  publication                Publication?                @relation("PublicationUsers", fields: [publicationId], references: [id])
 
   @@index([role])
   @@index([status])
-  @@index([publicationId])
   @@map("users")
 }
 
@@ -97,7 +66,6 @@ model TeacherProfile {
   mobileNo        String?
   dob             DateTime?
   schoolName      String?
-  boardExternalId String?
   educationBoard  String?
   stateBoard      String?
   teacherCode     String?          @unique
@@ -110,6 +78,7 @@ model TeacherProfile {
   bio             String?          @db.Text
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
+  boardExternalId String?
   books           TeacherBook[]
   classes         TeacherClass[]
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -121,28 +90,28 @@ model TeacherProfile {
 }
 
 model StudentProfile {
-  id              String           @id @default(cuid())
-  userId          String           @unique
-  mobileNo        String?
-  dob             DateTime?
-  schoolName      String?
-  boardExternalId String?
-  educationBoard  String?
-  stateBoard      String?
-  classExternalId String?
+  id               String           @id @default(cuid())
+  userId           String           @unique
+  mobileNo         String?
+  dob              DateTime?
+  schoolName       String?
+  educationBoard   String?
+  stateBoard       String?
+  teacherCode      String?
+  address          String?          @db.Text
+  country          String?
+  state            String?
+  city             String?
+  zip              String?
+  imageUrl         String?          @db.MediumText
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  boardExternalId  String?
+  classExternalId  String?
   seriesExternalId String?
-  teacherCode     String?
-  address         String?          @db.Text
-  country         String?
-  state           String?
-  city            String?
-  zip             String?
-  imageUrl        String?          @db.MediumText
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  books           StudentBook[]
-  subjects        StudentSubject[]
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  books            StudentBook[]
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjects         StudentSubject[]
 
   @@index([boardExternalId])
   @@index([classExternalId])
@@ -249,18 +218,16 @@ model Question {
   difficulty          Difficulty           @default(MEDIUM)
   language            String?              @default("English")
   educationBoard      String?
-  topic               String?
-  subtopic            String?
   tags                String               @db.LongText
   status              UserStatus           @default(ACTIVE)
-  bookExternalId      String?
-  chapterExternalId   String?
-  subjectExternalId   String?
-  classExternalId     String?
-  externalId          String?              @unique
   createdById         String
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+  subjectExternalId   String?
+  classExternalId     String?
+  bookExternalId      String?
+  chapterExternalId   String?
+  externalId          String?              @unique
   answers             Answer[]
   assessments         AssessmentQuestion[]
   attemptAnswers      AttemptAnswer[]
@@ -280,19 +247,36 @@ model Question {
 model Assessment {
   id                 String                      @id @default(cuid())
   title              String
-  assessmentType     AssessmentType              @default(CHAPTER_TEST)
   description        String?                     @db.Text
-  boardExternalId    String?
-  classExternalId    String?
-  subjectExternalId  String?
-  bookExternalId     String?
   questionSelection  QuestionSelection           @default(MANUAL)
   totalQuestions     Int                         @default(0)
   duration           Int                         @default(60)
   totalMarks         Int                         @default(0)
   passingMarks       Int                         @default(0)
+  // Enforced end-to-end: validator (assessment.validator.ts), set on
+  // create/update (AssessmentService), and applied during grading
+  // (gradeAnswer/wrongAnswerPenalty in submission.service.ts) — a wrong,
+  // attempted answer is docked negativeMarksValue marks; skipped questions
+  // are never penalized; a submission's total score floors at 0.
   negativeMarking    Boolean                     @default(false)
   negativeMarksValue Float                       @default(0)
+  status             AssessmentStatus            @default(DRAFT)
+  publishedAt        DateTime?
+  createdById        String
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+  classExternalId    String?
+  subjectExternalId  String?
+
+  // ── Reserved for future functionality ──────────────────────────────────
+  // Set nowhere in AssessmentService.create/update, read nowhere — every
+  // assessment sits at these defaults forever. Real, plausible
+  // configuration (assessment type, shuffling, a scheduling window, etc.),
+  // not dead scaffolding: keep the column, add the enforcement + admin/
+  // teacher UI together, and move a field out of this block in the same
+  // change that makes it do something. (Mirrors the equivalent block on
+  // the Quiz model.)
+  assessmentType     AssessmentType              @default(CHAPTER_TEST)
   shuffleQuestions   Boolean                     @default(false)
   showResultAfter    ShowResultAfter             @default(IMMEDIATELY)
   showExplanation    Boolean                     @default(true)
@@ -301,28 +285,20 @@ model Assessment {
   bannerImageUrl     String?
   startDatetime      DateTime?
   endDatetime        DateTime?
-  status             AssessmentStatus            @default(DRAFT)
-  publishedAt        DateTime?
-  createdById        String
-  publicationId      String?
-  createdAt          DateTime                    @default(now())
-  updatedAt          DateTime                    @updatedAt
+  // ─────────────────────────────────────────────────────────────────────
+
   assignedClasses    AssessmentAssignedClass[]
   assignedStudents   AssessmentAssignedStudent[]
   chapters           AssessmentChapter[]
   questions          AssessmentQuestion[]
   createdBy          User                        @relation("AssessmentCreatedBy", fields: [createdById], references: [id])
-  publication        Publication?                @relation(fields: [publicationId], references: [id])
   questionUploads    QuestionUpload[]
   submissions        Submission[]
 
   @@index([createdById])
   @@index([status])
   @@index([subjectExternalId])
-  @@index([boardExternalId])
   @@index([classExternalId])
-  @@index([publicationId])
-  @@index([bookExternalId])
   @@map("assessments")
 }
 
@@ -343,6 +319,14 @@ model AssessmentQuestion {
   @@map("assessment_questions")
 }
 
+// Reserved for future functionality: chapter-scoping an assessment's
+// question pool. Nothing creates or reads a row here — AssessmentService
+// never writes to this table on create/update, and question selection for
+// an assessment goes entirely through AssessmentQuestion (an explicit,
+// admin/teacher-picked list) instead. Real, plausible feature (e.g. "pull
+// N questions from these chapters" as an alternative to hand-picking every
+// question), not dead scaffolding — wire it up (validator, service, UI)
+// before writing to it, don't resurrect it partially.
 model AssessmentChapter {
   assessmentId      String
   chapterExternalId String
@@ -379,8 +363,11 @@ model Submission {
   assessmentId String
   studentId    String
   status       SubmissionStatus @default(IN_PROGRESS)
-  score        Int              @default(0)
-  totalMarks   Int              @default(0)
+  // Float, not Int: marks can be fractional (AssessmentQuestion.marksOverride
+  // is Float, and negative marking can deduct fractional values) — matches
+  // QuizAttempt.score, the equivalent field on the Practice/Olympiad side.
+  score        Float            @default(0)
+  totalMarks   Float            @default(0)
   startedAt    DateTime         @default(now())
   submittedAt  DateTime?
   timeTakenSec Int              @default(0)
@@ -403,7 +390,8 @@ model Answer {
   selectedBoolean Boolean?
   textAnswer      String?    @db.Text
   isCorrect       Boolean?
-  marksAwarded    Int        @default(0)
+  // Float: can be negative (negative marking) or fractional (marksOverride).
+  marksAwarded    Float      @default(0)
   timeMs          Int?
   selectedOptions String     @db.LongText
   question        Question   @relation(fields: [questionId], references: [id])
@@ -420,19 +408,23 @@ model Quiz {
   title              String
   description        String?               @db.Text
   quizType           QuizType              @default(PRACTICE)
-  publicationId      String?
-  boardExternalId    String?
-  seriesExternalId   String?
-  classExternalId    String?
-  subjectExternalId  String?
-  bookExternalId     String?
   questionSelection  QuestionSelection     @default(MANUAL)
   totalQuestions     Int                   @default(0)
   totalMarks         Int                   @default(0)
-  marksPerQuestion   Float                 @default(1)
+  duration           Int                   @default(0)
+  language           String?               @default("English")
+  status             QuizStatus            @default(DRAFT)
+
+  // ── Reserved for future functionality ──────────────────────────────────
+  // Practice/Olympiad quizzes are created lazily (getOrCreatePracticeQuiz /
+  // getOrCreateOlympiadQuiz in quiz.service.ts) and never set any field
+  // below beyond its default — nothing in the app reads them yet. They are
+  // real, planned configuration (attempt caps, negative marking, a
+  // scheduling window, etc.), not dead scaffolding: keep the column, add
+  // the enforcement + admin UI together, and move a field out of this
+  // block in the same change that makes it do something.
   negativeMarking    Boolean               @default(false)
   negativeMarksValue Float                 @default(0)
-  duration           Int                   @default(0)
   startDatetime      DateTime?
   endDatetime        DateTime?
   passingMarks       Int                   @default(0)
@@ -445,12 +437,15 @@ model Quiz {
   leaderboardEnabled Boolean               @default(true)
   instructions       String?               @db.Text
   bannerImageUrl     String?
-  language           String?               @default("English")
-  status             QuizStatus            @default(DRAFT)
+  // ─────────────────────────────────────────────────────────────────────
   createdById        String
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
-  leaderboard        Leaderboard[]
+  boardExternalId    String?
+  bookExternalId     String?
+  classExternalId    String?
+  seriesExternalId   String?
+  subjectExternalId  String?
   questionUploads    QuestionUpload[]
   assignedClasses    QuizAssignedClass[]
   assignedStudents   QuizAssignedStudent[]
@@ -458,11 +453,9 @@ model Quiz {
   chapters           QuizChapter[]
   questions          QuizQuestion[]
   createdBy          User                  @relation("QuizCreatedBy", fields: [createdById], references: [id])
-  publication        Publication?          @relation(fields: [publicationId], references: [id])
 
   @@index([createdById])
   @@index([status])
-  @@index([publicationId])
   @@index([classExternalId])
   @@index([boardExternalId])
   @@index([bookExternalId])
@@ -471,6 +464,23 @@ model Quiz {
   @@map("quizzes")
 }
 
+// ── Reserved for future functionality ────────────────────────────────────
+// QuizQuestion / QuizChapter / QuizAssignedClass / QuizAssignedStudent are
+// unused by every Quiz row that exists today. Quiz rows are only ever
+// created by two lazy-singleton helpers (getOrCreatePracticeQuiz /
+// getOrCreateOlympiadQuiz in quiz.service.ts), and both hardcode
+// questionSelection: 'AUTO_RANDOM' — no code path in the app ever creates
+// a Quiz with questionSelection: MANUAL, which is the mode these tables
+// exist to support. Practice/Olympiad quizzes instead pick questions
+// dynamically per attempt straight from Question (scoped by subject/class/
+// board) and are open to any eligible student, not explicitly assigned.
+//
+// This is real, planned configuration — a manually-built, explicitly-
+// assigned Quiz, mirroring how Assessment + AssessmentQuestion +
+// AssessmentAssignedClass/Student already work for Assessments — not
+// abandoned scaffolding. Build the MANUAL creation path (validator,
+// service, admin/teacher UI) before writing to these tables; don't wire up
+// a partial version.
 model QuizQuestion {
   id               String   @id @default(cuid())
   quizId           String
@@ -519,6 +529,7 @@ model QuizAssignedStudent {
   @@index([studentId], map: "quiz_assigned_students_studentId_fkey")
   @@map("quiz_assigned_students")
 }
+// ───────────────────────────────────────────────────────────────────────
 
 model QuizAttempt {
   id             String          @id @default(cuid())
@@ -541,7 +552,6 @@ model QuizAttempt {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   answers        AttemptAnswer[]
-  leaderboard    Leaderboard?
   quiz           Quiz            @relation(fields: [quizId], references: [id], onDelete: Cascade)
   student        User            @relation("StudentAttempts", fields: [studentId], references: [id], onDelete: Cascade)
 
@@ -575,29 +585,12 @@ model AttemptAnswer {
   @@map("attempt_answers")
 }
 
-model Leaderboard {
-  id           String      @id @default(cuid())
-  quizId       String
-  studentId    String
-  attemptId    String      @unique
-  score        Float       @default(0)
-  rank         Int?
-  percentage   Float       @default(0)
-  timeTakenSec Int         @default(0)
-  attemptDate  DateTime
-  badge        BadgeType?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  attempt      QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  quiz         Quiz        @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  student      User        @relation("StudentLeaderboard", fields: [studentId], references: [id], onDelete: Cascade)
 
-  @@unique([quizId, studentId])
-  @@index([quizId])
-  @@index([studentId])
-  @@map("leaderboard")
-}
-
+// "otpCode" is a 64-char crypto.randomBytes(32) hex token for the
+// password-reset email link, not a guessable numeric code — brute-forcing
+// it is computationally infeasible, so there is no per-record attempt
+// counter here. The /reset-password route already carries a per-IP rate
+// limiter (auth.routes.ts) as its brute-force defense.
 model Otp {
   id            String   @id @default(cuid())
   mobileOrEmail String
@@ -605,7 +598,6 @@ model Otp {
   otpType       OtpType
   expiresAt     DateTime
   isVerified    Boolean  @default(false)
-  attemptCount  Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -732,23 +724,19 @@ enum AttemptStatus {
   ABANDONED
 }
 
+// Only PASSWORD_RESET exists as a real flow — registration and login are
+// plain email+password (no OTP step), and there is no phone-verification
+// feature. Kept as an enum (rather than dropped in favor of a plain
+// string) so a genuinely new OTP-gated flow can add a value here later.
 enum OtpType {
-  REGISTRATION
-  LOGIN
   PASSWORD_RESET
-  PHONE_VERIFY
 }
-
 
 enum UploadStatus {
   PENDING
   SUCCESS
+  // Some rows imported, some failed validation — distinct from FAILED
+  // (nothing imported) so upload history can tell the two apart.
+  PARTIAL
   FAILED
-}
-
-enum BadgeType {
-  GOLD
-  SILVER
-  BRONZE
-  PARTICIPATION
 }

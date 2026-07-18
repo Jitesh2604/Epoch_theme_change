@@ -9,13 +9,15 @@ const passwordSchema = z
 const emailSchema = z.string().email('Invalid email address').toLowerCase().trim();
 const nameSchema  = z.string().min(2, 'Name must be at least 2 characters').max(80).trim();
 
-// Public registration: only TEACHER and STUDENT allowed.
+// Public registration: only STUDENT allowed.
 // Admin accounts are seeded (see prisma/seed.ts) or created by an existing admin.
+// The Teacher module is temporarily hidden — Role.TEACHER is excluded here to
+// block new teacher signups. Re-add Role.TEACHER to re-enable.
 export const registerSchema = z.object({
   name:     nameSchema,
   email:    emailSchema,
   password: passwordSchema,
-  role:     z.enum([Role.TEACHER, Role.STUDENT]),
+  role:     z.enum([Role.STUDENT]),
   mobileNo: z.string().trim().min(7, 'Mobile number must be at least 7 digits').max(20),
 });
 

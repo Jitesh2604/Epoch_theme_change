@@ -10,20 +10,31 @@
  *   correctOption    MCQ: letter A..D  OR  1-based index
  *   correctBoolean   TF:  TRUE/FALSE/T/F/YES/NO/Y/N/1/0
  *   modelAnswer      DESC: sample answer (optional)
+ *   explanation      Shown after grading, any type (optional)
  *   marks            Integer ≥ 1     (default 1)
  *   difficulty       EASY | MEDIUM | HARD  (default MEDIUM)
  *   tags             Comma-separated
  *   subject          Subject name or slug (must already exist)
+ *   promptImageUrl        URL to an already-hosted image (optional, any type)
+ *   option1ImageUrl..option4ImageUrl  URL per MCQ option (optional)
+ *   explanationImageUrl   URL to an already-hosted image (optional)
+ *
+ *   Image columns take a URL to an image already hosted somewhere (e.g. a
+ *   CDN) — not a file upload and not an inline/base64 data URL; an invalid
+ *   or malformed URL is silently dropped for that cell rather than failing
+ *   the row.
  */
 import * as XLSX from 'xlsx';
-import { Difficulty, QuestionType } from '../lib/enums';
+import { Difficulty, QuestionType, UploadStatus } from '../lib/enums';
 import { prisma } from '../lib/prisma';
 import { toJson } from '../utils/json';
 import { ApiError } from '../utils/ApiError';
 import { isAdminRole } from '../utils/roles';
+import { pageMeta, pageToSkipTake } from '../utils/pagination';
 import { recalcTotalMarks } from './question.service';
 import { ContentMeta } from './content.service';
 import type { Actor } from './assessment.service';
+import type { ListUploadsQuery } from '../validators/upload.validator';
 
 function slugifySubject(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'subject';
@@ -46,6 +57,13 @@ export interface ImportSummary {
 }
 
 const MAX_ROWS = 1000;
+
+/** Cap stored error detail — a bad 1000-row sheet shouldn't write megabytes to the DB. */
+const MAX_LOGGED_ERRORS = 200;
+
+function errorLogFor(errors: RowError[]): string | null {
+  return errors.length ? JSON.stringify(errors.slice(0, MAX_LOGGED_ERRORS)) : null;
+}
 
 function normKey(s: string): string {
   return String(s).toLowerCase().replace(/[\s_-]+/g, '').trim();
@@ -101,6 +119,15 @@ function parseTags(raw: string): string[] {
   return raw.split(',').map((t) => t.trim()).filter((t) => t.length > 0).slice(0, 20);
 }
 
+// Image columns hold a URL to an already-hosted image (the questions.*ImageUrl
+// columns are VARCHAR(191) — far too small for an inline/base64 data URL).
+function parseImageUrl(raw: string): string | null {
+  const v = (raw ?? '').trim();
+  if (!v) return null;
+  if (v.length > 191) return null;
+  try { new URL(v); return v; } catch { return null; }
+}
+
 interface RawRow {
   rowNo: number;
   cells: Record<string, string>;
@@ -151,6 +178,13 @@ interface QuestionData {
   correctAnswer?: string | null;
   correctBoolean?: boolean | null;
   modelAnswer?: string | null;
+  explanation?: string | null;
+  promptImageUrl?: string | null;
+  optionAImageUrl?: string | null;
+  optionBImageUrl?: string | null;
+  optionCImageUrl?: string | null;
+  optionDImageUrl?: string | null;
+  explanationImageUrl?: string | null;
 }
 
 interface ValidatedRow {
@@ -208,6 +242,17 @@ function validateRows(
 
     const base: QuestionData = { type, prompt, marks, difficulty, tags, subjectId };
 
+    // Optional image URL columns — apply to every type. An invalid (non-URL
+    // or too-long) value is dropped rather than failing the whole row, since
+    // images are a supplementary field, not a required one.
+    base.promptImageUrl = parseImageUrl(c['promptimageurl'] ?? '');
+    base.explanationImageUrl = parseImageUrl(c['explanationimageurl'] ?? '');
+    const explanationRaw = c['explanation'] ?? '';
+    if (explanationRaw) {
+      if (explanationRaw.length > 5000) { push('explanation', 'explanation is too long (max 5000)'); continue; }
+      base.explanation = explanationRaw;
+    }
+
     if (type === QuestionType.MCQ_SINGLE) {
       const options = [c['option1'], c['option2'], c['option3'], c['option4']]
         .map((v) => (v ?? '').trim())
@@ -227,6 +272,10 @@ function validateRows(
       base.optionC       = options[2] ?? null;
       base.optionD       = options[3] ?? null;
       base.correctAnswer = correctLetter;
+      base.optionAImageUrl = parseImageUrl(c['option1imageurl'] ?? '');
+      base.optionBImageUrl = parseImageUrl(c['option2imageurl'] ?? '');
+      base.optionCImageUrl = parseImageUrl(c['option3imageurl'] ?? '');
+      base.optionDImageUrl = parseImageUrl(c['option4imageurl'] ?? '');
     }
 
     if (type === QuestionType.TRUE_FALSE) {
@@ -289,8 +338,23 @@ export const ExcelService = {
 
     const { valid, errors } = validateRows(rows, subjectIndex, actor.id);
 
-    if ((opts.stopOnError && errors.length > 0) || opts.dryRun || valid.length === 0) {
-      return { totalRows: rows.length, validRows: valid.length, invalidRows: errors.length, createdQuestions: 0, attachedToAssessment: 0, dryRun: opts.dryRun, errors };
+    // A dry run is a preview, not an upload event — nothing is written,
+    // including no QuestionUpload history row.
+    if (opts.dryRun) {
+      return { totalRows: rows.length, validRows: valid.length, invalidRows: errors.length, createdQuestions: 0, attachedToAssessment: 0, dryRun: true, errors };
+    }
+
+    if ((opts.stopOnError && errors.length > 0) || valid.length === 0) {
+      await prisma.questionUpload.create({
+        data: {
+          uploadedById: actor.id,
+          assessmentId: target?.id ?? null,
+          uploadStatus: UploadStatus.FAILED,
+          totalRows: rows.length, rowsImported: 0, rowsFailed: errors.length,
+          errorLog: errorLogFor(errors),
+        },
+      });
+      return { totalRows: rows.length, validRows: valid.length, invalidRows: errors.length, createdQuestions: 0, attachedToAssessment: 0, dryRun: false, errors };
     }
 
     const createdIds: string[] = [];
@@ -306,6 +370,13 @@ export const ExcelService = {
             correctAnswer: d.correctAnswer ?? null,
             correctBoolean: d.correctBoolean ?? null,
             modelAnswer: d.modelAnswer ?? null,
+            explanation: d.explanation ?? null,
+            promptImageUrl: d.promptImageUrl ?? null,
+            optionAImageUrl: d.optionAImageUrl ?? null,
+            optionBImageUrl: d.optionBImageUrl ?? null,
+            optionCImageUrl: d.optionCImageUrl ?? null,
+            optionDImageUrl: d.optionDImageUrl ?? null,
+            explanationImageUrl: d.explanationImageUrl ?? null,
             createdById: actor.id,
           },
           select: { id: true },
@@ -321,6 +392,16 @@ export const ExcelService = {
         });
         await recalcTotalMarks(target.id, txc);
       }
+
+      await txc.questionUpload.create({
+        data: {
+          uploadedById: actor.id,
+          assessmentId: target?.id ?? null,
+          uploadStatus: errors.length > 0 ? UploadStatus.PARTIAL : UploadStatus.SUCCESS,
+          totalRows: rows.length, rowsImported: createdIds.length, rowsFailed: errors.length,
+          errorLog: errorLogFor(errors),
+        },
+      });
     });
 
     return {
@@ -334,12 +415,51 @@ export const ExcelService = {
     };
   },
 
+  async listUploads(actor: Actor, query: ListUploadsQuery) {
+    const { page, limit } = query;
+    const { skip, take } = pageToSkipTake(page, limit);
+
+    // Teachers see only their own uploads; admins see everyone's.
+    const where = {
+      ...(isAdminRole(actor.role) ? {} : { uploadedById: actor.id }),
+      ...(query.status && { uploadStatus: query.status }),
+    };
+
+    const [rows, total] = await Promise.all([
+      prisma.questionUpload.findMany({
+        where, orderBy: { createdAt: 'desc' }, skip, take,
+        select: {
+          id: true, uploadStatus: true, totalRows: true, rowsImported: true, rowsFailed: true,
+          errorLog: true, createdAt: true, assessmentId: true,
+          uploadedBy: { select: { id: true, name: true, email: true } },
+          assessment: { select: { id: true, title: true } },
+        },
+      }),
+      prisma.questionUpload.count({ where }),
+    ]);
+
+    const items = rows.map(r => ({
+      id: r.id, status: r.uploadStatus,
+      totalRows: r.totalRows, rowsImported: r.rowsImported, rowsFailed: r.rowsFailed,
+      errors: r.errorLog ? (JSON.parse(r.errorLog) as RowError[]) : [],
+      uploadedAt: r.createdAt,
+      uploadedBy: r.uploadedBy,
+      assessment: r.assessment,
+    }));
+
+    return { items, meta: pageMeta(total, page, limit) };
+  },
+
   buildTemplateBuffer(): Buffer {
-    const headers = ['type', 'prompt', 'option1', 'option2', 'option3', 'option4', 'correctOption', 'correctBoolean', 'modelAnswer', 'marks', 'difficulty', 'tags', 'subject'];
+    const headers = [
+      'type', 'prompt', 'option1', 'option2', 'option3', 'option4', 'correctOption', 'correctBoolean', 'modelAnswer',
+      'explanation', 'marks', 'difficulty', 'tags', 'subject',
+      'promptImageUrl', 'option1ImageUrl', 'option2ImageUrl', 'option3ImageUrl', 'option4ImageUrl', 'explanationImageUrl',
+    ];
     const examples = [
-      ['MCQ_SINGLE',   'What is 2 + 2?', '3', '4', '5', '6', 'B', '', '',   1, 'EASY',   'arithmetic', 'Mathematics'],
-      ['TRUE_FALSE',   'The Earth is flat.', '', '', '', '', '', 'FALSE', '', 1, 'EASY',   'general',    ''],
-      ['DESCRIPTIVE',  "Explain Newton's first law.", '', '', '', '', '', '', 'An object at rest stays at rest unless acted upon by an external force.', 5, 'MEDIUM', 'physics', 'Science'],
+      ['MCQ_SINGLE',   'What is 2 + 2?', '3', '4', '5', '6', 'B', '', '', 'Adding 2 and 2 gives 4.', 1, 'EASY',   'arithmetic', 'Mathematics', '', '', '', '', '', ''],
+      ['TRUE_FALSE',   'The Earth is flat.', '', '', '', '', '', 'FALSE', '', '', 1, 'EASY',   'general',    '', '', '', '', '', '', ''],
+      ['DESCRIPTIVE',  "Explain Newton's first law.", '', '', '', '', '', '', 'An object at rest stays at rest unless acted upon by an external force.', '', 5, 'MEDIUM', 'physics', 'Science', '', '', '', '', '', ''],
     ];
     const ws = XLSX.utils.aoa_to_sheet([headers, ...examples]);
     const wb = XLSX.utils.book_new();

@@ -10,6 +10,11 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { env, isDev, isProd } from '../config';
 import { logger } from '../utils/logger';
+import { SettingsService } from './settings.service';
+
+async function getPlatformName(): Promise<string> {
+  return (await SettingsService.get('general.platformName')) ?? 'Epoch Quiz';
+}
 
 // ── Transport ────────────────────────────────────────────────────────────────
 
@@ -36,7 +41,7 @@ function getTransport(): Transporter | null {
 
 // ── HTML template helpers ─────────────────────────────────────────────────────
 
-function baseTemplate(title: string, body: string): string {
+function baseTemplate(title: string, body: string, platformName: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -66,7 +71,7 @@ function baseTemplate(title: string, body: string): string {
     </div>
     <div class="body">${body}</div>
     <div class="footer">
-      &copy; ${new Date().getFullYear()} Epoch Quiz. All rights reserved.<br/>
+      &copy; ${new Date().getFullYear()} ${escapeHtml(platformName)}. All rights reserved.<br/>
       This email was sent automatically — please do not reply.
     </div>
   </div>
@@ -108,6 +113,7 @@ export const EmailService = {
        <p><strong>Subject:</strong> ${escapeHtml(input.subject)}</p>
        <hr class="divider" />
        <p style="white-space:pre-wrap">${escapeHtml(input.message)}</p>`,
+      await getPlatformName(),
     );
 
     try {
@@ -143,24 +149,26 @@ export const EmailService = {
     const transport = getTransport();
     if (!transport) return { ok: true }; // silently skip in production when not configured
 
+    const platformName = await getPlatformName();
     const html = baseTemplate(
-      'Reset your Epoch Quiz password',
+      `Reset your ${platformName} password`,
       `<h1>Reset your password</h1>
        <p>Hi ${name},</p>
-       <p>We received a request to reset the password for your Epoch Quiz account. Click the button below to choose a new password.</p>
+       <p>We received a request to reset the password for your ${escapeHtml(platformName)} account. Click the button below to choose a new password.</p>
        <a href="${resetUrl}" class="btn">Reset password</a>
        <hr class="divider" />
        <p class="note">This link expires in <strong>1 hour</strong>. If you did not request a password reset, you can safely ignore this email — your password will not be changed.</p>
        <p class="note">If the button doesn't work, copy and paste this URL into your browser:<br/><br/>${resetUrl}</p>`,
+      platformName,
     );
 
     try {
       await transport.sendMail({
         from:    env.EMAIL_FROM,
         to,
-        subject: 'Reset your Epoch Quiz password',
+        subject: `Reset your ${platformName} password`,
         html,
-        text:    `Reset your Epoch Quiz password\n\nHi ${name},\n\nClick the link below to reset your password (expires in 1 hour):\n${resetUrl}\n\nIf you did not request this, ignore this email.`,
+        text:    `Reset your ${platformName} password\n\nHi ${name},\n\nClick the link below to reset your password (expires in 1 hour):\n${resetUrl}\n\nIf you did not request this, ignore this email.`,
       });
       logger.info(`[email] Password reset sent to ${to}`);
       return { ok: true };
@@ -177,20 +185,22 @@ export const EmailService = {
       return { ok: true };
     }
 
+    const platformName = await getPlatformName();
     const html = baseTemplate(
-      'Welcome to Epoch Quiz',
+      `Welcome to ${platformName}`,
       `<h1>Welcome aboard, ${name}!</h1>
-       <p>Your Epoch Quiz account is ready. You can now log in, explore assessments, and start your learning journey.</p>
+       <p>Your ${escapeHtml(platformName)} account is ready. You can now log in, explore assessments, and start your learning journey.</p>
        <a href="${env.APP_URL}/#/login" class="btn">Go to dashboard</a>
        <p class="note">If you have any questions, just reply to this email — we're always happy to help.</p>`,
+      platformName,
     );
 
     try {
       await transport.sendMail({
         from: env.EMAIL_FROM, to,
-        subject: 'Welcome to Epoch Quiz!',
+        subject: `Welcome to ${platformName}!`,
         html,
-        text: `Welcome to Epoch Quiz, ${name}!\n\nYour account is ready. Log in at: ${env.APP_URL}/#/login`,
+        text: `Welcome to ${platformName}, ${name}!\n\nYour account is ready. Log in at: ${env.APP_URL}/#/login`,
       });
       return { ok: true };
     } catch (err: any) {

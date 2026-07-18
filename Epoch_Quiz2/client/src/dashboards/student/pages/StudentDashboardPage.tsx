@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { KeyRound, FileText, Trophy, Flame, Award, Play, Zap, BookOpen, ArrowRight } from 'lucide-react';
+import { KeyRound, FileText, Trophy, Medal, Award, Play, Zap, BookOpen, ArrowRight } from 'lucide-react';
 import { PageHeader, StatCard, Card, Button, Badge, Avatar, ProgressBar, Skeleton } from '../../shared/ui';
 import { useAssessments } from '../../../hooks/useAssessments';
 import { useMySubmissions } from '../../../hooks/useSubmissions';
@@ -52,7 +52,7 @@ export function StudentDashboardPage() {
             <StatCard label="Assessments taken" value={stats?.attempted    ?? 0}                    icon={FileText} tone="brand"   />
             <StatCard label="Average score"      value={`${Math.round(stats?.avgPercent ?? 0)}%`}  icon={Award}    tone="emerald" />
             <StatCard label="Current rank"        value={stats?.rank ? `#${stats.rank}` : '—'}     icon={Trophy}   tone="amber"   />
-            <StatCard label="Total score"         value={stats?.totalScore ?? 0}                   icon={Flame}    tone="violet"  />
+            <StatCard label="Total score"         value={stats?.totalScore ?? 0}                   icon={Medal}    tone="violet"  />
           </>
         )}
       </div>
@@ -91,7 +91,7 @@ export function StudentDashboardPage() {
               </div>
               <p className="text-[14px] font-semibold text-fg1 mb-1">No assessments assigned yet</p>
               <p className="text-[12.5px] text-fg3 max-w-xs mb-4">
-                Your teacher hasn't assigned any assessments. In the meantime, sharpen your skills with a practice quiz!
+                Your admin hasn't assigned any assessments. In the meantime, sharpen your skills with a practice quiz!
               </p>
               <Button icon={Zap} onClick={() => navigate('/student/practice')}>
                 Start a Practice Quiz
@@ -201,7 +201,7 @@ export function StudentDashboardPage() {
           </div>
         ) : (
           <div className="text-center py-6 text-fg3 text-[13px]">
-            No practice questions available yet. Ask your teacher to add questions to the question bank.
+            No practice questions available yet. Ask your admin to add questions to the question bank.
           </div>
         )}
       </Card>

@@ -29,7 +29,7 @@ interface DbAnswer {
 }
 
 interface AssessmentQuestion {
-  aqId: string; aqOrder: number; marksOverride: number | null;
+  aqId: string; aqOrder: number; marksOverride: number | null; negMarksOverride: number | null;
   qId: string; type: string; prompt: string; promptImageUrl: string | null;
   optionA: string | null; optionB: string | null; optionC: string | null; optionD: string | null;
   optionAImageUrl: string | null; optionBImageUrl: string | null;
@@ -44,7 +44,7 @@ interface LoadedSubmission {
   score: number; totalMarks: number; timeTakenSec: number | null;
   startedAt: Date; submittedAt: Date | null;
   aTitle: string; aDescription: string | null; aDuration: number; aPassing: number;
-  aCreatedById: string;
+  aCreatedById: string; aNegativeMarking: boolean; aNegativeMarksValue: number;
   subId: string | null; subName: string | null; subSlug: string | null;
   stName: string | null; stEmail: string | null;
 }
@@ -54,7 +54,7 @@ interface LoadedSubmission {
 const submissionSelect = {
   id: true, studentId: true, assessmentId: true, status: true, score: true, totalMarks: true,
   timeTakenSec: true, startedAt: true, submittedAt: true,
-  assessment: { select: { title: true, description: true, duration: true, passingMarks: true, createdById: true, subjectExternalId: true } },
+  assessment: { select: { title: true, description: true, duration: true, passingMarks: true, createdById: true, subjectExternalId: true, negativeMarking: true, negativeMarksValue: true } },
   student: { select: { name: true, email: true } },
 } satisfies Prisma.SubmissionSelect;
 
@@ -66,6 +66,7 @@ function mapLoaded(s: Prisma.SubmissionGetPayload<{ select: typeof submissionSel
     startedAt: s.startedAt, submittedAt: s.submittedAt,
     aTitle: s.assessment.title, aDescription: s.assessment.description, aDuration: s.assessment.duration,
     aPassing: s.assessment.passingMarks, aCreatedById: s.assessment.createdById,
+    aNegativeMarking: s.assessment.negativeMarking, aNegativeMarksValue: s.assessment.negativeMarksValue,
     subId: subExternalId, subName: subExternalId ? subjectName : null, subSlug: subExternalId && subjectName ? slugify(subjectName) : null,
     stName: s.student.name, stEmail: s.student.email,
   };
@@ -89,10 +90,10 @@ const aqQuestionSelect = {
 async function loadAssessmentQuestions(assessmentId: string): Promise<AssessmentQuestion[]> {
   const rows = await prisma.assessmentQuestion.findMany({
     where: { assessmentId }, orderBy: { order: 'asc' },
-    select: { id: true, order: true, marksOverride: true, question: { select: aqQuestionSelect } },
+    select: { id: true, order: true, marksOverride: true, negMarksOverride: true, question: { select: aqQuestionSelect } },
   });
   return rows.map(r => ({
-    aqId: r.id, aqOrder: r.order, marksOverride: r.marksOverride,
+    aqId: r.id, aqOrder: r.order, marksOverride: r.marksOverride, negMarksOverride: r.negMarksOverride,
     qId: r.question.id, type: r.question.type, prompt: r.question.prompt, promptImageUrl: r.question.promptImageUrl,
     optionA: r.question.optionA, optionB: r.question.optionB, optionC: r.question.optionC, optionD: r.question.optionD,
     optionAImageUrl: r.question.optionAImageUrl, optionBImageUrl: r.question.optionBImageUrl,
@@ -124,16 +125,31 @@ function durationLeft(startedAt: Date, durationMin: number) {
   return { expiresAt, remainingSec };
 }
 
+/**
+ * Marks for a wrong, attempted answer. Skipped questions (no selection at
+ * all) never lose marks — negative marking only applies once the student
+ * has actually committed to an answer. Rounded to the nearest whole number:
+ * Answer.marksAwarded is a stored, summed column, so the per-question
+ * penalty must land on a value that stays exactly consistent with the sum
+ * recomputed later from persisted rows (see recomputeSubmissionScore).
+ */
+function wrongAnswerPenalty(negativeMarking: boolean, negativeMarksValue: number): number {
+  return negativeMarking && negativeMarksValue > 0 ? -Math.round(negativeMarksValue) : 0;
+}
+
 function gradeAnswer(
   type: string, marks: number,
   correctAnswer: string | null, correctOptions: string, correctBoolean: boolean | null,
   selectedOption: number | null, selectedOptions: number[], selectedBoolean: boolean | null, textAnswer: string | null,
+  negativeMarking: boolean, negativeMarksValue: number,
 ): { isCorrect: boolean | null; marksAwarded: number } {
+  const penalty = wrongAnswerPenalty(negativeMarking, negativeMarksValue);
+
   if (type === QuestionType.MCQ_SINGLE) {
     if (selectedOption === null) return { isCorrect: false, marksAwarded: 0 };
     const letter  = (['A', 'B', 'C', 'D'] as const)[selectedOption] ?? null;
     const correct = letter !== null && letter === correctAnswer;
-    return { isCorrect: correct, marksAwarded: correct ? marks : 0 };
+    return { isCorrect: correct, marksAwarded: correct ? marks : penalty };
   }
   if (type === QuestionType.MCQ_MULTIPLE) {
     if (!selectedOptions.length) return { isCorrect: false, marksAwarded: 0 };
@@ -145,17 +161,17 @@ function gradeAnswer(
       correctLetters.length === selLetters.length &&
       correctLetters.every((l: string) => selLetters.includes(l)) &&
       selLetters.every((l: string) => correctLetters.includes(l));
-    return { isCorrect: correct, marksAwarded: correct ? marks : 0 };
+    return { isCorrect: correct, marksAwarded: correct ? marks : penalty };
   }
   if (type === QuestionType.TRUE_FALSE) {
     if (selectedBoolean === null) return { isCorrect: false, marksAwarded: 0 };
     const correct = correctBoolean !== null && selectedBoolean === correctBoolean;
-    return { isCorrect: correct, marksAwarded: correct ? marks : 0 };
+    return { isCorrect: correct, marksAwarded: correct ? marks : penalty };
   }
   if (type === QuestionType.FILL_IN_BLANK) {
     if (!textAnswer?.trim()) return { isCorrect: false, marksAwarded: 0 };
     const correct = correctAnswer !== null && textAnswer.trim().toLowerCase() === correctAnswer.trim().toLowerCase();
-    return { isCorrect: correct, marksAwarded: correct ? marks : 0 };
+    return { isCorrect: correct, marksAwarded: correct ? marks : penalty };
   }
   return { isCorrect: null, marksAwarded: 0 };
 }
@@ -169,12 +185,18 @@ function answerMap(answers: DbAnswer[]): Map<string, DbAnswer> {
 async function loadOwnInProgress(actor: Actor, submissionId: string) {
   const s = await prisma.submission.findUnique({
     where: { id: submissionId },
-    select: { id: true, studentId: true, assessmentId: true, status: true, startedAt: true, totalMarks: true, assessment: { select: { duration: true } } },
+    select: {
+      id: true, studentId: true, assessmentId: true, status: true, startedAt: true, totalMarks: true,
+      assessment: { select: { duration: true, negativeMarking: true, negativeMarksValue: true } },
+    },
   });
   if (!s) throw ApiError.notFound('Submission not found');
   if (!isAdminRole(actor.role) && s.studentId !== actor.id) throw ApiError.forbidden('You can only modify your own attempt');
   if (s.status !== SubmissionStatus.IN_PROGRESS) throw ApiError.badRequest('This attempt is no longer in progress');
-  return { ...s, duration: s.assessment.duration };
+  return {
+    ...s, duration: s.assessment.duration,
+    negativeMarking: s.assessment.negativeMarking, negativeMarksValue: s.assessment.negativeMarksValue,
+  };
 }
 
 function shapeSubmission(s: LoadedSubmission, aqs: AssessmentQuestion[], answers: DbAnswer[], revealAnswers: boolean) {
@@ -198,6 +220,7 @@ function shapeSubmission(s: LoadedSubmission, aqs: AssessmentQuestion[], answers
       options:        opts,
       matchPairs:     aq.type === QuestionType.MATCH_THE_COLUMN ? matchPairs : null,
       marks:          aq.marksOverride ?? aq.marks,
+      negativeMarks:  s.aNegativeMarking ? (aq.negMarksOverride ?? s.aNegativeMarksValue) : 0,
       yourAnswer: a ? {
         selectedOption:  a.selectedOption,
         selectedOptions: parseIntArr(a.selectedOptions),
@@ -265,6 +288,7 @@ async function finalizeSubmission(submissionId: string) {
         parseIntArr(a?.selectedOptions ?? '[]'),
         a?.selectedBoolean ?? null,
         a?.textAnswer ?? null,
+        s.aNegativeMarking, aq.negMarksOverride ?? s.aNegativeMarksValue,
       );
       totalScore += marksAwarded;
       if (needsManual && a) hasUngradedDescriptive = true;
@@ -281,8 +305,11 @@ async function finalizeSubmission(submissionId: string) {
     const submittedAt  = new Date();
     const timeTakenSec = Math.max(0, Math.floor((submittedAt.getTime() - new Date(s.startedAt).getTime()) / 1000));
     const status       = hasUngradedDescriptive ? SubmissionStatus.SUBMITTED : SubmissionStatus.GRADED;
+    // Negative marking can drive individual question scores below 0, but the
+    // overall result floors at 0 — a submission never nets a negative score.
+    const score = Math.max(0, totalScore);
 
-    await txc.submission.update({ where: { id: submissionId }, data: { score: totalScore, submittedAt, timeTakenSec, status } });
+    await txc.submission.update({ where: { id: submissionId }, data: { score, submittedAt, timeTakenSec, status } });
   });
 
   const finalSub     = await loadSubmissionFlat(submissionId);
@@ -294,7 +321,7 @@ async function recomputeSubmissionScore(txc: Prisma.TransactionClient, submissio
   const rows = await txc.answer.findMany({
     where: { submissionId }, select: { marksAwarded: true, isCorrect: true, question: { select: { type: true } } },
   });
-  const score = rows.reduce((sum, a) => sum + a.marksAwarded, 0);
+  const score = Math.max(0, rows.reduce((sum, a) => sum + a.marksAwarded, 0));
   const stillUngraded = rows.some(
     a => (a.question.type === QuestionType.DESCRIPTIVE || a.question.type === QuestionType.MATCH_THE_COLUMN) && a.isCorrect === null,
   );
@@ -402,13 +429,14 @@ export const SubmissionService = {
 
     const effRow = await prisma.assessmentQuestion.findUnique({
       where: { assessmentId_questionId: { assessmentId: s.assessmentId, questionId: input.questionId } },
-      select: { marksOverride: true },
+      select: { marksOverride: true, negMarksOverride: true },
     });
     const marks   = effRow?.marksOverride ?? question.marks;
     const selOpts = input.selectedOptions ?? [];
     const { isCorrect, marksAwarded } = gradeAnswer(
       question.type, marks, question.correctAnswer, question.correctOptions, question.correctBoolean,
       input.selectedOption ?? null, selOpts, input.selectedBoolean ?? null, input.textAnswer ?? null,
+      s.negativeMarking, effRow?.negMarksOverride ?? s.negativeMarksValue,
     );
 
     const fields = {
@@ -440,10 +468,11 @@ export const SubmissionService = {
       if (unknown) throw ApiError.badRequest(`Question not in this assessment: ${unknown.questionId}`);
 
       const effRows  = await prisma.assessmentQuestion.findMany({
-        where: { assessmentId: s.assessmentId, questionId: { in: qIds } }, select: { questionId: true, marksOverride: true },
+        where: { assessmentId: s.assessmentId, questionId: { in: qIds } }, select: { questionId: true, marksOverride: true, negMarksOverride: true },
       });
       const effMap   = new Map<string, number | null>();
-      for (const r of effRows) effMap.set(r.questionId, r.marksOverride);
+      const negEffMap = new Map<string, number | null>();
+      for (const r of effRows) { effMap.set(r.questionId, r.marksOverride); negEffMap.set(r.questionId, r.negMarksOverride); }
 
       const qRows   = await prisma.question.findMany({
         where: { id: { in: qIds } }, select: { id: true, type: true, marks: true, correctAnswer: true, correctOptions: true, correctBoolean: true },
@@ -458,6 +487,7 @@ export const SubmissionService = {
         const { isCorrect, marksAwarded } = gradeAnswer(
           question.type, marks, question.correctAnswer, question.correctOptions, question.correctBoolean,
           a.selectedOption ?? null, selOpts, a.selectedBoolean ?? null, a.textAnswer ?? null,
+          s.negativeMarking, negEffMap.get(a.questionId) ?? s.negativeMarksValue,
         );
         const fields = {
           selectedOption:  a.selectedOption ?? null,

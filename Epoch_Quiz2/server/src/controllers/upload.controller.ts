@@ -4,7 +4,7 @@ import { ApiResponse } from '../utils/ApiResponse';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ApiError } from '../utils/ApiError';
 import type { Actor } from '../services/assessment.service';
-import type { UploadQuery } from '../validators/upload.validator';
+import type { UploadQuery, ListUploadsQuery } from '../validators/upload.validator';
 
 function actorFrom(req: Request): Actor {
   if (!req.user) throw ApiError.unauthorized();
@@ -23,6 +23,11 @@ export const UploadController = {
     });
 
     ApiResponse.ok(res, summary, summary.dryRun ? 'Dry-run completed' : 'Import completed');
+  }),
+
+  listUploads: asyncHandler(async (req: Request, res: Response) => {
+    const { items, meta } = await ExcelService.listUploads(actorFrom(req), req.query as unknown as ListUploadsQuery);
+    ApiResponse.ok(res, items, undefined, meta);
   }),
 
   downloadTemplate: asyncHandler(async (_req: Request, res: Response) => {

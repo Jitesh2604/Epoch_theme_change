@@ -1,20 +1,12 @@
 import { useEffect } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { GraduationCap, UserCog, ArrowRight, Sparkles } from 'lucide-react';
+import { GraduationCap, ArrowRight, Sparkles } from 'lucide-react';
 import { getRole, setAuth, pathForRole, type Role } from './shared/auth';
 
+// Teacher module is temporarily hidden — remove this comment and restore the
+// 'teacher' entry (with its UserCog icon import) below to bring it back.
 const ROLES: { id: Role; label: string; desc: string; icon: any; gradient: string; border: string; iconBg: string; path: string }[] = [
-  {
-    id: 'teacher',
-    label: 'Teacher',
-    desc: 'Create assessments, upload questions, track student performance and review results.',
-    icon: UserCog,
-    gradient: 'from-[#EBF0E0] to-transparent dark:from-[rgba(53,64,36,0.20)] dark:to-transparent',
-    border: 'border-[rgba(53,64,36,0.18)] dark:border-[rgba(106,138,68,0.25)]',
-    iconBg: 'bg-[#EBF0E0] text-[#354024] dark:bg-[rgba(106,138,68,0.20)] dark:text-[#96A46A]',
-    path: '/teacher',
-  },
   {
     id: 'student',
     label: 'Student',
@@ -74,7 +66,7 @@ export function RoleSelectionPage() {
             </p>
           </motion.div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl mx-auto">
+          <div className="grid grid-cols-1 gap-5 max-w-sm mx-auto">
             {ROLES.map((r, i) => (
               <motion.button
                 key={r.id}

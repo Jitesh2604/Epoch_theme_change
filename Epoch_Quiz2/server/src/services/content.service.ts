@@ -82,16 +82,10 @@ async function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
   return value;
 }
 
-/** Drop all cached Content API responses (e.g. after an admin refresh). */
-function clearCache(): void {
-  cache.clear();
-}
-
 // ── Raw catalog getters (retried + cached) ────────────────────────────────
 
 export const ContentService = {
   isConfigured(): boolean { return isContentConfigured(); },
-  clearCache,
 
   getBoards():    Promise<Board[]>    { return cached('boards',    () => withRetry('boards.list',    () => getContentClient().boards.list())); },
   getStandards(): Promise<Standard[]> { return cached('standards', () => withRetry('standards.list', () => getContentClient().standards.list())); },

@@ -237,7 +237,7 @@ function QuestionCard({
               placeholder="Your matching answer…"
               className="w-full h-11 px-4 rounded-xl border border-line bg-surface1 text-[13.5px] text-fg1 placeholder:text-fg4 focus:outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20"
             />
-            <p className="text-[11px] text-fg3 mt-1.5">This answer will be reviewed by your teacher.</p>
+            <p className="text-[11px] text-fg3 mt-1.5">This answer will be reviewed by your admin.</p>
           </div>
         </div>
       )}
@@ -256,7 +256,7 @@ function QuestionCard({
             rows={5}
             className="w-full px-4 py-3 rounded-xl border border-line bg-surface1 text-[13.5px] text-fg1 placeholder:text-fg4 focus:outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20 resize-y"
           />
-          <p className="text-[11px] text-fg3 mt-1.5">This question will be manually graded by your teacher.</p>
+          <p className="text-[11px] text-fg3 mt-1.5">This question will be manually graded by your admin.</p>
         </div>
       )}
     </Card>

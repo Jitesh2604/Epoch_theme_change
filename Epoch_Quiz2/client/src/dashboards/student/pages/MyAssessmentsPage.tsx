@@ -1,19 +1,20 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Play, Clock, FileText, CheckCircle2, RotateCcw,
+  Play, Clock, FileText, CheckCircle2, RotateCcw, Trophy,
 } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, Skeleton } from '../../shared/ui';
 import { useAssessments } from '../../../hooks/useAssessments';
 import { useMySubmissions } from '../../../hooks/useSubmissions';
-import { assessmentTakeApi, type TakeSubmission, type SubmissionResult } from '../../../hooks/useSubmissionApi';
-import { useToasts } from '../../shared/ui';
+
+// The 2026 assessment session ends Nov 1, 2026 — after that, assessments are
+// paused until the 2027 session and students are pointed to Practice Olympiad.
+const SESSION_END_DATE = new Date('2026-11-01T00:00:00');
 
 export function MyAssessmentsPage() {
   const [tab, setTab]         = useState<'available' | 'completed'>('available');
-  const [startingId, setStartingId] = useState<string | null>(null);
   const navigate              = useNavigate();
-  const { push, node }        = useToasts();
+  const sessionOver = Date.now() >= SESSION_END_DATE.getTime();
 
   const { data: available, loading: aLoading, error: aError } = useAssessments({ status: 'PUBLISHED', limit: 20 });
   const { data: completed, loading: cLoading, error: cError } = useMySubmissions({ status: 'GRADED', limit: 20 });
@@ -31,26 +32,12 @@ export function MyAssessmentsPage() {
     return m;
   }, [inProgressSubs]);
 
-  const handleStart = async (assessmentId: string) => {
-    setStartingId(assessmentId);
-    try {
-      const resp = await assessmentTakeApi.start(assessmentId);
-
-      if (resp.autoSubmitted) {
-        // Time already expired while starting — go straight to result page
-        const result = resp.submission as SubmissionResult;
-        push({ kind: 'info', title: 'Time already expired', sub: 'Redirecting to your results…' });
-        setTimeout(() => navigate(`/student/assessment-result/${result.id}`, { state: { result } }), 400);
-        return;
-      }
-
-      const sub = resp.submission as TakeSubmission;
-      navigate(`/student/take/${sub.id}`, { state: { submission: sub } });
-    } catch (e: any) {
-      push({ kind: 'danger', title: 'Cannot start', sub: e.message });
-    } finally {
-      setStartingId(null);
-    }
+  // Fresh attempts see the overview first; in-progress ones resume straight
+  // into the test — the attempt/timer is already running for them.
+  const goToAssessment = (assessmentId: string) => {
+    const submissionId = inProgressMap.get(assessmentId);
+    if (submissionId) navigate(`/student/take/${submissionId}`);
+    else navigate(`/student/assessment-overview/${assessmentId}`);
   };
 
   const tabs = [
@@ -60,12 +47,37 @@ export function MyAssessmentsPage() {
 
   return (
     <>
-      {node}
       <PageHeader
         eyebrow="Student · Assessments"
         title="My Assessments"
         subtitle="Assessments assigned to you and your recent results."
       />
+
+      {sessionOver && (
+        <Card className="p-6 mb-5 relative overflow-hidden">
+          <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full bg-amber-400/15 blur-3xl pointer-events-none" />
+          <div className="relative flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-500 grid place-items-center shrink-0">
+              <Trophy size={22} />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-display font-semibold text-[15.5px] text-fg1 mb-0.5">
+                The 2026 session is over. Please join the next session in 2027.
+              </h3>
+              <p className="text-[12.5px] text-fg3">
+                No new assessments are available right now — keep your skills sharp with Practice Olympiad in the meantime.
+              </p>
+            </div>
+            <Button
+              icon={Trophy}
+              className="shrink-0"
+              onClick={() => { window.location.href = '/#/olympiad'; }}
+            >
+              PRACTISE OLYMPIAD
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {loadError && (
         <div className="mb-4 px-4 py-3 rounded-xl bg-danger/10 border border-danger/20 text-[13px] text-danger">
@@ -101,7 +113,6 @@ export function MyAssessmentsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {(available?.items ?? []).map((a) => {
               const isInProgress = inProgressMap.has(a.id);
-              const isStarting   = startingId === a.id;
 
               return (
                 <Card
@@ -137,10 +148,9 @@ export function MyAssessmentsPage() {
                   <Button
                     icon={isInProgress ? RotateCcw : Play}
                     className="w-full mt-auto"
-                    onClick={() => handleStart(a.id)}
-                    disabled={isStarting}
+                    onClick={() => goToAssessment(a.id)}
                   >
-                    {isStarting ? 'Loading…' : isInProgress ? 'Resume' : 'Start now'}
+                    {isInProgress ? 'Resume' : 'Start now'}
                   </Button>
                 </Card>
               );

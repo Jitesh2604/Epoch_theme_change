@@ -20,6 +20,7 @@
 import { PrismaClient, Role, QuestionType, Difficulty } from '@prisma/client';
 import { readFileSync, writeFileSync } from 'fs';
 import { join, dirname, isAbsolute, resolve } from 'path';
+import { DEFAULT_LANGUAGE } from '../src/lib/enums';
 
 const prisma = new PrismaClient();
 const BATCH_SIZE = 20;
@@ -332,7 +333,7 @@ function buildCreateData(q: RawQuestion, creatorId: string) {
     marks: toMarks(q.marks),
     negativeMarks: toNegMarks(q.negativeMarks),
     difficulty: toDifficulty(q.difficulty),
-    language: typeof q.language === 'string' && q.language.trim() ? q.language : 'English',
+    language: typeof q.language === 'string' && q.language.trim() ? q.language : DEFAULT_LANGUAGE,
     tags: JSON.stringify(Array.isArray(q.tags) ? q.tags : []),
 
     createdById: creatorId,

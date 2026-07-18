@@ -19,7 +19,6 @@ import {
   AttemptStatus as PAttemptStatus,
   OtpType as POtpType,
   UploadStatus as PUploadStatus,
-  BadgeType as PBadgeType,
 } from '@prisma/client';
 
 export const Role = PRole;
@@ -50,5 +49,12 @@ export const OtpType = POtpType;
 export type OtpType = POtpType;
 export const UploadStatus = PUploadStatus;
 export type UploadStatus = PUploadStatus;
-export const BadgeType = PBadgeType;
-export type BadgeType = PBadgeType;
+
+/**
+ * Canonical `language` value for Question/Assessment/Quiz rows. The column
+ * is free-text (not a DB enum) so a future release can add real languages
+ * without a migration, but every code path that writes it must use this
+ * constant rather than a literal — a manual-create path once used 'ENGLISH'
+ * while sync/seed used 'English', producing inconsistent stored values.
+ */
+export const DEFAULT_LANGUAGE = 'English';

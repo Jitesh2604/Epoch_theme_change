@@ -1,42 +1,33 @@
 import { useState, useRef, DragEvent } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileSpreadsheet, CheckCircle2, XCircle, Download, FileCheck2, AlertTriangle, ArrowRight } from 'lucide-react';
+import { Upload, FileSpreadsheet, CheckCircle2, XCircle, Download, FileCheck2, AlertTriangle, ArrowRight, History } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, useToasts } from './ui';
 import { getAccessToken } from '../../lib/api';
 import { refreshSession } from '../../lib/authStore';
 
 type Phase = 'idle' | 'previewing' | 'uploading' | 'done' | 'error';
 
-interface SampleRow {
-  type: 'MCQ' | 'TrueFalse' | 'Descriptive';
-  question: string;
-  optionA?: string;
-  optionB?: string;
-  optionC?: string;
-  optionD?: string;
-  correct: string;
-  marks: number;
-  subject: string;
-  difficulty: 'Easy' | 'Medium' | 'Hard';
+interface ImportSummary {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  createdQuestions: number;
+  attachedToAssessment: number;
+  errors: { row: number; field?: string; message: string }[];
 }
-
-const SAMPLE_PREVIEW: SampleRow[] = [
-  { type: 'MCQ', question: 'What is 7 × 8?', optionA: '54', optionB: '56', optionC: '64', optionD: '48', correct: 'B', marks: 1, subject: 'Mathematics', difficulty: 'Easy' },
-  { type: 'MCQ', question: 'Which planet is known as the Red Planet?', optionA: 'Venus', optionB: 'Jupiter', optionC: 'Mars', optionD: 'Saturn', correct: 'C', marks: 1, subject: 'Science', difficulty: 'Easy' },
-  { type: 'TrueFalse', question: 'Light travels faster than sound.', correct: 'True', marks: 1, subject: 'Physics', difficulty: 'Easy' },
-  { type: 'Descriptive', question: 'Explain the water cycle in your own words.', correct: '—', marks: 5, subject: 'Biology', difficulty: 'Medium' },
-  { type: 'MCQ', question: 'Capital of France?', optionA: 'Berlin', optionB: 'Paris', optionC: 'Madrid', optionD: 'Rome', correct: 'B', marks: 1, subject: 'Geography', difficulty: 'Easy' },
-];
 
 export function UploadQuestionsPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const roleLabel = location.pathname.startsWith('/teacher') ? 'Teacher' : 'Admin';
+  const historyPath = location.pathname.startsWith('/teacher') ? '/teacher/upload-questions/history' : '/admin/upload-questions/history';
   const [phase, setPhase] = useState<Phase>('idle');
   const [fileName, setFileName] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [progress, setProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [summary, setSummary] = useState<ImportSummary | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { push, node } = useToasts();
 
@@ -147,7 +138,12 @@ export function UploadQuestionsPage() {
         eyebrow={`${roleLabel} · Bulk Import`}
         title="Upload Questions"
         subtitle="Drag and drop an Excel sheet to add many questions at once. We'll preview them before anything is saved."
-        actions={<Button variant="outline" icon={Download} onClick={downloadTemplate}>Download template</Button>}
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" icon={History} onClick={() => navigate(historyPath)}>Upload history</Button>
+            <Button variant="outline" icon={Download} onClick={downloadTemplate}>Download template</Button>
+          </div>
+        }
       />
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-6">
@@ -298,10 +294,14 @@ export function UploadQuestionsPage() {
                     { col: 'correctOption', req: false, ex: 'B  (MCQ: letter A–D or 1–4)' },
                     { col: 'correctBoolean',req: false, ex: 'TRUE / FALSE  (TRUE_FALSE only)' },
                     { col: 'modelAnswer',   req: false, ex: 'Sample answer (DESCRIPTIVE only)' },
+                    { col: 'explanation',   req: false, ex: 'Shown after grading (any type)' },
                     { col: 'marks',         req: false, ex: '1  (default 1, max 100)' },
                     { col: 'difficulty',    req: false, ex: 'EASY / MEDIUM / HARD' },
                     { col: 'tags',          req: false, ex: 'algebra, arithmetic' },
                     { col: 'subject',       req: false, ex: 'Mathematics (must exist in system)' },
+                    { col: 'promptImageUrl',      req: false, ex: 'URL to an already-hosted image' },
+                    { col: 'option1ImageUrl…4',   req: false, ex: 'URL per MCQ option' },
+                    { col: 'explanationImageUrl', req: false, ex: 'URL to an already-hosted image' },
                   ].map(r => (
                     <tr key={r.col}>
                       <td className="px-3 py-2 font-mono text-fg1">{r.col}</td>

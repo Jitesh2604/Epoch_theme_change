@@ -2,10 +2,11 @@ import { useEffect, useState, Component, type ReactNode, type ErrorInfo } from '
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { RoleSelectionPage } from './RoleSelectionPage';
 import { AdminDashboard } from './admin/AdminDashboard';
-import { TeacherDashboard } from './teacher/TeacherDashboard';
+// Teacher module is temporarily hidden — see DashboardApp route below.
+// import { TeacherDashboard } from './teacher/TeacherDashboard';
 import { StudentDashboard } from './student/StudentDashboard';
 import { RequireRole } from './shared/RequireRole';
-import { getRole, pathForRole } from './shared/auth';
+import { getRole, pathForRole, signOut } from './shared/auth';
 import { refreshSession, getRefreshToken } from '../lib/authStore';
 
 class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -32,6 +33,12 @@ class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error:
 
 function RootFallback() {
   const role = getRole();
+  // Teacher module is hidden and has no route; clear any stale locally-stored
+  // 'teacher' role (e.g. from before this change) instead of redirect-looping.
+  if (role === 'teacher') {
+    signOut();
+    return <Navigate to="/select-role" replace />;
+  }
   return <Navigate to={role ? pathForRole(role) : '/select-role'} replace />;
 }
 
@@ -64,7 +71,9 @@ export function DashboardApp() {
       <Routes>
         <Route path="/select-role" element={<RoleSelectionPage />} />
         <Route path="/admin/*"   element={<RequireRole role="admin"><AdminDashboard /></RequireRole>} />
-        <Route path="/teacher/*" element={<RequireRole role="teacher"><TeacherDashboard /></RequireRole>} />
+        {/* Teacher module is temporarily hidden — re-add this route (and the
+            TeacherDashboard import above) to bring it back. */}
+        {/* <Route path="/teacher/*" element={<RequireRole role="teacher"><TeacherDashboard /></RequireRole>} /> */}
         <Route path="/student/*" element={<RequireRole role="student"><StudentDashboard /></RequireRole>} />
         <Route path="*" element={<RootFallback />} />
       </Routes>

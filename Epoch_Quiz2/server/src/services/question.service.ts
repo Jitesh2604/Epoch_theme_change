@@ -1,11 +1,12 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { QuestionType, Role } from '../lib/enums';
+import { QuestionType, Role, DEFAULT_LANGUAGE } from '../lib/enums';
 import { ApiError } from '../utils/ApiError';
 import { isAdminRole } from '../utils/roles';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
 import { parseStrArr, toJson } from '../utils/json';
 import { ContentService, ContentMeta } from './content.service';
+import { SettingsService } from './settings.service';
 import type { Actor } from './assessment.service';
 import type {
   CreateQuestionInput,
@@ -60,7 +61,15 @@ function toPublic(row: QuestionWithRel, subjectNames?: Map<string, string>) {
     id:             row.id,
     type:           row.type,
     prompt:         row.prompt,
+    promptImageUrl: row.promptImageUrl,
     options:        opts.length > 0 ? opts : null,
+    // Per-letter, matching `options`' A/B/C/D order — not filtered/compacted
+    // like `opts` above, so a caller can always address "option B's image"
+    // by letter regardless of which option text fields are empty.
+    optionImageUrls: {
+      A: row.optionAImageUrl, B: row.optionBImageUrl,
+      C: row.optionCImageUrl, D: row.optionDImageUrl,
+    },
     correctOption:  correctIdx >= 0 ? correctIdx : null,
     correctOptions: correctIndices,
     correctBoolean: row.correctBoolean,
@@ -68,6 +77,7 @@ function toPublic(row: QuestionWithRel, subjectNames?: Map<string, string>) {
     modelAnswer:    row.modelAnswer,
     matchPairs,
     explanation:    row.explanation,
+    explanationImageUrl: row.explanationImageUrl,
     marks:          row.marks,
     negativeMarks:  row.negativeMarks,
     difficulty:     row.difficulty,
@@ -154,10 +164,13 @@ export const QuestionService = {
     if (input.subjectExternalId) await ensureSubjectExists(input.subjectExternalId);
     await validateAcademicFks(input);
 
+    const marks = input.marks ?? (Number(await SettingsService.get('assessment.defaultMarks')) || 1);
+
     const data: Prisma.QuestionUncheckedCreateInput = {
       type:              input.type,
       prompt:            input.prompt,
-      marks:             input.marks,
+      promptImageUrl:    input.promptImageUrl ?? null,
+      marks,
       difficulty:        input.difficulty,
       subjectExternalId: input.subjectExternalId ?? null,
       classExternalId:   input.classExternalId   ?? null,
@@ -168,15 +181,25 @@ export const QuestionService = {
       correctOptions: '[]',
       tags:           toJson(input.tags ?? []),
       status:         'ACTIVE',
-      language:       'ENGLISH',
+      language:       DEFAULT_LANGUAGE,
       negativeMarks:  0,
+      explanation:         input.explanation ?? null,
+      explanationImageUrl: input.explanationImageUrl ?? null,
     };
 
     if (input.type === QuestionType.MCQ_SINGLE) {
       Object.assign(data, buildOptionFields(input.options), { correctAnswer: IDX_TO_LETTER[input.correctOption] ?? null });
+      data.optionAImageUrl = input.optionAImageUrl ?? null;
+      data.optionBImageUrl = input.optionBImageUrl ?? null;
+      data.optionCImageUrl = input.optionCImageUrl ?? null;
+      data.optionDImageUrl = input.optionDImageUrl ?? null;
     } else if (input.type === QuestionType.MCQ_MULTIPLE) {
       Object.assign(data, buildOptionFields(input.options));
       data.correctOptions = toJson(input.correctOptions.map((i: number) => IDX_TO_LETTER[i]).filter(Boolean));
+      data.optionAImageUrl = input.optionAImageUrl ?? null;
+      data.optionBImageUrl = input.optionBImageUrl ?? null;
+      data.optionCImageUrl = input.optionCImageUrl ?? null;
+      data.optionDImageUrl = input.optionDImageUrl ?? null;
     } else if (input.type === QuestionType.TRUE_FALSE) {
       data.correctBoolean = input.correctBoolean;
       data.correctAnswer  = input.correctBoolean ? 'TRUE' : 'FALSE';
@@ -249,9 +272,18 @@ export const QuestionService = {
     if (input.chapterExternalId !== undefined) data.chapterExternalId = input.chapterExternalId;
     if (input.bookExternalId    !== undefined) data.bookExternalId = input.bookExternalId;
     if (input.educationBoard    !== undefined) data.educationBoard = input.educationBoard;
+    if (input.promptImageUrl      !== undefined) data.promptImageUrl = input.promptImageUrl;
+    if (input.explanation         !== undefined) data.explanation = input.explanation;
+    if (input.explanationImageUrl !== undefined) data.explanationImageUrl = input.explanationImageUrl;
 
     if ((existing.type === QuestionType.MCQ_SINGLE || existing.type === QuestionType.MCQ_MULTIPLE) && input.options !== undefined) {
       Object.assign(data, buildOptionFields(input.options));
+    }
+    if (existing.type === QuestionType.MCQ_SINGLE || existing.type === QuestionType.MCQ_MULTIPLE) {
+      if (input.optionAImageUrl !== undefined) data.optionAImageUrl = input.optionAImageUrl;
+      if (input.optionBImageUrl !== undefined) data.optionBImageUrl = input.optionBImageUrl;
+      if (input.optionCImageUrl !== undefined) data.optionCImageUrl = input.optionCImageUrl;
+      if (input.optionDImageUrl !== undefined) data.optionDImageUrl = input.optionDImageUrl;
     }
     if (existing.type === QuestionType.MCQ_SINGLE && input.correctOption !== undefined) {
       data.correctAnswer = IDX_TO_LETTER[input.correctOption] ?? null;
@@ -323,6 +355,7 @@ export const QuestionService = {
       assessmentQuestionId: r.id,
       marksOverride:        r.marksOverride,
       effectiveMarks:       r.marksOverride ?? r.question.marks,
+      negMarksOverride:     r.negMarksOverride,
       question:             toPublic(r.question, subjectNames),
     }));
   },
@@ -333,8 +366,12 @@ export const QuestionService = {
 
     const items =
       'questionIds' in input
-        ? input.questionIds.map((qid: string) => ({ questionId: qid, marksOverride: null as number | null }))
-        : [{ questionId: input.questionId, marksOverride: (input as { marks?: number }).marks ?? null }];
+        ? input.questionIds.map((qid: string) => ({ questionId: qid, marksOverride: null as number | null, negMarksOverride: null as number | null }))
+        : [{
+            questionId: input.questionId,
+            marksOverride: (input as { marks?: number }).marks ?? null,
+            negMarksOverride: (input as { negMarks?: number }).negMarks ?? null,
+          }];
 
     const qIds = items.map((i) => i.questionId);
     const existing = await prisma.question.findMany({ where: { id: { in: qIds } }, select: { id: true } });
@@ -355,7 +392,7 @@ export const QuestionService = {
 
       for (const it of toAttach) {
         await txc.assessmentQuestion.create({
-          data: { assessmentId, questionId: it.questionId, order: nextOrder++, marksOverride: it.marksOverride },
+          data: { assessmentId, questionId: it.questionId, order: nextOrder++, marksOverride: it.marksOverride, negMarksOverride: it.negMarksOverride },
         });
         attached++;
       }
@@ -398,6 +435,7 @@ export const QuestionService = {
     await prisma.$transaction(async (txc) => {
       const data: Prisma.AssessmentQuestionUncheckedUpdateInput = {
         ...(input.marks !== undefined && { marksOverride: input.marks }),
+        ...(input.negMarks !== undefined && { negMarksOverride: input.negMarks }),
         ...(input.order !== undefined && { order: input.order }),
       };
       if (Object.keys(data).length) await txc.assessmentQuestion.update({ where: { id: row.id }, data });

@@ -10,10 +10,12 @@ import {
 import { useSubmissions } from '../../../hooks/useSubmissions';
 import { useDashboardStats } from '../../../hooks/useDashboard';
 import { useAssessments } from '../../../hooks/useAssessments';
-import { useTeachers, useStudents } from '../../../hooks/useUsers';
+import { useStudents } from '../../../hooks/useUsers';
 import { exportCsv } from '../../../lib/csv';
 
-type Tab = 'overview' | 'assessments' | 'students' | 'teachers';
+// Teacher module is temporarily hidden — restore the 'teachers' tab, the
+// useTeachers import above, and every block marked below to bring it back.
+type Tab = 'overview' | 'assessments' | 'students';
 type Range = '7d' | '30d' | '90d' | 'all';
 
 function cutoffDate(range: Range): Date | null {
@@ -29,10 +31,9 @@ export function ReportsPage() {
   const { data: stats, loading: statsLoading } = useDashboardStats();
   const { data: submissions, loading: subsLoading } = useSubmissions({ limit: 200 });
   const { data: assessments, loading: assLoading } = useAssessments({ limit: 100 });
-  const { data: teachers, loading: teachLoading } = useTeachers({ limit: 100 });
   const { data: students, loading: studLoading } = useStudents({ limit: 100 });
 
-  const loading = statsLoading || subsLoading || assLoading || teachLoading || studLoading;
+  const loading = statsLoading || subsLoading || assLoading || studLoading;
 
   const cutoff = cutoffDate(range);
 
@@ -65,7 +66,6 @@ export function ReportsPage() {
     { key: 'overview', label: 'Overview' },
     { key: 'assessments', label: 'Assessments' },
     { key: 'students', label: 'Students' },
-    { key: 'teachers', label: 'Teachers' },
   ];
 
   const handleExport = () => {
@@ -77,9 +77,6 @@ export function ReportsPage() {
     } else if (tab === 'students') {
       const rows = (students?.items ?? []).map(s => [s.name, s.email, s.status, String(s.attempted), String(s.avgScore), s.schoolName ?? '']);
       exportCsv('students-report.csv', rows, ['Name', 'Email', 'Status', 'Attempted', 'Avg Score (%)', 'School']);
-    } else if (tab === 'teachers') {
-      const rows = (teachers?.items ?? []).map(t => [t.name, t.email, t.status, String(t.assessments), String(t.students), t.schoolName ?? '']);
-      exportCsv('teachers-report.csv', rows, ['Name', 'Email', 'Status', 'Assessments', 'Students', 'School']);
     }
   };
 
@@ -88,7 +85,7 @@ export function ReportsPage() {
       <PageHeader
         eyebrow="Analytics"
         title="Reports & Analytics"
-        subtitle="Platform-wide performance metrics across all assessments, students, and teachers."
+        subtitle="Platform-wide performance metrics across all assessments and students."
         actions={
           <div className="flex gap-2">
             <Select
@@ -173,7 +170,6 @@ export function ReportsPage() {
               ) : (
                 <div className="space-y-3">
                   {[
-                    { label: 'Total Teachers',   value: stats?.counts.teachers    ?? 0, icon: Users,       color: 'text-cyan-300'    },
                     { label: 'Total Students',   value: stats?.counts.students    ?? 0, icon: Users,       color: 'text-violet-300'  },
                     { label: 'Total Assessments',value: stats?.counts.assessments ?? 0, icon: FileText,    color: 'text-amber-300'   },
                     { label: 'Total Submissions',value: stats?.counts.submissions ?? 0, icon: BarChart3,   color: 'text-brand'       },
@@ -231,7 +227,7 @@ export function ReportsPage() {
                 { key: 'status',    label: 'Status',   render: a => <Badge tone={a.status === 'PUBLISHED' ? 'success' : a.status === 'DRAFT' ? 'warning' : 'neutral'}>{a.status.toLowerCase()}</Badge> },
                 { key: 'questions', label: 'Questions', render: a => <span className="font-mono">{a.questionCount}</span> },
                 { key: 'attempts',  label: 'Attempts',  render: a => <span className="font-mono">{a.attempts}</span> },
-                { key: 'createdBy', label: 'Teacher',   render: a => <span className="text-fg2">{a.createdBy.name}</span> },
+                { key: 'createdBy', label: 'Created By', render: a => <span className="text-fg2">{a.createdBy.name}</span> },
                 { key: 'createdAt', label: 'Created',   render: a => <span className="text-[11px] text-fg3">{new Date(a.createdAt).toLocaleDateString()}</span> },
               ]}
               rows={assessments?.items ?? []}
@@ -277,7 +273,9 @@ export function ReportsPage() {
         </Card>
       )}
 
-      {/* ── Teachers Tab ─────────────────────────────────────────── */}
+      {/* Teacher module is temporarily hidden — restore the 'teachers' Tab
+          union member, the useTeachers hook call, and the block below to
+          bring this tab back.
       {tab === 'teachers' && (
         <Card className="overflow-hidden">
           <div className="px-5 py-4 border-b border-line flex items-center justify-between">
@@ -297,7 +295,6 @@ export function ReportsPage() {
                 )},
                 { key: 'school',      label: 'School',      render: t => <span className="text-fg2">{t.schoolName ?? '—'}</span> },
                 { key: 'assessments', label: 'Assessments',  render: t => <span className="font-mono">{t.assessments}</span> },
-                { key: 'students',    label: 'Students',     render: t => <span className="font-mono">{t.students}</span> },
                 { key: 'status',      label: 'Status',       render: t => <Badge tone={t.status === 'ACTIVE' ? 'success' : t.status === 'PENDING' ? 'warning' : 'neutral'}>{t.status.toLowerCase()}</Badge> },
                 { key: 'joined',      label: 'Joined',       render: t => <span className="text-[11px] text-fg3">{new Date(t.joinedAt).toLocaleDateString()}</span> },
               ]}
@@ -307,6 +304,7 @@ export function ReportsPage() {
           )}
         </Card>
       )}
+      */}
     </>
   );
 }
