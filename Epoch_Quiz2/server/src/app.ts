@@ -4,6 +4,7 @@
  */
 
 import { Application }  from './core/application';
+import { Router }       from './core/router';
 import { cors }         from './core/middleware/cors';
 import { security }     from './core/middleware/security';
 import { compression }  from './core/middleware/compression';
@@ -14,7 +15,16 @@ import { env, isProd }      from './config';
 import { requestLogger }    from './middlewares/requestLogger';
 import { errorHandler }     from './middlewares/errorHandler';
 import { notFound }         from './middlewares/notFound';
+import { ApiResponse }      from './utils/ApiResponse';
 import routes               from './routes';
+
+// Answers bare `GET /` — platform health-check probes commonly hit the
+// root instead of `${API_PREFIX}/health`, which otherwise 404s and spams
+// the logs with "Route GET / not found" on every probe interval.
+const rootRouter = new Router();
+rootRouter.get('/', (_req, res) => {
+  ApiResponse.ok(res, { service: 'epoch-quiz-api', status: 'ok' });
+});
 
 const ALLOWED_ORIGINS = new Set(
   env.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean)
@@ -61,6 +71,9 @@ export function createApp(): Application {
       },
     }),
   );
+
+  // ── Root health check ────────────────────────────────────────
+  app.use(rootRouter);
 
   // ── API routes ───────────────────────────────────────────────
   app.use(env.API_PREFIX, routes);

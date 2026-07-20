@@ -4,7 +4,7 @@
  * Catalog data (subjects, classes, boards, series, books, chapters) is NOT
  * seeded here: the Content API is the single source of truth for it and the
  * backend never persists it. This seed covers only application-owned rows:
- *  - default categories (Olympiad modes surfaced by /categories)
+ *  - default Olympiad modes (surfaced alongside live subjects by /subjects)
  *  - one default ADMIN user (configurable via env)
  *
  * Run with:  npm run seed
@@ -14,26 +14,26 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-const DEFAULT_CATEGORIES: Array<{ name: string; slug: string }> = [
-  { name: 'Attempt Olympiad', slug: 'attempted-olympiad' },
-  { name: 'Practice Olympiad', slug: 'practice-olympiad' },
+const DEFAULT_OLYMPIAD_MODES: Array<{ name: string; slug: string; kind: string; serial: string }> = [
+  { name: 'Practice Olympiad',  slug: 'practice-olympiad',   kind: 'PRACTICE_OLYMPIAD',  serial: '0' },
+  { name: 'Attempted Olympiad', slug: 'attempted-olympiad',  kind: 'ATTEMPTED_OLYMPIAD', serial: '1' },
 ];
 
 const ADMIN_EMAIL    = process.env.SEED_ADMIN_EMAIL    ?? 'admin@epoch.local';
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? 'Admin@12345';
 const ADMIN_NAME     = process.env.SEED_ADMIN_NAME     ?? 'Publication Admin';
 
-async function seedCategories(): Promise<void> {
-  console.log('[seed] Upserting default categories…');
-  for (const category of DEFAULT_CATEGORIES) {
-    await prisma.category.upsert({
-      where: { slug: category.slug },
-      update: { name: category.name },
-      create: { name: category.name, slug: category.slug },
+async function seedOlympiadModes(): Promise<void> {
+  console.log('[seed] Upserting default Olympiad modes…');
+  for (const mode of DEFAULT_OLYMPIAD_MODES) {
+    await prisma.olympiadMode.upsert({
+      where: { slug: mode.slug },
+      update: { name: mode.name, kind: mode.kind, serial: mode.serial },
+      create: mode,
     });
   }
-  const count = await prisma.category.count();
-  console.log(`[seed] Categories in DB: ${count}`);
+  const count = await prisma.olympiadMode.count();
+  console.log(`[seed] Olympiad modes in DB: ${count}`);
 }
 
 async function seedAdmin(): Promise<void> {
@@ -57,7 +57,7 @@ async function seedAdmin(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  await seedCategories();
+  await seedOlympiadModes();
   await seedAdmin();
   console.log('[seed] Done.');
 }

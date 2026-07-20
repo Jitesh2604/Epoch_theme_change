@@ -77,10 +77,25 @@ function emitAuthChange() {
   for (const listener of listeners) listener();
 }
 
+// Legacy key the dashboard's route guard (RequireRole/getRole) reads. Every
+// path that establishes or refreshes a session — login, register, silent
+// token refresh, profile update — funnels through saveUser(), so this stays
+// in sync everywhere instead of relying on each call site to remember it
+// (a previous version only wrote it from login/register/updateProfile, so a
+// silent refreshSession() → getMe() call left it stale).
+function syncLegacyAuthKey(u: AuthUser | null) {
+  if (u) {
+    localStorage.setItem('epoch-auth', JSON.stringify({ name: u.name, email: u.email, role: toUIRole(u.role), signedInAt: Date.now() }));
+  } else {
+    localStorage.removeItem('epoch-auth');
+  }
+}
+
 function saveUser(u: AuthUser | null) {
   currentUser = u;
   if (u) localStorage.setItem(USER_KEY, JSON.stringify(u));
   else   localStorage.removeItem(USER_KEY);
+  syncLegacyAuthKey(u);
   emitAuthChange();
 }
 
@@ -122,8 +137,6 @@ export async function login(email: string, password: string): Promise<AuthUser> 
   setAccessToken(data.accessToken);
   setRefreshToken(data.refreshToken);
   saveUser(data.user);
-  // Keep legacy epoch-auth key for backwards-compat with dashboard route guards
-  localStorage.setItem('epoch-auth', JSON.stringify({ name: data.user.name, email: data.user.email, role: toUIRole(data.user.role), signedInAt: Date.now() }));
   return data.user;
 }
 
@@ -138,7 +151,6 @@ export async function register(
   setAccessToken(data.accessToken);
   setRefreshToken(data.refreshToken);
   saveUser(data.user);
-  localStorage.setItem('epoch-auth', JSON.stringify({ name: data.user.name, email: data.user.email, role: toUIRole(data.user.role), signedInAt: Date.now() }));
   return data.user;
 }
 
@@ -149,7 +161,6 @@ export async function logout(): Promise<void> {
   }
   clearTokens();
   saveUser(null);
-  localStorage.removeItem('epoch-auth');
 }
 
 // Deduplicates concurrent calls (e.g. React StrictMode double-invocation).
@@ -201,9 +212,5 @@ export async function resetPassword(token: string, newPassword: string): Promise
 export async function updateProfile(data: ProfileUpdateData): Promise<AuthUser> {
   const user = await api.patch<AuthUser>('/users/me', data);
   saveUser(user);
-  localStorage.setItem(
-    'epoch-auth',
-    JSON.stringify({ name: user.name, email: user.email, role: toUIRole(user.role), signedInAt: Date.now() }),
-  );
   return user;
 }

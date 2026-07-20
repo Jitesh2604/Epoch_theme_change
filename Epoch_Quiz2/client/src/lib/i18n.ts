@@ -10,7 +10,7 @@ export type Lang = 'EN' | 'HI';
 const T: Record<Lang, Record<string, string>> = {
   EN: {
     'nav.home': 'Home',
-    'nav.quizPlay': 'Play Olympaid',
+    'nav.quizPlay': 'Play Olympiad',
     'nav.instructions': 'Instructions',
     'nav.more': 'More',
     'nav.aboutUs': 'About us',
@@ -33,7 +33,7 @@ const T: Record<Lang, Record<string, string>> = {
     'home.topics': 'topics',
 
     'page.chooseCategory': 'Choose your category.',
-    'page.twoQuizModes': 'Two quiz modes — Practice Olympaid for self-paced learning, Attempt Olympaid for graded results. Pick a subject and a difficulty to begin.',
+    'page.twoQuizModes': 'Two quiz modes — Practice Olympiad for self-paced learning, Attempt Olympiad for graded results. Pick a subject and a difficulty to begin.',
 
     'level.perQuestion': '/ question',
 
@@ -48,7 +48,7 @@ const T: Record<Lang, Record<string, string>> = {
     'result.totalPlayers': 'Total players this week',
     'result.you': 'you',
 
-    'instr.title': 'How Olympaid Epoch Quiz works.',
+    'instr.title': 'How Olympiad Epoch Quiz works.',
     'instr.body': 'Four short sections — the format, the scoring, the timer rules, and how to get around the app. Should take you under two minutes to read.',
     'instr.howToPlay': 'How to play',
     'instr.step1.t': 'Choose how to play',
@@ -141,7 +141,7 @@ const T: Record<Lang, Record<string, string>> = {
     'result.totalPlayers': 'इस सप्ताह कुल खिलाड़ी',
     'result.you': 'आप',
 
-    'instr.title': 'Olympaid Epoch Quiz कैसे काम करता है।',
+    'instr.title': 'Olympiad Epoch Quiz कैसे काम करता है।',
     'instr.body': 'चार छोटे खंड — प्रारूप, स्कोरिंग, टाइमर नियम और ऐप नेविगेशन। पढ़ने में दो मिनट से कम लगेंगे।',
     'instr.howToPlay': 'कैसे खेलें',
     'instr.step1.t': 'खेलने का तरीका चुनें',

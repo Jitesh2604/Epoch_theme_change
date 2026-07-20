@@ -17,7 +17,7 @@ export const Footer: React.FC<FooterProps> = ({ navigate }) => {
             <img src="assets/logo-mark.svg" alt="" style={{ width: 28, height: 28 }} />
             <div>
               <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 16 }}>
-                Olympaid <em style={{ color: 'var(--brand)', fontStyle: 'italic' }}>Quiz</em>
+                Olympiad <em style={{ color: 'var(--brand)', fontStyle: 'italic' }}>Quiz</em>
               </div>
               <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>EPOCH · AI · CO-PILOT</div>
             </div>

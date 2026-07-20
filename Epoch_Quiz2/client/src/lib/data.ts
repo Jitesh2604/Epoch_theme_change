@@ -2,7 +2,7 @@ import type { HeroSlide } from '../types';
 
 export const HERO_SLIDES: HeroSlide[] = [
   {
-    eyebrow: 'New · Olympaid Quiz',
+    eyebrow: 'New · Olympiad Quiz',
     title: 'Turn idle minutes into <em>sharper minds</em>.',
     body: 'Practice and attempt quizzes drawn live from the question database. No time pressure — just learning.',
     cta: 'Start a quiz',

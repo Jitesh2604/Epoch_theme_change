@@ -11,6 +11,7 @@ import {
   type PracticeQuestion,
   type SaveAnswerFeedback,
 } from '../../../hooks/usePracticeQuiz';
+import { useBasePath } from '../../shared/basePath';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -113,6 +114,7 @@ export function PracticePlayPage() {
   const { attemptId } = useParams<{ attemptId: string }>();
   const location      = useLocation();
   const navigate      = useNavigate();
+  const base          = useBasePath();
   const { elapsed, formatted: timer } = useElapsedSec();
   const elapsedRef    = useRef(elapsed);
   const { push, node: toastNode } = useToasts();
@@ -143,7 +145,7 @@ export function PracticePlayPage() {
       // A submitted attempt comes back as a result payload (no questions) —
       // route to the result page instead of rendering the play screen.
       if (!data?.questions?.length) {
-        navigate(`/student/practice/result/${attemptId}`, { replace: true });
+        navigate(`${base}/practice/result/${attemptId}`, { replace: true });
         return;
       }
       setAttempt(data);
@@ -239,7 +241,7 @@ export function PracticePlayPage() {
     setFinishing(true);
     try {
       const result = await practiceApi.submit(attemptId, elapsed);
-      navigate(`/student/practice/result/${attemptId}`, { state: { result } });
+      navigate(`${base}/practice/result/${attemptId}`, { state: { result } });
     } catch (e: any) {
       setFinishing(false);
       push({ kind: 'danger', title: 'Could not finish quiz', sub: e?.message ?? 'Please check your connection and try again.' });
@@ -265,7 +267,7 @@ export function PracticePlayPage() {
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-4 px-6">
         <XCircle size={40} className="text-rose-400" />
         <h2 className="font-display text-xl font-semibold text-fg1">{loadErr}</h2>
-        <Button variant="outline" onClick={() => navigate('/student/practice')}>
+        <Button variant="outline" onClick={() => navigate(`${base}/practice`)}>
           Back to Practice
         </Button>
       </div>
@@ -516,7 +518,7 @@ export function PracticePlayPage() {
               <Button variant="ghost" className="flex-1" onClick={() => setExitAsk(false)}>
                 Keep playing
               </Button>
-              <Button variant="danger" className="flex-1" onClick={() => navigate('/student/practice')}>
+              <Button variant="danger" className="flex-1" onClick={() => navigate(`${base}/practice`)}>
                 Exit
               </Button>
             </div>

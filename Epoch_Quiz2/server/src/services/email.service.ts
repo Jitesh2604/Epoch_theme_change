@@ -67,7 +67,7 @@ function baseTemplate(title: string, body: string, platformName: string): string
 <body>
   <div class="wrap">
     <div class="header">
-      <div class="logo">Olympaid <em>Quiz</em></div>
+      <div class="logo">Olympiad <em>Quiz</em></div>
     </div>
     <div class="body">${body}</div>
     <div class="footer">

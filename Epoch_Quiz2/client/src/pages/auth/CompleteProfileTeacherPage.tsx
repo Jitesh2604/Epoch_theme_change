@@ -132,7 +132,7 @@ export const CompleteProfileTeacherPage: React.FC<Props> = ({ navigate }) => {
         <button className="auth-brand" onClick={() => navigate('home')}>
           <img src="assets/logo-mark.svg" alt="" className="auth-logo-img" />
           <div>
-            <div className="auth-brand-name">Olympaid <em>Quiz</em></div>
+            <div className="auth-brand-name">Olympiad <em>Quiz</em></div>
             <div className="auth-brand-sub">EPOCH · AI · CO-PILOT</div>
           </div>
         </button>

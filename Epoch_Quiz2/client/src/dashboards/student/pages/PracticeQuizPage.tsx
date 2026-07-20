@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BookOpen, Zap, ChevronRight, BarChart2, Target, Clock,
-  Filter, Search, PlayCircle,
+  Filter, Search, PlayCircle, AlertTriangle,
 } from 'lucide-react';
 import {
   PageHeader, Card, Button, Badge, Modal, Skeleton, EmptyState,
 } from '../../shared/ui';
 import { usePracticeSubjects, practiceApi, type PracticeSubject } from '../../../hooks/usePracticeQuiz';
 import { useToasts } from '../../shared/ui';
+import { useBasePath } from '../../shared/basePath';
 
 const DIFFICULTY_OPTS = [
   { value: '',       label: 'All Difficulties' },
@@ -87,10 +88,11 @@ function SubjectCard({
 
 export function PracticeQuizPage() {
   const navigate = useNavigate();
+  const base = useBasePath();
   const [searchParams, setSearchParams] = useSearchParams();
   const { push, node: toastNode } = useToasts();
 
-  const { data: subjects, loading } = usePracticeSubjects();
+  const { data: subjects, loading, error: subjectsError, refetch: refetchSubjects } = usePracticeSubjects();
 
   const [search,     setSearch]     = useState('');
   const [filterDiff, setFilterDiff] = useState('');
@@ -113,7 +115,14 @@ export function PracticeQuizPage() {
     const subjectId = searchParams.get('subject');
     if (!subjectId || !subjects) return;
     const match = subjects.find(s => s.id === subjectId);
-    if (match) openModal(match);
+    if (match) {
+      openModal(match);
+    } else {
+      // The catalog (Content API) lists subjects that haven't had any
+      // questions synced into the local question bank yet — nothing to do
+      // but tell the student instead of silently landing on the grid.
+      push({ kind: 'danger', title: 'No practice questions yet', sub: 'This subject doesn’t have practice questions available yet — check back soon.' });
+    }
     setSearchParams(prev => { prev.delete('subject'); return prev; }, { replace: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subjects]);
@@ -152,7 +161,7 @@ export function PracticeQuizPage() {
         difficulty:    difficulty || undefined,
         questionCount: requestedCount,
       });
-      navigate(`/student/practice/play/${attempt.attemptId}`, { state: { attempt } });
+      navigate(`${base}/practice/play/${attempt.attemptId}`, { state: { attempt } });
     } catch (err: any) {
       push({ kind: 'danger', title: 'Could not start quiz', sub: err?.message ?? 'Please try again' });
       setStarting(false);
@@ -238,6 +247,15 @@ export function PracticeQuizPage() {
             </Card>
           ))}
         </div>
+      ) : subjectsError ? (
+        <Card className="p-0 overflow-hidden">
+          <EmptyState
+            icon={AlertTriangle}
+            title="Couldn't load subjects"
+            desc={subjectsError}
+            action={<Button variant="outline" onClick={refetchSubjects}>Retry</Button>}
+          />
+        </Card>
       ) : filtered.length ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.map(s => (

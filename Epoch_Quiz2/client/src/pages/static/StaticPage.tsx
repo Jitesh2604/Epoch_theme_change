@@ -34,7 +34,7 @@ export const StaticPage: React.FC<StaticPageProps> = ({ navigate, kind }) => {
       title: 'A quiz workspace built by educational publishers.',
       body: 'We make the tools we wish we had when we were authoring textbooks and worksheets at scale.',
       sections: [
-        { h: 'What we make',    p: 'Olympaid Epoch Quiz is part of the Epoch GPT AI workspace — the same backbone that powers chat-with-book, lesson-plan generation, answer-key creation, and full test-paper authoring. Quiz is the consumer-facing mode of that engine.' },
+        { h: 'What we make',    p: 'Olympiad Epoch Quiz is part of the Epoch GPT AI workspace — the same backbone that powers chat-with-book, lesson-plan generation, answer-key creation, and full test-paper authoring. Quiz is the consumer-facing mode of that engine.' },
         { h: 'Who we are',      p: "A small team of editors, learning designers, and engineers based across Bangalore, London, and New York. We've shipped curriculum-aligned tools at NCERT, Cambridge, and three large state boards." },
         { h: 'Why we built this', p: "Because every quiz app we'd used either felt like a consumer game or a corporate LMS. We wanted one that respects the audience: students, teachers, and editorial teams who treat learning seriously." },
       ],
@@ -51,7 +51,7 @@ export const StaticPage: React.FC<StaticPageProps> = ({ navigate, kind }) => {
       body: 'The short version: we collect the minimum we need to give you a quiz experience, never sell it, and let you delete it any time.',
       sections: [
         { h: 'What we collect',        p: "Account info (name, email), quiz history (scores and answers), and basic analytics (device type, anonymised usage). That's it." },
-        { h: 'What we do not collect', p: 'We do not track you across the web, build advertising profiles, or share data with third-party advertisers. There is no third-party advertising network on Olympaid Epoch Quiz.' },
+        { h: 'What we do not collect', p: 'We do not track you across the web, build advertising profiles, or share data with third-party advertisers. There is no third-party advertising network on Olympiad Epoch Quiz.' },
         { h: 'Your rights',            p: 'You can request a copy of your data or ask us to delete your account by contacting us — see the Contact page. We process these requests within 30 days.' },
         { h: 'Cookies',                p: 'We use a minimal set of first-party cookies for authentication and remembering your preferences. No third-party tracking cookies.' },
       ],
@@ -62,7 +62,7 @@ export const StaticPage: React.FC<StaticPageProps> = ({ navigate, kind }) => {
       body: 'Standard terms — readable, enforceable, no surprises.',
       sections: [
         { h: 'Your account',     p: "One account per person. You're responsible for what happens on it. Tell us within 24 hours if you suspect it's compromised." },
-        { h: 'Acceptable use',   p: "Use Olympaid Epoch Quiz for learning, teaching, or evaluation. Don't scrape it, reverse-engineer it, or use it to harass others." },
+        { h: 'Acceptable use',   p: "Use Olympiad Epoch Quiz for learning, teaching, or evaluation. Don't scrape it, reverse-engineer it, or use it to harass others." },
         { h: 'Content ownership', p: 'You own the content you create. We own the platform and the curated question banks. Licensed content is marked as such.' },
         { h: 'Termination',      p: 'Either party can end the agreement with 30 days notice. We can suspend an account immediately for violations of acceptable use.' },
         { h: 'Liability',        p: 'Standard SaaS liability caps — see the full version on request from legal@epoch.ai.' },

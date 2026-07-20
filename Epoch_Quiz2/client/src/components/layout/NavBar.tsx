@@ -92,7 +92,7 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
           <a href="#/home" className="brand-link" onClick={(e) => { e.preventDefault(); navigate('home'); }}>
             <img src="assets/logo-mark.svg" alt="" className="brand-mark" />
             <div>
-              <div className="brand-name">Olympaid <em>Quiz</em></div>
+              <div className="brand-name">Olympiad <em>Quiz</em></div>
               <div className="brand-sub">EPOCH · AI · CO-PILOT</div>
             </div>
           </a>
@@ -145,7 +145,7 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
           <div className="nav-drawer-backdrop" onClick={() => setMobileOpen(false)} />
           <aside className="nav-drawer" role="dialog" aria-modal="true" aria-label="Menu">
             <div className="nav-drawer-head">
-              <span className="brand-name" style={{ fontSize: 15 }}>Olympaid <em>Quiz</em></span>
+              <span className="brand-name" style={{ fontSize: 15 }}>Olympiad <em>Quiz</em></span>
               <button className="nav-iconbtn" onClick={() => setMobileOpen(false)} title="Close menu">
                 <Icon name="x" size={18} />
               </button>

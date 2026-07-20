@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "seed": "tsx prisma/seed.ts",
+    
     "seed:questions": "tsx prisma/seed-questions.ts",
     "seed:e2e": "tsx prisma/seed-e2e.ts",
     "sync:questions": "tsx src/scripts/syncQuestions.ts"

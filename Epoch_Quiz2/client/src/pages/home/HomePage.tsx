@@ -4,7 +4,6 @@ import { Icon } from '../../components/ui/Icon';
 import { Footer } from '../../components/layout/Footer';
 import { HERO_SLIDES } from '../../lib/data';
 import { useT } from '../../lib/i18n';
-import { useCategories } from '../../hooks/useCategories';
 
 interface HomePageProps {
   navigate: NavigateFn;
@@ -14,7 +13,6 @@ interface HomePageProps {
 export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
   const [slide, setSlide] = useState(0);
   const t = useT();
-  const { data: categories, loading, error } = useCategories();
 
   useEffect(() => {
     const timer = setInterval(() => setSlide(s => (s + 1) % HERO_SLIDES.length), 6000);
@@ -67,31 +65,18 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
           </div>
 
           <div className="cat-grid" data-card-style={tweaks.catCardStyle}>
-            {loading && <div className="text-fg3 text-[13px]">Loading categories…</div>}
-            {error && <div className="text-danger text-[13px]">Unable to load categories.</div>}
-            {!loading && !error && categories?.map((category) => (
-              <button
-                key={category.id}
-                className="cat-card"
-                onClick={() => {
-                  if (category.slug === 'practice-olympiad') {
-                    // The real mixed-subject Olympiad flow — matches this
-                    // card's own description below.
-                    navigate('olympiad');
-                  } else if (category.slug === 'attempted-olympiad') {
-                    // Assessments live in the Student Dashboard (a separate SPA
-                    // mounted at /student/*), so this is a real navigation, not
-                    // the marketing site's internal hash-route navigate().
-                    window.location.href = '/student/assessments';
-                  }
-                }}
-              >
-                <div className="cat-ico"><Icon name={category.slug === 'practice-olympiad' ? 'trophy' : 'fileText'} size={20} /></div>
-                <h3>{category.name}</h3>
-                <p>{category.slug === 'practice-olympiad' ? 'Start a mixed Olympiad quiz across your selected subjects.' : 'Attempt assessments assigned to your class.'}</p>
-                <span className="cat-arrow"><Icon name="arrowUpRight" size={18} /></span>
-              </button>
-            ))}
+            <button className="cat-card" onClick={() => { window.location.href = '/student/practice'; }}>
+              <div className="cat-ico"><Icon name="trophy" size={20} /></div>
+              <h3>Practice Olympiad</h3>
+              <p>Pick a subject, pick a difficulty, and start practicing — no teacher required.</p>
+              <span className="cat-arrow"><Icon name="arrowUpRight" size={18} /></span>
+            </button>
+            <button className="cat-card" onClick={() => { window.location.href = '/student/assessments'; }}>
+              <div className="cat-ico"><Icon name="fileText" size={20} /></div>
+              <h3>Attempt Olympiad</h3>
+              <p>Attempt assessments assigned to your class.</p>
+              <span className="cat-arrow"><Icon name="arrowUpRight" size={18} /></span>
+            </button>
           </div>
         </div>
       </section>
@@ -102,7 +87,7 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
           <div className="section-head">
             <div className="eyebrow"><span className="dot"></span>{t('home.whyChooseUs')}</div>
             <h2>Built on the same workspace publishers already trust.</h2>
-            <p>Olympaid Epoch Quiz inherits the question-bank infrastructure our editorial team already uses — reviewed content, taxonomy tags, and curriculum-board tagging built in.</p>
+            <p>Olympiad Epoch Quiz inherits the question-bank infrastructure our editorial team already uses — reviewed content, taxonomy tags, and curriculum-board tagging built in.</p>
           </div>
           <div className="grid-3">
             {[
@@ -157,7 +142,7 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
               <div className="checks">
                 {[
                   { t: 'Three difficulty levels',      d: 'Tune to your morning brain or your sharpest hour — easy, medium, hard.' },
-                  { t: 'Two quiz modes',                  d: 'Practice Olympaid for self-paced learning, Attempt Olympaid for graded results.' },
+                  { t: 'Two quiz modes',                  d: 'Practice Olympiad for self-paced learning, Attempt Olympiad for graded results.' },
                   { t: 'Timer modes that respect you', d: 'Linear bar, digital clock, or radial ring. Or turn it off entirely for practice runs.' },
                   { t: 'Built-in dark & light themes', d: 'OLED-tuned dark mode for late nights. Warm off-white for daylight.' },
                 ].map((c, i) => (
