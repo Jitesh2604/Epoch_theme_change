@@ -108,7 +108,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ navigate }) => {
           <img src="assets/logo-mark.svg" alt="" className="auth-logo-img" />
           <div>
             <div className="auth-brand-name">Olympiad <em>Quiz</em></div>
-            <div className="auth-brand-sub">EPOCH · AI · CO-PILOT</div>
+            <div className="auth-brand-sub">STUDENT PRACTICE PLATFORM</div>
           </div>
         </button>
 

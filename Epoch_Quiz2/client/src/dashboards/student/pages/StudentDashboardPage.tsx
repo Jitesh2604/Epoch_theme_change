@@ -93,7 +93,7 @@ export function StudentDashboardPage() {
               <p className="text-[12.5px] text-fg3 max-w-xs mb-4">
                 Your admin hasn't assigned any assessments. In the meantime, sharpen your skills with a practice quiz!
               </p>
-              <Button icon={Zap} onClick={() => navigate('/student/practice')}>
+              <Button icon={Zap} onClick={() => { window.location.href = '/#/play'; }}>
                 Start a Practice Quiz
               </Button>
             </div>
@@ -151,7 +151,7 @@ export function StudentDashboardPage() {
             {!sLoading && !submissions?.items?.length && (
               <div className="text-center py-8 text-fg3 text-[13px]">
                 No results yet.{' '}
-                <button onClick={() => navigate('/student/practice')} className="text-brand">
+                <button onClick={() => { window.location.href = '/#/play'; }} className="text-brand">
                   Try a practice quiz →
                 </button>
               </div>
@@ -172,7 +172,7 @@ export function StudentDashboardPage() {
               <p className="text-[12px] text-fg3 mt-0.5">Play independently — no teacher needed</p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" icon={ArrowRight} onClick={() => navigate('/student/practice')}>
+          <Button variant="ghost" size="sm" icon={ArrowRight} onClick={() => { window.location.href = '/#/play'; }}>
             Browse all
           </Button>
         </div>
@@ -186,7 +186,7 @@ export function StudentDashboardPage() {
             {practiceSubjects.map(s => (
               <button
                 key={s.id}
-                onClick={() => navigate('/student/practice')}
+                onClick={() => { window.location.href = '/#/play'; }}
                 className="p-4 rounded-xl border border-line bg-surface1/50 hover:border-brand/30 hover:bg-brand-soft/20 transition text-left group"
               >
                 <div className="w-8 h-8 rounded-lg bg-brand-soft text-brand grid place-items-center mb-2.5 group-hover:scale-105 transition">

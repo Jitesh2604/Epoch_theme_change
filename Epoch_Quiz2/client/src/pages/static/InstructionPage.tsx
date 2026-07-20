@@ -43,6 +43,7 @@ export const InstructionPage: React.FC<InstructionPageProps> = ({ navigate }) =>
             <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, marginBottom: 16 }}>{t('instr.timerRules')}</h3>
             <div className="instr-list">
               <div className="instr"><div className="i-num"><Icon name="clock" size={14} /></div><div><h4>{t('instr.timer1.t')}</h4><p>{t('instr.timer1.d')}</p></div></div>
+              <div className="instr"><div className="i-num"><Icon name="clock" size={14} /></div><div><h4>{t('instr.timerOlympiad.t')}</h4><p>{t('instr.timerOlympiad.d')}</p></div></div>
               <div className="instr"><div className="i-num"><Icon name="clock" size={14} /></div><div><h4>{t('instr.timer2.t')}</h4><p>{t('instr.timer2.d')}</p></div></div>
               <div className="instr"><div className="i-num"><Icon name="clock" size={14} /></div><div><h4>{t('instr.timer3.t')}</h4><p>{t('instr.timer3.d')}</p></div></div>
             </div>

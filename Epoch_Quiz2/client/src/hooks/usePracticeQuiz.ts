@@ -30,6 +30,9 @@ export interface PracticeAttemptData {
   subject:       { id: string; name: string; slug: string };
   difficulty:    string | null;
   questionCount: number;
+  /** Backend-assigned time budget for this attempt, in seconds. Null when the
+   *  attempt type has no time cap (e.g. Olympiad). */
+  timeLimitSec:  number | null;
   totalMarks:    number;
   startTime:     string;
   questions:     PracticeQuestion[];
@@ -43,6 +46,18 @@ export interface PracticeAttemptData {
     isSkipped:       boolean;
     isMarkedReview:  boolean;
   }>;
+}
+
+/** Read-only quiz-overview data shown on the confirm screen, before an
+ *  attempt (and its time-limit clock) exists. */
+export interface PracticePreview {
+  subject:          { id: string; name: string };
+  difficulty:       'EASY' | 'MEDIUM' | 'HARD';
+  questionCount:    number;
+  timeLimitSec:     number;
+  totalMarks:       number;
+  marksPerQuestion: number;
+  negativeMarking:  boolean;
 }
 
 export interface SaveAnswerFeedback {
@@ -133,7 +148,10 @@ export function useOlympiadAttempts() {
 // ── API methods ───────────────────────────────────────────────────
 
 export const practiceApi = {
-  start: (data: { subjectExternalId: string; difficulty?: string; chapterExternalId?: string; questionCount?: number }) =>
+  previewPractice: (data: { subjectExternalId: string; difficulty: 'EASY' | 'MEDIUM' | 'HARD' }) =>
+    api.post<PracticePreview>('/quizzes/practice/preview', data),
+
+  start: (data: { subjectExternalId: string; difficulty: 'EASY' | 'MEDIUM' | 'HARD'; chapterExternalId?: string }) =>
     api.post<PracticeAttemptData>('/quizzes/practice/start', data),
 
   startOlympiad: (data: { perSubject?: number } = {}) =>

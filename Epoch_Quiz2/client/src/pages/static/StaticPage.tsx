@@ -31,12 +31,12 @@ export const StaticPage: React.FC<StaticPageProps> = ({ navigate, kind }) => {
   const content: Record<StaticKind, StaticContent> = {
     about: {
       eyebrow: 'About us',
-      title: 'A quiz workspace built by educational publishers.',
-      body: 'We make the tools we wish we had when we were authoring textbooks and worksheets at scale.',
+      title: 'A practice platform built for students preparing for olympiads and exams.',
+      body: 'We built the practice tool we wished existed — organized by subject, board, and difficulty, with real feedback after every question.',
       sections: [
-        { h: 'What we make',    p: 'Olympiad Epoch Quiz is part of the Epoch GPT AI workspace — the same backbone that powers chat-with-book, lesson-plan generation, answer-key creation, and full test-paper authoring. Quiz is the consumer-facing mode of that engine.' },
-        { h: 'Who we are',      p: "A small team of editors, learning designers, and engineers based across Bangalore, London, and New York. We've shipped curriculum-aligned tools at NCERT, Cambridge, and three large state boards." },
-        { h: 'Why we built this', p: "Because every quiz app we'd used either felt like a consumer game or a corporate LMS. We wanted one that respects the audience: students, teachers, and editorial teams who treat learning seriously." },
+        { h: 'What we make',    p: 'Olympiad Epoch Quiz lets students practice by subject and difficulty, take mixed Practice Olympiad quizzes, and attempt assessments assigned by their teachers — with instant results and explanations after every question.' },
+        { h: 'Who we are',      p: 'A small team building tools for students, teachers, and admins preparing for olympiads and board exams.' },
+        { h: 'Why we built this', p: "Because most quiz apps either feel like a game or a corporate LMS. We wanted one that respects the people using it — students, teachers, and admins — and gets out of the way of actual practice." },
       ],
     },
     contact: {
@@ -64,8 +64,8 @@ export const StaticPage: React.FC<StaticPageProps> = ({ navigate, kind }) => {
         { h: 'Your account',     p: "One account per person. You're responsible for what happens on it. Tell us within 24 hours if you suspect it's compromised." },
         { h: 'Acceptable use',   p: "Use Olympiad Epoch Quiz for learning, teaching, or evaluation. Don't scrape it, reverse-engineer it, or use it to harass others." },
         { h: 'Content ownership', p: 'You own the content you create. We own the platform and the curated question banks. Licensed content is marked as such.' },
-        { h: 'Termination',      p: 'Either party can end the agreement with 30 days notice. We can suspend an account immediately for violations of acceptable use.' },
-        { h: 'Liability',        p: 'Standard SaaS liability caps — see the full version on request from legal@epoch.ai.' },
+        { h: 'Termination',      p: 'You can stop using the platform any time. To delete your account, contact us — see the Contact page. We can suspend or terminate an account immediately for violations of acceptable use.' },
+        { h: 'Liability',        p: 'The platform is provided as-is, without warranties beyond what the law requires. For questions about these terms, contact us — see the Contact page.' },
       ],
     },
   };

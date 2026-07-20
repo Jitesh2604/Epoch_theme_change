@@ -528,6 +528,10 @@ model QuizAttempt {
   startTime      DateTime        @default(now())
   endTime        DateTime?
   timeTakenSec   Int             @default(0)
+  /// Server-assigned time budget for this attempt (Subject Practice: from
+  /// PracticeConfig by difficulty). Null for attempt types with no time cap
+  /// (e.g. Olympiad, or legacy attempts predating this field).
+  timeLimitSec   Int?
   score          Float           @default(0)
   correctAnswers Int             @default(0)
   wrongAnswers   Int             @default(0)

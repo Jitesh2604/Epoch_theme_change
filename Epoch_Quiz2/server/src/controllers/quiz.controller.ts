@@ -5,6 +5,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ApiError } from '../utils/ApiError';
 import type {
   StartPracticeInput,
+  PreviewPracticeInput,
   StartOlympiadInput,
   SaveAttemptAnswerInput,
   SubmitAttemptInput,
@@ -16,6 +17,12 @@ export const QuizController = {
   getSubjects: asyncHandler(async (_req, res) => {
     const subjects = await QuizService.getSubjectsWithQuestions();
     ApiResponse.ok(res, subjects);
+  }),
+
+  previewPractice: asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user) throw ApiError.unauthorized();
+    const result = await QuizService.previewPractice(req.user.id, req.body as PreviewPracticeInput);
+    ApiResponse.ok(res, result);
   }),
 
   startPractice: asyncHandler(async (req: Request, res: Response) => {

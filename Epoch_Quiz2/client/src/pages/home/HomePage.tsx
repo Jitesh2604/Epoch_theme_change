@@ -38,11 +38,6 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
                   </button>
                   <button className="btn btn-ghost lg" onClick={() => navigate('instruction')}>{t('home.howItWorks')}</button>
                 </div>
-                <div style={{ display: 'flex', gap: 18, marginTop: 12, color: 'var(--fg-3)', fontSize: 12, fontFamily: 'var(--font-mono)' }}>
-                  <span>{t('home.freeTrial')}</span>
-                  <span>{t('home.noCard')}</span>
-                  <span>{t('home.cancelAnytime')}</span>
-                </div>
               </div>
               <div className="hero-visual">
                 <HeroIllustration variant={slide} />
@@ -65,7 +60,7 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
           </div>
 
           <div className="cat-grid" data-card-style={tweaks.catCardStyle}>
-            <button className="cat-card" onClick={() => { window.location.href = '/student/practice'; }}>
+            <button className="cat-card" onClick={() => navigate('play')}>
               <div className="cat-ico"><Icon name="trophy" size={20} /></div>
               <h3>Practice Olympiad</h3>
               <p>Pick a subject, pick a difficulty, and start practicing — no teacher required.</p>
@@ -86,13 +81,13 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
         <div className="container">
           <div className="section-head">
             <div className="eyebrow"><span className="dot"></span>{t('home.whyChooseUs')}</div>
-            <h2>Built on the same workspace publishers already trust.</h2>
-            <p>Olympiad Epoch Quiz inherits the question-bank infrastructure our editorial team already uses — reviewed content, taxonomy tags, and curriculum-board tagging built in.</p>
+            <h2>Everything organized the way students actually study.</h2>
+            <p>Every question is tagged to a subject, difficulty, class, and education board — so what you practice always matches your curriculum.</p>
           </div>
           <div className="grid-3">
             {[
               { ic: 'bolt',       t: 'Instant results',      d: 'Your score, correct answers, and full explanations the moment you submit — no waiting.' },
-              { ic: 'shield',     t: 'Editorially reviewed',  d: 'Every question is authored and reviewed by our editorial team before it reaches students.' },
+              { ic: 'shield',     t: 'Scoped to your class & board', d: 'Every question is tagged to your class and education board, so you never practice content that isn’t on your syllabus.' },
               { ic: 'trophy',     t: 'Real leaderboards',     d: 'Graded assessments feed a live leaderboard. Updates the instant results are in.' },
               { ic: 'chart',      t: 'Clear results',         d: 'Score, accuracy, and a full per-question breakdown after every attempt — the numbers that actually help.' },
               { ic: 'layers',     t: 'Practice, Olympiad, and Assessments', d: 'Subject Practice for focused study, Practice Olympiad for a mixed challenge, and school-assigned Assessments — all in one place.' },
@@ -112,9 +107,9 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
       <section className="section" style={{ paddingTop: 0 }}>
         <div className="container">
           <div className="section-head">
-            <div className="eyebrow"><span className="dot"></span>Incredible features</div>
+            <div className="eyebrow"><span className="dot"></span>Built for real practice</div>
             <h2>The little things that make the difference.</h2>
-            <p>Quiz software is everywhere. The details below are the things you can&apos;t fake — and the reason teams keep coming back.</p>
+            <p>Not just another quiz page — these are the details that make practice actually useful.</p>
           </div>
           <div className="grid-3">
             {[

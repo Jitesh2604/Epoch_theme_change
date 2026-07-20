@@ -5,6 +5,8 @@ import { LangContext } from './lib/i18n';
 import type { Lang } from './lib/i18n';
 import { HomePage } from './pages/home/HomePage';
 import { QuizPlayPage } from './pages/quiz/QuizPlayPage';
+import { PracticePlayPage } from './pages/quiz/PracticePlayPage';
+import { PracticeResultPage } from './pages/quiz/PracticeResultPage';
 import { OlympiadPlayPage } from './pages/quiz/OlympiadPlayPage';
 import { InstructionPage } from './pages/static/InstructionPage';
 import { StaticPage } from './pages/static/StaticPage';
@@ -106,12 +108,16 @@ export default function App() {
   } else if (top === 'play') {
     if (!getAuth()) {
       page = <PlayGate targetRoute={route} />;
+    } else if (parts[1] === 'quiz' && parts[2]) {
+      page = <PracticePlayPage navigate={navigate} attemptId={parts[2]} />;
+    } else if (parts[1] === 'result' && parts[2]) {
+      page = <PracticeResultPage navigate={navigate} attemptId={parts[2]} />;
     } else {
-      // Subject-level play/level/result used to be a second implementation of
-      // the Practice Quiz flow here; that flow now lives entirely in the
-      // Student Dashboard (see SubjectCategoryGrid), so every /play/* path
-      // renders the same category-picker entry point.
-      page = <QuizPlayPage navigate={navigate} tweaks={tweaks} />;
+      // The whole Practice Olympiad flow — subject selection, difficulty,
+      // quiz overview, quiz, and results — lives entirely under /play and
+      // its child routes (play/quiz/:id, play/result/:id). None of it ever
+      // touches /student/practice or the Student Dashboard.
+      page = <QuizPlayPage navigate={navigate} />;
     }
   } else if (top === 'olympiad') {
     if (!getAuth()) {

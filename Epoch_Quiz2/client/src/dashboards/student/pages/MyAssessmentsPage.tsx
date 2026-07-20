@@ -1,15 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Play, Clock, FileText, CheckCircle2, RotateCcw, Trophy,
+  Play, Clock, FileText, CheckCircle2, RotateCcw,
 } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, Skeleton } from '../../shared/ui';
+import { SessionOverScreen } from '../../shared/SessionOverScreen';
+import { SESSION_END_DATE } from '../../../config/assessmentSession';
 import { useAssessments } from '../../../hooks/useAssessments';
 import { useMySubmissions } from '../../../hooks/useSubmissions';
-
-// The 2026 assessment session ends Nov 1, 2026 — after that, assessments are
-// paused until the 2027 session and students are pointed to Practice Olympiad.
-const SESSION_END_DATE = new Date('2026-11-01T00:00:00');
 
 export function MyAssessmentsPage() {
   const [tab, setTab]         = useState<'available' | 'completed'>('available');
@@ -19,6 +17,10 @@ export function MyAssessmentsPage() {
   const { data: available, loading: aLoading, error: aError } = useAssessments({ status: 'PUBLISHED', limit: 20 });
   const { data: completed, loading: cLoading, error: cError } = useMySubmissions({ status: 'GRADED', limit: 20 });
   const { data: inProgressSubs, loading: iLoading, error: iError } = useMySubmissions({ status: 'IN_PROGRESS', limit: 20 });
+
+  // Once the session is over, students can't browse or start assessments at
+  // all — this replaces the whole page, it isn't an add-on banner.
+  if (sessionOver) return <SessionOverScreen />;
 
   const loading = aLoading || cLoading || iLoading;
   const loadError = aError || cError || iError;
@@ -52,32 +54,6 @@ export function MyAssessmentsPage() {
         title="My Assessments"
         subtitle="Assessments assigned to you and your recent results."
       />
-
-      {sessionOver && (
-        <Card className="p-6 mb-5 relative overflow-hidden">
-          <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full bg-amber-400/15 blur-3xl pointer-events-none" />
-          <div className="relative flex flex-col sm:flex-row sm:items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-500 grid place-items-center shrink-0">
-              <Trophy size={22} />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-display font-semibold text-[15.5px] text-fg1 mb-0.5">
-                The 2026 session is over. Please join the next session in 2027.
-              </h3>
-              <p className="text-[12.5px] text-fg3">
-                No new assessments are available right now — keep your skills sharp with Practice Olympiad in the meantime.
-              </p>
-            </div>
-            <Button
-              icon={Trophy}
-              className="shrink-0"
-              onClick={() => { window.location.href = '/#/olympiad'; }}
-            >
-              PRACTISE OLYMPIAD
-            </Button>
-          </div>
-        </Card>
-      )}
 
       {loadError && (
         <div className="mb-4 px-4 py-3 rounded-xl bg-danger/10 border border-danger/20 text-[13px] text-danger">

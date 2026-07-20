@@ -21,9 +21,6 @@ const T: Record<Lang, Record<string, string>> = {
     'nav.logout': 'Logout',
 
     'home.howItWorks': 'How it works',
-    'home.freeTrial': '· 14-day free trial',
-    'home.noCard': '· No card required',
-    'home.cancelAnytime': '· Cancel anytime',
     'home.whyChooseUs': 'Why choose us',
     'home.startAQuiz': 'Start a quiz',
     'home.aboutEpoch': 'About Epoch',
@@ -33,7 +30,7 @@ const T: Record<Lang, Record<string, string>> = {
     'home.topics': 'topics',
 
     'page.chooseCategory': 'Choose your category.',
-    'page.twoQuizModes': 'Two quiz modes — Practice Olympiad for self-paced learning, Attempt Olympiad for graded results. Pick a subject and a difficulty to begin.',
+    'page.twoQuizModes': 'Pick a subject and a difficulty to begin your practice quiz — self-paced, no teacher required.',
 
     'level.perQuestion': '/ question',
 
@@ -52,11 +49,11 @@ const T: Record<Lang, Record<string, string>> = {
     'instr.body': 'Four short sections — the format, the scoring, the timer rules, and how to get around the app. Should take you under two minutes to read.',
     'instr.howToPlay': 'How to play',
     'instr.step1.t': 'Choose how to play',
-    'instr.step1.d': 'Subject Practice for one topic at a time, or Practice Olympiad for a mixed set across all your subjects — both self-paced, no clock running. Assessments assigned by your school show up separately in your dashboard.',
+    'instr.step1.d': 'Subject Practice for one topic at a time — timed by difficulty — or Practice Olympiad for a self-paced mixed set across all your subjects. Assessments assigned by your school show up separately in your dashboard.',
     'instr.step2.t': 'Pick a subject',
     'instr.step2.d': 'Subjects are taxonomy-tagged to curriculum boards. Each carries its own question bank.',
     'instr.step3.t': 'Choose a difficulty',
-    'instr.step3.d': 'Easy, Medium, or Hard — this picks which difficulty tier of questions gets pulled into your set. No time pressure either way.',
+    'instr.step3.d': 'Easy, Medium, or Hard — this picks which difficulty tier of questions gets pulled into your set, and (for Subject Practice) how many questions and how much time you get.',
     'instr.step4.t': 'Answer & submit',
     'instr.step4.d': 'One question at a time. Pick an option, hit Submit. You can also Skip — counts as no answer.',
     'instr.step5.t': 'Review your results',
@@ -69,8 +66,10 @@ const T: Record<Lang, Record<string, string>> = {
     'instr.score3.t': 'Skipped',
     'instr.score3.d': 'Treated as no answer. No points awarded, no penalty.',
     'instr.timerRules': 'Timer rules',
-    'instr.timer1.t': 'Practice modes',
-    'instr.timer1.d': 'Subject Practice and Practice Olympiad have no clock at all — answer at your own pace, always.',
+    'instr.timer1.t': 'Subject Practice',
+    'instr.timer1.d': 'Each attempt gets a fixed time limit based on the difficulty you choose. Once you start, a countdown runs and the quiz submits automatically if time runs out.',
+    'instr.timerOlympiad.t': 'Practice Olympiad',
+    'instr.timerOlympiad.d': 'No clock at all — answer at your own pace, always.',
     'instr.timer2.t': 'Assessments',
     'instr.timer2.d': "Each Assessment has one overall duration, set by your school. It auto-submits whatever you've answered when time runs out.",
     'instr.timer3.t': 'Leaving and coming back',
@@ -86,7 +85,7 @@ const T: Record<Lang, Record<string, string>> = {
     'common.startAQuiz': 'Start a quiz',
     'common.noResult': 'No result to show.',
 
-    'footer.description': 'The AI-powered quiz workspace for educators, learners, and editorial teams. Built on the same backbone as Epoch GPT AI.',
+    'footer.description': 'A practice platform for students and teachers — subject practice, mixed Practice Olympiad quizzes, and teacher-assigned assessments, with instant results after every question.',
     'footer.product': 'Product',
     'footer.company': 'Company',
     'footer.legal': 'Legal',
@@ -98,7 +97,7 @@ const T: Record<Lang, Record<string, string>> = {
     'footer.privacyPolicy': 'Privacy policy',
     'footer.termsConditions': 'Terms & conditions',
     'footer.copyright': '© 2026 Epoch Inc.',
-    'footer.tagline': 'Made for learners, editors, and curriculum teams.',
+    'footer.tagline': 'Made for students and teachers.',
   },
 
   HI: {
@@ -114,9 +113,6 @@ const T: Record<Lang, Record<string, string>> = {
     'nav.logout': 'लॉग आउट',
 
     'home.howItWorks': 'यह कैसे काम करता है',
-    'home.freeTrial': '· 14-दिन का निःशुल्क ट्रायल',
-    'home.noCard': '· कोई कार्ड ज़रूरी नहीं',
-    'home.cancelAnytime': '· कभी भी रद्द करें',
     'home.whyChooseUs': 'हमें क्यों चुनें',
     'home.startAQuiz': 'क्विज़ शुरू करें',
     'home.aboutEpoch': 'Epoch के बारे में',
@@ -126,7 +122,7 @@ const T: Record<Lang, Record<string, string>> = {
     'home.topics': 'विषय',
 
     'page.chooseCategory': 'अपनी श्रेणी चुनें।',
-    'page.twoQuizModes': 'दो क्विज़ मोड — स्व-गति से सीखने के लिए Practice Olympiad, ग्रेडेड परिणामों के लिए Attempt Olympiad। शुरू करने के लिए एक विषय और कठिनाई चुनें।',
+    'page.twoQuizModes': 'अपना अभ्यास क्विज़ शुरू करने के लिए एक विषय और कठिनाई चुनें — स्व-गति से, बिना किसी शिक्षक के।',
 
     'level.perQuestion': '/ प्रश्न',
 
@@ -145,11 +141,11 @@ const T: Record<Lang, Record<string, string>> = {
     'instr.body': 'चार छोटे खंड — प्रारूप, स्कोरिंग, टाइमर नियम और ऐप नेविगेशन। पढ़ने में दो मिनट से कम लगेंगे।',
     'instr.howToPlay': 'कैसे खेलें',
     'instr.step1.t': 'खेलने का तरीका चुनें',
-    'instr.step1.d': 'एक समय में एक विषय के लिए Subject Practice, या आपके सभी विषयों के मिश्रित सेट के लिए Practice Olympiad — दोनों में कोई टाइमर नहीं। आपके स्कूल द्वारा सौंपे गए Assessments आपके डैशबोर्ड में अलग से दिखते हैं।',
+    'instr.step1.d': 'एक समय में एक विषय के लिए Subject Practice — कठिनाई के अनुसार समयबद्ध — या आपके सभी विषयों के मिश्रित सेट के लिए Practice Olympiad, जो स्व-गति से होता है। आपके स्कूल द्वारा सौंपे गए Assessments आपके डैशबोर्ड में अलग से दिखते हैं।',
     'instr.step2.t': 'विषय चुनें',
     'instr.step2.d': 'विषय पाठ्यक्रम बोर्डों के अनुसार टैग किए गए हैं। प्रत्येक का अपना प्रश्न बैंक है।',
     'instr.step3.t': 'कठिनाई चुनें',
-    'instr.step3.d': 'आसान, मध्यम या कठिन — यह तय करता है कि किस कठिनाई स्तर के प्रश्न चुने जाएंगे। दोनों ही स्थिति में कोई समय-दबाव नहीं।',
+    'instr.step3.d': 'आसान, मध्यम या कठिन — यह तय करता है कि किस कठिनाई स्तर के प्रश्न चुने जाएंगे, और (Subject Practice के लिए) आपको कितने प्रश्न और कितना समय मिलेगा।',
     'instr.step4.t': 'उत्तर दें और सबमिट करें',
     'instr.step4.d': 'एक बार में एक प्रश्न। विकल्प चुनें, Submit करें। Skip भी कर सकते हैं — कोई उत्तर नहीं माना जाता।',
     'instr.step5.t': 'अपने परिणाम देखें',
@@ -162,8 +158,10 @@ const T: Record<Lang, Record<string, string>> = {
     'instr.score3.t': 'छोड़ा',
     'instr.score3.d': 'कोई उत्तर नहीं माना जाता। कोई अंक नहीं मिलते, कोई दंड नहीं।',
     'instr.timerRules': 'टाइमर नियम',
-    'instr.timer1.t': 'Practice मोड',
-    'instr.timer1.d': 'Subject Practice और Practice Olympiad में बिल्कुल कोई टाइमर नहीं — हमेशा अपनी गति से उत्तर दें।',
+    'instr.timer1.t': 'Subject Practice',
+    'instr.timer1.d': 'आपकी चुनी हुई कठिनाई के अनुसार हर अटेम्प्ट को एक तय समय-सीमा मिलती है। शुरू करते ही उलटी गिनती चलने लगती है और समय समाप्त होने पर क्विज़ अपने-आप सबमिट हो जाता है।',
+    'instr.timerOlympiad.t': 'Practice Olympiad',
+    'instr.timerOlympiad.d': 'बिल्कुल कोई टाइमर नहीं — हमेशा अपनी गति से उत्तर दें।',
     'instr.timer2.t': 'Assessments',
     'instr.timer2.d': 'हर Assessment की एक कुल अवधि होती है, जो आपके स्कूल द्वारा तय की जाती है। समय समाप्त होने पर जो भी उत्तर दिए गए हैं वे स्वतः सबमिट हो जाते हैं।',
     'instr.timer3.t': 'बीच में छोड़ना और वापस आना',
@@ -179,7 +177,7 @@ const T: Record<Lang, Record<string, string>> = {
     'common.startAQuiz': 'क्विज़ शुरू करें',
     'common.noResult': 'कोई परिणाम नहीं।',
 
-    'footer.description': 'शिक्षकों, शिक्षार्थियों और संपादकीय टीमों के लिए AI-संचालित क्विज़ वर्कस्पेस।',
+    'footer.description': 'छात्रों और शिक्षकों के लिए एक अभ्यास मंच — विषय अभ्यास, मिश्रित Practice Olympiad क्विज़, और शिक्षकों द्वारा सौंपे गए Assessments, हर प्रश्न के बाद तुरंत परिणाम के साथ।',
     'footer.product': 'उत्पाद',
     'footer.company': 'कंपनी',
     'footer.legal': 'कानूनी',
@@ -191,7 +189,7 @@ const T: Record<Lang, Record<string, string>> = {
     'footer.privacyPolicy': 'गोपनीयता नीति',
     'footer.termsConditions': 'नियम और शर्तें',
     'footer.copyright': '© 2026 Epoch Inc.',
-    'footer.tagline': 'शिक्षार्थियों, संपादकों और पाठ्यक्रम टीमों के लिए बनाया गया।',
+    'footer.tagline': 'छात्रों और शिक्षकों के लिए बनाया गया।',
   },
 };
 

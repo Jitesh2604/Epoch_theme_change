@@ -4,6 +4,8 @@ import {
   Clock, FileText, Target, ListChecks, ArrowLeft, Play, Info, AlertTriangle,
 } from 'lucide-react';
 import { Card, Button, Badge, Skeleton, useToasts } from '../../shared/ui';
+import { SessionOverScreen } from '../../shared/SessionOverScreen';
+import { SESSION_END_DATE } from '../../../config/assessmentSession';
 import { useAssessment } from '../../../hooks/useAssessments';
 import { assessmentTakeApi, type TakeSubmission, type SubmissionResult } from '../../../hooks/useSubmissionApi';
 
@@ -34,6 +36,11 @@ export function AssessmentOverviewPage() {
   const { push, node } = useToasts();
   const { data: assessment, loading, error } = useAssessment(assessmentId ?? '');
   const [starting, setStarting] = useState(false);
+
+  // Blocks direct/bookmarked links into the assessment flow once the
+  // session is over — the listing page already stops linking here, but a
+  // stale link shouldn't still work.
+  if (Date.now() >= SESSION_END_DATE.getTime()) return <SessionOverScreen />;
 
   const handleStart = async () => {
     if (!assessmentId) return;

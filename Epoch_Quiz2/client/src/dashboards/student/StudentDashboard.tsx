@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, KeyRound, FileText, Award, Trophy, User2,
-  Zap, Home,
+  Home,
 } from 'lucide-react';
 import { Route, Routes, Navigate } from 'react-router-dom';
 import { DashboardLayout } from '../shared/DashboardLayout';
@@ -13,15 +13,18 @@ import { AssessmentResultPage } from './pages/AssessmentResultPage';
 import { ResultsPage } from './pages/ResultsPage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
 import { ProfilePage } from './pages/ProfilePage';
-import { PracticeQuizPage } from './pages/PracticeQuizPage';
-import { PracticePlayPage } from './pages/PracticePlayPage';
-import { PracticeResultPage } from './pages/PracticeResultPage';
 import { useAuth } from '../../lib/authStore';
 
 export function StudentDashboard() {
   const user = useAuth();
   return (
     <Routes>
+      {/* Practice Olympiad — subject selection, difficulty, quiz overview,
+          quiz, and results — lives entirely on the marketing site under
+          /#/play (see App.tsx). It is intentionally NOT a route here: it
+          must never be reachable at /student/practice or wrapped in the
+          Student Dashboard shell. */}
+
       <Route
         element={
           <DashboardLayout
@@ -35,7 +38,6 @@ export function StudentDashboard() {
             }}
             navItems={[
               { to: '/student',               label: 'Dashboard',       icon: LayoutDashboard },
-              { to: '/student/practice',      label: 'Practice Quiz',   icon: Zap             },
               { to: '/student/join',          label: 'Join Assessment', icon: KeyRound        },
               { to: '/student/assessments',   label: 'My Assessments',  icon: FileText        },
               { to: '/student/results',       label: 'Results',         icon: Award           },
@@ -55,9 +57,6 @@ export function StudentDashboard() {
         }
       >
         <Route index element={<StudentDashboardPage />} />
-        <Route path="practice" element={<PracticeQuizPage />} />
-        <Route path="practice/play/:attemptId" element={<PracticePlayPage />} />
-        <Route path="practice/result/:attemptId" element={<PracticeResultPage />} />
         <Route path="join" element={<JoinAssessmentPage />} />
         <Route path="assessments" element={<MyAssessmentsPage />} />
         <Route path="assessment-overview/:assessmentId" element={<AssessmentOverviewPage />} />

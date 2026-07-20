@@ -93,7 +93,7 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
             <img src="assets/logo-mark.svg" alt="" className="brand-mark" />
             <div>
               <div className="brand-name">Olympiad <em>Quiz</em></div>
-              <div className="brand-sub">EPOCH · AI · CO-PILOT</div>
+              <div className="brand-sub">STUDENT PRACTICE PLATFORM</div>
             </div>
           </a>
         </div>

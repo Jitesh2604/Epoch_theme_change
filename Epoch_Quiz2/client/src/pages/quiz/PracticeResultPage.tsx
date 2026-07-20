@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
-import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import type { NavigateFn } from '../../types';
 import {
   CheckCircle2, XCircle, MinusCircle, Clock, Trophy, RotateCcw,
-  BookOpen, ChevronDown, ChevronUp, ArrowRight,
+  BookOpen, ChevronDown, ChevronUp,
 } from 'lucide-react';
-import { Card, Button, Badge, ProgressBar } from '../../shared/ui';
-import { practiceApi, type PracticeResult, type PracticeResultAnswer } from '../../../hooks/usePracticeQuiz';
+import { Card, Button, Badge, ProgressBar } from '../../dashboards/shared/ui';
+import { practiceApi, type PracticeResult, type PracticeResultAnswer } from '../../hooks/usePracticeQuiz';
+
+interface PracticeResultPageProps {
+  navigate:  NavigateFn;
+  attemptId: string;
+}
 
 // ── Grade helper ──────────────────────────────────────────────────
 
@@ -131,26 +136,21 @@ function ReviewItem({ a, idx }: { a: PracticeResultAnswer; idx: number }) {
 
 // ── Page ──────────────────────────────────────────────────────────
 
-export function PracticeResultPage() {
-  const { attemptId } = useParams<{ attemptId: string }>();
-  const location      = useLocation();
-  const navigate      = useNavigate();
-
-  const [result,  setResult]  = useState<PracticeResult | null>(location.state?.result ?? null);
-  const [loading, setLoading] = useState(!result);
+export function PracticeResultPage({ navigate, attemptId }: PracticeResultPageProps) {
+  const [result,  setResult]  = useState<PracticeResult | null>(null);
+  const [loading, setLoading] = useState(true);
   const [err,     setErr]     = useState('');
 
   useEffect(() => {
-    if (!result && attemptId) {
-      practiceApi.getAttempt(attemptId).then(d => {
-        setResult(d as unknown as PracticeResult);
-        setLoading(false);
-      }).catch(() => {
-        setErr('Could not load results.');
-        setLoading(false);
-      });
-    }
-  }, [attemptId]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!attemptId) { setErr('Result not found.'); setLoading(false); return; }
+    practiceApi.getAttempt(attemptId).then(d => {
+      setResult(d as unknown as PracticeResult);
+      setLoading(false);
+    }).catch(() => {
+      setErr('Could not load results.');
+      setLoading(false);
+    });
+  }, [attemptId]);
 
   if (loading) {
     return (
@@ -162,11 +162,13 @@ export function PracticeResultPage() {
 
   if (err || !result) {
     return (
-      <div className="text-center py-20 text-fg3">
-        <p>{err || 'Result not found.'}</p>
-        <Button className="mt-4" onClick={() => navigate('/student/practice')}>
-          Back to Practice
-        </Button>
+      <div className="container">
+        <div className="text-center py-20 text-fg3">
+          <p>{err || 'Result not found.'}</p>
+          <Button className="mt-4" onClick={() => navigate('play')}>
+            Back to Practice
+          </Button>
+        </div>
       </div>
     );
   }
@@ -175,95 +177,97 @@ export function PracticeResultPage() {
   const { label: gradeLabel, color: gradeColor } = grade(pct);
 
   return (
-    <div className="max-w-2xl mx-auto">
-      {/* ── Score hero ─────────────────────────────────────────── */}
-      <Card className="p-6 mb-4 text-center relative overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-64 h-64 rounded-full blur-3xl"
-            style={{ background: `${gradeColor}18` }} />
-        </div>
-
-        <div className="relative">
-          <div
-            className="w-24 h-24 rounded-full border-4 grid place-items-center mx-auto mb-4 font-display text-3xl font-semibold"
-            style={{ borderColor: gradeColor, color: gradeColor }}
-          >
-            {pct}%
+    <div className="container" style={{ paddingTop: 24, paddingBottom: 40 }}>
+      <div className="max-w-2xl mx-auto">
+        {/* ── Score hero ─────────────────────────────────────────── */}
+        <Card className="p-6 mb-4 text-center relative overflow-hidden">
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-64 h-64 rounded-full blur-3xl"
+              style={{ background: `${gradeColor}18` }} />
           </div>
 
-          <h2 className="font-display text-2xl font-semibold text-fg1 mb-1">{gradeLabel}</h2>
-          <p className="text-[13px] text-fg3">
-            You scored <strong className="text-fg1">{result.score}</strong> out of{' '}
-            <strong className="text-fg1">{result.totalMarks}</strong> marks
-          </p>
-        </div>
-      </Card>
+          <div className="relative">
+            <div
+              className="w-24 h-24 rounded-full border-4 grid place-items-center mx-auto mb-4 font-display text-3xl font-semibold"
+              style={{ borderColor: gradeColor, color: gradeColor }}
+            >
+              {pct}%
+            </div>
 
-      {/* ── Stat row ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        {[
-          { icon: CheckCircle2, value: result.correctAnswers, label: 'Correct',  color: 'text-emerald-400' },
-          { icon: XCircle,      value: result.wrongAnswers,   label: 'Wrong',    color: 'text-rose-400'    },
-          { icon: MinusCircle,  value: result.skipped,        label: 'Skipped',  color: 'text-fg3'         },
-          { icon: Clock,        value: fmtTime(result.timeTakenSec), label: 'Time', color: 'text-fg2'    },
-        ].map(({ icon: Icon, value, label, color }) => (
-          <Card key={label} className="p-4 text-center">
-            <Icon size={18} className={`${color} mx-auto mb-1.5`} />
-            <div className="font-display font-semibold text-[18px] text-fg1">{value}</div>
-            <div className="text-[11px] text-fg3 mt-0.5">{label}</div>
-          </Card>
-        ))}
-      </div>
+            <h2 className="font-display text-2xl font-semibold text-fg1 mb-1">{gradeLabel}</h2>
+            <p className="text-[13px] text-fg3">
+              You scored <strong className="text-fg1">{result.score}</strong> out of{' '}
+              <strong className="text-fg1">{result.totalMarks}</strong> marks
+            </p>
+          </div>
+        </Card>
 
-      {/* Progress bar */}
-      <Card className="p-4 mb-4">
-        <div className="flex justify-between text-[12px] text-fg3 mb-2">
-          <span>Score breakdown</span>
-          <span>{pct}%</span>
-        </div>
-        <ProgressBar
-          value={pct}
-          tone={pct >= 75 ? 'emerald' : pct >= 50 ? 'amber' : 'rose'}
-        />
-        <div className="flex justify-between text-[11px] text-fg3 mt-2">
-          <span className="text-emerald-400">✓ {result.correctAnswers} correct</span>
-          <span className="text-rose-400">✗ {result.wrongAnswers} wrong</span>
-        </div>
-      </Card>
-
-      {/* ── Actions ────────────────────────────────────────────── */}
-      <div className="flex gap-3 mb-6">
-        <Button
-          variant="outline"
-          icon={BookOpen}
-          className="flex-1"
-          onClick={() => navigate('/student/practice')}
-        >
-          New Subject
-        </Button>
-        <Button
-          icon={RotateCcw}
-          className="flex-1"
-          onClick={() => navigate('/student/practice')}
-        >
-          Play Again
-        </Button>
-      </div>
-
-      {/* ── Review ─────────────────────────────────────────────── */}
-      <div>
-        <h3 className="font-display font-semibold text-[16px] text-fg1 mb-3 flex items-center gap-2">
-          <Trophy size={16} className="text-amber-300" />
-          Question Review
-        </h3>
-        <div className="space-y-2">
-          {result.answers.map((a, i) => (
-            <ReviewItem key={a.questionId} a={a} idx={i} />
+        {/* ── Stat row ───────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          {[
+            { icon: CheckCircle2, value: result.correctAnswers, label: 'Correct',  color: 'text-emerald-400' },
+            { icon: XCircle,      value: result.wrongAnswers,   label: 'Wrong',    color: 'text-rose-400'    },
+            { icon: MinusCircle,  value: result.skipped,        label: 'Skipped',  color: 'text-fg3'         },
+            { icon: Clock,        value: fmtTime(result.timeTakenSec), label: 'Time', color: 'text-fg2'    },
+          ].map(({ icon: Icon, value, label, color }) => (
+            <Card key={label} className="p-4 text-center">
+              <Icon size={18} className={`${color} mx-auto mb-1.5`} />
+              <div className="font-display font-semibold text-[18px] text-fg1">{value}</div>
+              <div className="text-[11px] text-fg3 mt-0.5">{label}</div>
+            </Card>
           ))}
         </div>
-      </div>
 
-      <div className="h-8" />
+        {/* Progress bar */}
+        <Card className="p-4 mb-4">
+          <div className="flex justify-between text-[12px] text-fg3 mb-2">
+            <span>Score breakdown</span>
+            <span>{pct}%</span>
+          </div>
+          <ProgressBar
+            value={pct}
+            tone={pct >= 75 ? 'emerald' : pct >= 50 ? 'amber' : 'rose'}
+          />
+          <div className="flex justify-between text-[11px] text-fg3 mt-2">
+            <span className="text-emerald-400">✓ {result.correctAnswers} correct</span>
+            <span className="text-rose-400">✗ {result.wrongAnswers} wrong</span>
+          </div>
+        </Card>
+
+        {/* ── Actions ────────────────────────────────────────────── */}
+        <div className="flex gap-3 mb-6">
+          <Button
+            variant="outline"
+            icon={BookOpen}
+            className="flex-1"
+            onClick={() => navigate('play')}
+          >
+            New Subject
+          </Button>
+          <Button
+            icon={RotateCcw}
+            className="flex-1"
+            onClick={() => navigate('play')}
+          >
+            Play Again
+          </Button>
+        </div>
+
+        {/* ── Review ─────────────────────────────────────────────── */}
+        <div>
+          <h3 className="font-display font-semibold text-[16px] text-fg1 mb-3 flex items-center gap-2">
+            <Trophy size={16} className="text-amber-300" />
+            Question Review
+          </h3>
+          <div className="space-y-2">
+            {result.answers.map((a, i) => (
+              <ReviewItem key={a.questionId} a={a} idx={i} />
+            ))}
+          </div>
+        </div>
+
+        <div className="h-8" />
+      </div>
     </div>
   );
 }

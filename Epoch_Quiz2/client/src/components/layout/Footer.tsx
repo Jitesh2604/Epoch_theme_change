@@ -19,7 +19,7 @@ export const Footer: React.FC<FooterProps> = ({ navigate }) => {
               <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 16 }}>
                 Olympiad <em style={{ color: 'var(--brand)', fontStyle: 'italic' }}>Quiz</em>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>EPOCH · AI · CO-PILOT</div>
+              <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>STUDENT PRACTICE PLATFORM</div>
             </div>
           </div>
           <p style={{ fontSize: 13, color: 'var(--fg-2)', maxWidth: 320 }}>

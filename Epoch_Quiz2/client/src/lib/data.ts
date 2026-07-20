@@ -8,9 +8,9 @@ export const HERO_SLIDES: HeroSlide[] = [
     cta: 'Start a quiz',
   },
   {
-    eyebrow: 'Built for educators',
-    title: 'Question banks at <em>publication scale</em>.',
-    body: 'Practice, test paper, and answer-key flows that hold up to the way real classrooms run. No filler. No fluff.',
+    eyebrow: 'Built for classrooms',
+    title: 'A question bank built for <em>your syllabus</em>.',
+    body: 'Subject Practice, Practice Olympiad, and teacher-assigned Assessments — all pulling from one growing, class- and board-tagged question bank.',
     cta: 'Browse all quizzes',
   },
   {

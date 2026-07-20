@@ -111,6 +111,7 @@ export function UploadQuestionsPage() {
         return;
       }
       setPhase('done');
+      setSummary(result.data ?? null);
       push({
         kind: 'success',
         title: 'Import complete',
@@ -122,7 +123,7 @@ export function UploadQuestionsPage() {
     }
   };
 
-  const reset = () => { setPhase('idle'); setFileName(null); setProgress(0); };
+  const reset = () => { setPhase('idle'); setFileName(null); setProgress(0); setSummary(null); };
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
@@ -186,7 +187,7 @@ export function UploadQuestionsPage() {
                       <FileCheck2 size={28} />
                     </div>
                     <h3 className="font-display font-semibold text-[18px] text-fg1 mb-1">{fileName}</h3>
-                    <p className="text-[13px] text-fg3">{SAMPLE_PREVIEW.length} questions detected · review and import below</p>
+                    <p className="text-[13px] text-fg3">Ready to import — we'll validate the rows once you click below.</p>
                   </motion.div>
                 )}
                 {phase === 'uploading' && (
@@ -209,7 +210,7 @@ export function UploadQuestionsPage() {
                       <CheckCircle2 size={28} />
                     </div>
                     <h3 className="font-display font-semibold text-[18px] text-fg1 mb-1">Import successful</h3>
-                    <p className="text-[13px] text-fg3">{SAMPLE_PREVIEW.length} questions added to your question bank.</p>
+                    <p className="text-[13px] text-fg3">{summary?.createdQuestions ?? 0} questions added to your question bank.</p>
                   </motion.div>
                 )}
                 {phase === 'error' && (
@@ -226,46 +227,59 @@ export function UploadQuestionsPage() {
             {(phase === 'previewing' || phase === 'done' || phase === 'error') && (
               <div className="flex justify-end gap-2 mt-5">
                 <Button variant="ghost" onClick={reset}>Choose another file</Button>
-                {phase === 'previewing' && <Button icon={ArrowRight} onClick={startImport}>Import {SAMPLE_PREVIEW.length} questions</Button>}
+                {phase === 'previewing' && <Button icon={ArrowRight} onClick={startImport}>Import questions</Button>}
               </div>
             )}
           </Card>
 
-          {(phase === 'previewing' || phase === 'done') && (
+          {/* Real results from the server response — nothing here is known
+              until the file has actually been parsed and imported. */}
+          {phase === 'done' && summary && (
             <Card className="overflow-hidden">
               <div className="px-5 py-4 border-b border-line flex items-center justify-between">
                 <div>
-                  <h3 className="font-display font-semibold text-[15px] text-fg1">File preview</h3>
-                  <p className="text-[11.5px] text-fg3 mt-0.5">Showing first {SAMPLE_PREVIEW.length} rows from {fileName}</p>
+                  <h3 className="font-display font-semibold text-[15px] text-fg1">Import summary</h3>
+                  <p className="text-[11.5px] text-fg3 mt-0.5">{fileName}</p>
                 </div>
-                <Badge tone="success">Valid format</Badge>
+                <Badge tone={summary.invalidRows > 0 ? 'warning' : 'success'}>
+                  {summary.invalidRows > 0 ? `${summary.invalidRows} row(s) skipped` : 'All rows imported'}
+                </Badge>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-[12px]">
-                  <thead>
-                    <tr className="text-fg3 text-[10.5px] font-semibold uppercase tracking-wider bg-surface1/50">
-                      <th className="px-4 py-2.5">#</th>
-                      <th className="px-4 py-2.5">type</th>
-                      <th className="px-4 py-2.5">prompt</th>
-                      <th className="px-4 py-2.5">correctOption / correctBoolean</th>
-                      <th className="px-4 py-2.5">subject</th>
-                      <th className="px-4 py-2.5">marks</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {SAMPLE_PREVIEW.map((r, i) => (
-                      <tr key={i} className="border-t border-line/70 hover:bg-surface1/50">
-                        <td className="px-4 py-2.5 font-mono text-fg3">{i + 1}</td>
-                        <td className="px-4 py-2.5"><Badge tone={r.type === 'MCQ' ? 'brand' : r.type === 'TrueFalse' ? 'info' : 'warning'} dot={false}>{r.type}</Badge></td>
-                        <td className="px-4 py-2.5 text-fg1 max-w-md truncate">{r.question}</td>
-                        <td className="px-4 py-2.5 font-mono text-fg2">{r.correct}</td>
-                        <td className="px-4 py-2.5 text-fg2">{r.subject}</td>
-                        <td className="px-4 py-2.5 font-mono text-fg2">{r.marks}</td>
+              <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-line/70 border-b border-line">
+                {[
+                  { label: 'Total rows',   value: summary.totalRows },
+                  { label: 'Valid rows',   value: summary.validRows },
+                  { label: 'Questions added', value: summary.createdQuestions },
+                  { label: 'Skipped',      value: summary.invalidRows },
+                ].map(s => (
+                  <div key={s.label} className="p-4 text-center">
+                    <div className="font-display font-semibold text-[18px] text-fg1">{s.value}</div>
+                    <div className="text-[11px] text-fg3 mt-0.5">{s.label}</div>
+                  </div>
+                ))}
+              </div>
+              {summary.errors.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[12px]">
+                    <thead>
+                      <tr className="text-fg3 text-[10.5px] font-semibold uppercase tracking-wider bg-surface1/50">
+                        <th className="px-4 py-2.5">Row</th>
+                        <th className="px-4 py-2.5">Field</th>
+                        <th className="px-4 py-2.5">Issue</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {summary.errors.map((e, i) => (
+                        <tr key={i} className="border-t border-line/70 hover:bg-surface1/50">
+                          <td className="px-4 py-2.5 font-mono text-fg3">{e.row}</td>
+                          <td className="px-4 py-2.5 font-mono text-fg2">{e.field ?? '—'}</td>
+                          <td className="px-4 py-2.5 text-fg1">{e.message}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </Card>
           )}
         </div>

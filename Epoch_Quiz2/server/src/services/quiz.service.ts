@@ -1,11 +1,13 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { QuestionType, AttemptStatus, QuizType, QuizStatus } from '../lib/enums';
+import { PracticeConfig } from '../config/practiceConfig';
 import { parseStrArr, toJson } from '../utils/json';
 import { ApiError } from '../utils/ApiError';
 import { ContentMeta } from './content.service';
 import type {
   StartPracticeInput,
+  PreviewPracticeInput,
   StartOlympiadInput,
   SaveAttemptAnswerInput,
   SubmitAttemptInput,
@@ -258,7 +260,9 @@ async function buildResult(attemptId: string) {
 const ATTEMPT_ALLOC_MAX_RETRIES = 25;
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-async function createQuizAttempt(quizId: string, studentId: string): Promise<{ attemptId: string; attemptNumber: number }> {
+async function createQuizAttempt(
+  quizId: string, studentId: string, timeLimitSec: number | null = null,
+): Promise<{ attemptId: string; attemptNumber: number }> {
   for (let attempt = 0; ; attempt++) {
     const last = await prisma.quizAttempt.findFirst({
       where: { quizId, studentId }, orderBy: { attemptNumber: 'desc' }, select: { attemptNumber: true },
@@ -266,7 +270,7 @@ async function createQuizAttempt(quizId: string, studentId: string): Promise<{ a
     const attemptNumber = (last?.attemptNumber ?? 0) + 1;
     try {
       const created = await prisma.quizAttempt.create({
-        data: { quizId, studentId, attemptNumber, status: AttemptStatus.IN_PROGRESS },
+        data: { quizId, studentId, attemptNumber, status: AttemptStatus.IN_PROGRESS, timeLimitSec },
         select: { id: true },
       });
       return { attemptId: created.id, attemptNumber };
@@ -309,6 +313,47 @@ export const QuizService = {
       .sort((a, b) => a.name.localeCompare(b.name));
   },
 
+  /**
+   * Read-only quiz-overview data for the confirm screen shown before an
+   * attempt exists — same subject/difficulty resolution as `startPractice`,
+   * but creates nothing (no attempt row, no time-limit clock started).
+   */
+  async previewPractice(studentId: string, input: PreviewPracticeInput) {
+    const subjectNames = await ContentMeta.subjects();
+    const subjectName = subjectNames.get(input.subjectExternalId) ?? null;
+    const mode = await prisma.olympiadMode.findFirst({ where: { id: input.subjectExternalId }, select: { id: true } });
+    if (mode) {
+      throw ApiError.badRequest('This category is an Olympiad mode — use the Olympiad flow, not subject practice.');
+    }
+
+    const profile = await readStudentProfile(studentId);
+    const scopeAnd = classBoardAnd(profile.classExternalId, profile.educationBoard);
+
+    const matching = await prisma.question.findMany({
+      where: {
+        subjectExternalId: input.subjectExternalId, status: 'ACTIVE', type: { in: GRADABLE_TYPES },
+        difficulty: input.difficulty,
+        ...(scopeAnd.length && { AND: scopeAnd }),
+      },
+      select: { marks: true },
+    });
+    if (!matching.length) throw ApiError.badRequest('No questions available for this subject / class / board / difficulty');
+
+    const config       = PracticeConfig[input.difficulty];
+    const questionCount = Math.min(config.questionCount, matching.length);
+    const avgMarks      = matching.reduce((s, q) => s + q.marks, 0) / matching.length;
+
+    return {
+      subject:          { id: input.subjectExternalId, name: subjectName ?? input.subjectExternalId },
+      difficulty:        input.difficulty,
+      questionCount,
+      timeLimitSec:      config.timeLimitMinutes * 60,
+      totalMarks:        Math.round(questionCount * avgMarks * 100) / 100,
+      marksPerQuestion:  Math.round(avgMarks * 100) / 100,
+      negativeMarking:   false,
+    };
+  },
+
   async startPractice(studentId: string, input: StartPracticeInput) {
     // input.subjectExternalId is a Content API subject external id. Resolve its
     // display name and reject Olympiad modes (which are app-owned, not subjects).
@@ -334,11 +379,16 @@ export const QuizService = {
 
     if (!allQuestions.length) throw ApiError.badRequest('No questions available for this subject / class / board / difficulty');
 
+    // Question count and time limit are backend-controlled per difficulty —
+    // the client never supplies or overrides these values.
+    const config       = PracticeConfig[input.difficulty];
+    const timeLimitSec = config.timeLimitMinutes * 60;
+
     const subject = { id: input.subjectExternalId, name: subjectName ?? input.subjectExternalId, slug: slugify(subjectName ?? input.subjectExternalId), kind: 'SUBJECT' };
-    const selected = shuffleArray(allQuestions).slice(0, input.questionCount);
+    const selected = shuffleArray(allQuestions).slice(0, config.questionCount);
     const quizId   = await getOrCreatePracticeQuiz(input.subjectExternalId, subjectName, studentId);
 
-    const { attemptId, attemptNumber } = await createQuizAttempt(quizId, studentId);
+    const { attemptId, attemptNumber } = await createQuizAttempt(quizId, studentId, timeLimitSec);
 
     // Pre-create skipped answer stubs for all selected questions.
     await prisma.attemptAnswer.createMany({
@@ -350,8 +400,9 @@ export const QuizService = {
       attemptNumber,
       quizId,
       subject,
-      difficulty:    input.difficulty ?? null,
+      difficulty:    input.difficulty,
       questionCount: selected.length,
+      timeLimitSec,
       totalMarks:    selected.reduce((s, sq) => s + sq.marks, 0),
       startTime:     new Date(),
       questions:     selected.map((sq, i) => sanitizeQuestion(sq, i + 1)),
@@ -462,7 +513,7 @@ export const QuizService = {
     const attempt = await prisma.quizAttempt.findUnique({
       where: { id: attemptId },
       select: {
-        id: true, studentId: true, status: true, startTime: true, attemptNumber: true, quizId: true,
+        id: true, studentId: true, status: true, startTime: true, attemptNumber: true, quizId: true, timeLimitSec: true,
         quiz: { select: { subjectExternalId: true } },
       },
     });
@@ -499,6 +550,7 @@ export const QuizService = {
       subject:       { id: subExtId, name: subjectName, slug: slugify(subjectName) },
       difficulty:    null,
       questionCount: questions.length,
+      timeLimitSec:  attempt.timeLimitSec,
       totalMarks:    answers.reduce((sum, a) => sum + a.question.marks, 0),
       status:        attempt.status,
       startTime:     attempt.startTime,

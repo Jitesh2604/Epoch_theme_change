@@ -4,6 +4,7 @@ import { authenticate } from '../middlewares/authenticate';
 import { validate } from '../middlewares/validate';
 import {
   startPracticeSchema,
+  previewPracticeSchema,
   startOlympiadSchema,
   saveAttemptAnswerSchema,
   submitAttemptSchema,
@@ -16,6 +17,13 @@ const router = new Router();
 router.get('/subjects', authenticate, QuizController.getSubjects);
 
 // ── Practice flow ─────────────────────────────────────────────────
+router.post(
+  '/practice/preview',
+  authenticate,
+  validate(previewPracticeSchema),
+  QuizController.previewPractice,
+);
+
 router.post(
   '/practice/start',
   authenticate,
