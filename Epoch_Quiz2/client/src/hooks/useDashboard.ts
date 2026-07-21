@@ -2,7 +2,7 @@ import { api } from '../lib/api';
 import { useAsync } from './useApi';
 
 export interface DashboardStats {
-  counts: { teachers: number; students: number; assessments: number; submissions: number };
+  counts: { teachers: number; students: number; assessments: number; submissions: number; practiceAttempts: number };
   completionRate: number;
   recentAssessments: Array<{
     id: string; title: string; subject: { id: string; name: string } | null;

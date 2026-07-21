@@ -5,7 +5,7 @@ import { authenticate } from '../middlewares/authenticate';
 import { authorize } from '../middlewares/authorize';
 import { ADMIN_ROLES } from '../utils/roles';
 import { prisma } from '../lib/prisma';
-import { Role, SubmissionStatus } from '../lib/enums';
+import { Role, SubmissionStatus, AttemptStatus } from '../lib/enums';
 import { ContentMeta } from '../services/content.service';
 
 const router = new Router();
@@ -23,6 +23,7 @@ router.get(
       students,
       assessments,
       submissions,
+      practiceAttempts,
       recentAssessments,
       recentSubmissions,
       aggRow,
@@ -31,6 +32,7 @@ router.get(
       prisma.user.count({ where: { role: Role.STUDENT } }),
       prisma.assessment.count(),
       prisma.submission.count({ where: { status: COUNTABLE } }),
+      prisma.quizAttempt.count({ where: { status: AttemptStatus.SUBMITTED } }),
       prisma.assessment.findMany({
         orderBy: { createdAt: 'desc' }, take: 6,
         include: {
@@ -60,7 +62,7 @@ router.get(
       : 0;
 
     ApiResponse.ok(res, {
-      counts: { teachers, students, assessments, submissions },
+      counts: { teachers, students, assessments, submissions, practiceAttempts },
       completionRate,
       recentAssessments: recentAssessments.map((a) => ({
         id:            a.id,

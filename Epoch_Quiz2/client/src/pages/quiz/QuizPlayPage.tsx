@@ -8,7 +8,10 @@ import {
 import {
   Card, Button, Badge, Modal, Skeleton, EmptyState, useToasts,
 } from '../../dashboards/shared/ui';
-import { usePracticeSubjects, practiceApi, type PracticeSubject, type PracticePreview } from '../../hooks/usePracticeQuiz';
+import {
+  usePracticeSubjects, usePausedAttempts, practiceApi,
+  type PracticeSubject, type PracticePreview, type PausedAttempt,
+} from '../../hooks/usePracticeQuiz';
 import { Footer } from '../../components/layout/Footer';
 import { PageHead } from '../../components/layout/PageHead';
 import { useT } from '../../lib/i18n';
@@ -104,6 +107,30 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
   const { push, node: toastNode } = useToasts();
   const { data: subjects, loading, error: subjectsError, refetch: refetchSubjects } = usePracticeSubjects();
 
+  // "Resume Paused Quizzes" — kept deliberately separate from the subject
+  // grid below: picking a subject there always starts a brand-new attempt,
+  // this is the only explicit path back into one already paused (Practice
+  // or Olympiad). A student can have several open at once, so this renders
+  // as a list, not a single banner.
+  const { data: paused, refetch: refetchPaused } = usePausedAttempts();
+  const [confirmDiscardId, setConfirmDiscardId] = useState<string | null>(null);
+  const [discardingId, setDiscardingId] = useState<string | null>(null);
+
+  const resumePaused = (a: PausedAttempt) => {
+    navigate(a.quiz.quizType === 'OLYMPIAD' ? `olympiad/${a.attemptId}` : `play/quiz/${a.attemptId}`);
+  };
+
+  const discardPaused = async (attemptId: string) => {
+    setDiscardingId(attemptId);
+    try {
+      await practiceApi.discardAttempt(attemptId);
+      await refetchPaused();
+    } finally {
+      setDiscardingId(null);
+      setConfirmDiscardId(null);
+    }
+  };
+
   const [selected,   setSelected]   = useState<PracticeSubject | null>(null);
   const [difficulty, setDifficulty] = useState<'EASY' | 'MEDIUM' | 'HARD' | ''>('');
   const [starting,   setStarting]   = useState(false);
@@ -179,15 +206,6 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
               </div>
             </div>
 
-            {overview.resuming && (
-              <div className="flex items-center gap-2 p-3 rounded-xl bg-brand-soft border border-brand/30 mb-4">
-                <PlayCircle size={14} className="text-brand shrink-0" />
-                <p className="text-[12.5px] text-brand font-medium">
-                  Resuming your paused session — you'll pick up right where you left off.
-                </p>
-              </div>
-            )}
-
             <Card className="p-5 mb-4">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <OverviewRow icon={BookOpen}     label="Subject"            value={overview.subject.name} />
@@ -208,14 +226,9 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
                 <h3 className="font-display font-semibold text-[14px] text-fg1">Timer Information</h3>
               </div>
               <p className="text-[12.5px] text-fg2 leading-relaxed">
-                {overview.resuming ? (
-                  <>Your countdown was paused when you left and picks up from exactly where it stopped — the time you
-                  spent away doesn't count against you.</>
-                ) : (
-                  <>Once you click <strong className="text-fg1">Start Quiz</strong>, a {minutes}-minute countdown begins immediately.
-                  The quiz submits automatically if time runs out, so nothing you've answered is lost. The timer does not run
-                  while you're on this page — it only starts after you confirm.</>
-                )}
+                Once you click <strong className="text-fg1">Start Quiz</strong>, a {minutes}-minute countdown begins immediately.
+                The quiz submits automatically if time runs out, so nothing you've answered is lost. The timer does not run
+                while you're on this page — it only starts after you confirm.
               </p>
             </Card>
 
@@ -241,7 +254,7 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
                 <ul className="space-y-2 text-[12.5px] text-fg2 leading-relaxed list-disc pl-4">
                   <li>Once submitted, an answer is locked — you cannot go back to a previous question.</li>
                   <li>Your progress is saved automatically as you go.</li>
-                  <li>You can pause anytime and resume later — the timer picks up from where you left off.</li>
+                  <li>You can pause anytime — find it later under "Resume Paused Quizzes" on the home page, with the timer picking up from where you left off.</li>
                   <li>Wrong answers are not negatively marked.</li>
                 </ul>
               </Card>
@@ -259,7 +272,7 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
                 Back
               </Button>
               <Button className="flex-1" icon={PlayCircle} onClick={startQuiz} disabled={starting}>
-                {starting ? 'Starting…' : overview.resuming ? 'Resume Quiz' : 'Start Quiz'}
+                {starting ? 'Starting…' : 'Start Quiz'}
               </Button>
             </div>
           </div>
@@ -278,6 +291,55 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
         title={t('page.chooseCategory')}
         body={t('page.twoQuizModes')}
       />
+
+      {/* RESUME PAUSED QUIZZES — picking a subject below always starts a
+          brand-new attempt; this is the only explicit way back into one
+          already paused. Hidden while the difficulty modal is open, same as
+          the subject grid below. */}
+      {!selected && !!paused?.length && (
+        <section className="container" style={{ paddingBottom: 24 }}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display font-semibold text-[16px] text-fg1">Resume Paused Quizzes</h2>
+            <span className="text-[11px] text-fg3">{paused.length} paused</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {paused.map(a => (
+              <Card key={a.attemptId} className="p-5 flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0">
+                    {a.quiz.quizType === 'OLYMPIAD' ? <Trophy size={20} /> : <BookOpen size={20} />}
+                  </div>
+                  <Badge tone="warning" dot={false} className="text-[10px]">Paused</Badge>
+                </div>
+                <div>
+                  <h3 className="font-display font-semibold text-[15px] text-fg1 leading-tight">
+                    {a.quiz.subject?.name ?? a.quiz.title}
+                  </h3>
+                  <p className="text-[11.5px] text-fg3 mt-1">
+                    {a.quiz.quizType === 'OLYMPIAD' ? 'Mixed quiz' : 'Subject Practice'}
+                    {' · '}Question {a.currentQuestionIndex + 1} of {a.questionCount}
+                  </p>
+                </div>
+                {confirmDiscardId === a.attemptId ? (
+                  <div className="flex gap-2 mt-auto">
+                    <Button variant="ghost" size="sm" className="flex-1" disabled={discardingId === a.attemptId} onClick={() => setConfirmDiscardId(null)}>
+                      Cancel
+                    </Button>
+                    <Button variant="danger" size="sm" className="flex-1" disabled={discardingId === a.attemptId} onClick={() => discardPaused(a.attemptId)}>
+                      {discardingId === a.attemptId ? 'Discarding…' : 'Confirm'}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 mt-auto">
+                    <Button size="sm" className="flex-1" onClick={() => resumePaused(a)}>Resume</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmDiscardId(a.attemptId)}>Discard</Button>
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="container" style={{ paddingBottom: 80 }}>
         {/* Hidden while the difficulty modal is open — otherwise the same

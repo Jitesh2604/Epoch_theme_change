@@ -71,9 +71,6 @@ export interface PracticePreview {
   totalMarks:       number;
   marksPerQuestion: number;
   negativeMarking:  boolean;
-  /** True when the student already has a paused/in-progress attempt on this
-   *  subject — "Start Quiz" will resume it rather than starting fresh. */
-  resuming?: boolean;
 }
 
 export interface SaveAnswerFeedback {
@@ -161,6 +158,31 @@ export function useOlympiadAttempts() {
   return useAsync<OlympiadAttemptSummary[]>(() => api.get('/quizzes/olympiad/attempts'), []);
 }
 
+// ── Paused attempts — "Resume Paused Quizzes" ──────────────────────
+// Start Quiz / Attempt Olympiad never auto-resume these; resuming one is
+// always an explicit click through this list. See quiz.service.ts's
+// listPaused/discard — Start/Attempt always create a new attempt now.
+
+export interface PausedAttempt {
+  attemptId:            string;
+  attemptNumber:        number;
+  quiz: {
+    id:       string;
+    title:    string;
+    quizType: 'PRACTICE' | 'OLYMPIAD' | 'CHAPTER_TEST' | 'MOCK_TEST' | 'LIVE_QUIZ' | 'ASSIGNMENT';
+    subject:  { id: string; name: string } | null;
+  };
+  startTime:            string;
+  pausedAt:             string | null;
+  currentQuestionIndex: number;
+  timeLimitSec:         number | null;
+  questionCount:        number;
+}
+
+export function usePausedAttempts() {
+  return useAsync<PausedAttempt[]>(() => api.get('/quizzes/attempts/paused'), []);
+}
+
 // ── API methods ───────────────────────────────────────────────────
 
 export const practiceApi = {
@@ -207,4 +229,8 @@ export const practiceApi = {
       };
     },
   ) => api.post<{ ok: true }>(`/quizzes/attempts/${attemptId}/progress`, data),
+
+  /** Explicitly abandon a paused attempt — the "Discard" action. */
+  discardAttempt: (attemptId: string) =>
+    api.post<{ ok: true }>(`/quizzes/attempts/${attemptId}/discard`),
 };

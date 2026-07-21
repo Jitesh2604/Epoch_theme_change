@@ -1,21 +1,23 @@
 import { useState, useMemo } from 'react';
 import {
   Award, BarChart3, Clock, Download, FileText,
-  Users, TrendingUp, CheckCircle2, Filter,
+  Users, TrendingUp, CheckCircle2, Filter, Trophy,
 } from 'lucide-react';
 import {
   PageHeader, Card, StatCard, Button, Select, Badge,
-  ProgressBar, Skeleton, Table, Avatar,
+  ProgressBar, Skeleton, Table, Avatar, Pagination,
 } from '../../shared/ui';
 import { useSubmissions } from '../../../hooks/useSubmissions';
 import { useDashboardStats } from '../../../hooks/useDashboard';
 import { useAssessments } from '../../../hooks/useAssessments';
 import { useStudents } from '../../../hooks/useUsers';
+import { useQuizAttempts, type QuizAttemptSortBy } from '../../../hooks/useQuizAttempts';
+import { useRealSubjects } from '../../../hooks/useSubjects';
 import { exportCsv } from '../../../lib/csv';
 
 // Teacher module is temporarily hidden — restore the 'teachers' tab, the
 // useTeachers import above, and every block marked below to bring it back.
-type Tab = 'overview' | 'assessments' | 'students';
+type Tab = 'overview' | 'assessments' | 'students' | 'practice';
 type Range = '7d' | '30d' | '90d' | 'all';
 
 function cutoffDate(range: Range): Date | null {
@@ -32,6 +34,34 @@ export function ReportsPage() {
   const { data: submissions, loading: subsLoading } = useSubmissions({ limit: 200 });
   const { data: assessments, loading: assLoading } = useAssessments({ limit: 100 });
   const { data: students, loading: studLoading } = useStudents({ limit: 100 });
+  const { data: realSubjects } = useRealSubjects();
+
+  // ── Practice/Olympiad tab — server-side paginated/filtered/sorted, unlike
+  //     the other tabs, which fetch one fixed batch and slice it client-side.
+  //     This table is expected to grow into the thousands, so every filter/
+  //     sort/page change here is a fresh request, never a full-table load.
+  const [pPage, setPPage]         = useState(1);
+  const [pSortBy, setPSortBy]     = useState<QuizAttemptSortBy>('latest');
+  const [pStatus, setPStatus]     = useState('');
+  const [pQuizType, setPQuizType] = useState('');
+  const [pSubject, setPSubject]   = useState('');
+  const [pStudentId, setPStudentId] = useState('');
+  const [pDateFrom, setPDateFrom] = useState('');
+  const [pDateTo, setPDateTo]     = useState('');
+
+  const { data: practiceAttempts, loading: practiceLoading, error: practiceError } = useQuizAttempts({
+    page: pPage, limit: 20, sortBy: pSortBy,
+    status: pStatus || undefined,
+    quizType: pQuizType || undefined,
+    subjectExternalId: pSubject || undefined,
+    studentId: pStudentId || undefined,
+    dateFrom: pDateFrom || undefined,
+    dateTo: pDateTo || undefined,
+  });
+
+  // Any filter/sort change invalidates the current page — jump back to 1
+  // rather than risk showing an out-of-range, empty page.
+  const setPracticeFilter = (setter: (v: string) => void) => (v: string) => { setter(v); setPPage(1); };
 
   const loading = statsLoading || subsLoading || assLoading || studLoading;
 
@@ -66,6 +96,7 @@ export function ReportsPage() {
     { key: 'overview', label: 'Overview' },
     { key: 'assessments', label: 'Assessments' },
     { key: 'students', label: 'Students' },
+    { key: 'practice', label: 'Practice/Olympiad' },
   ];
 
   const handleExport = () => {
@@ -77,6 +108,21 @@ export function ReportsPage() {
     } else if (tab === 'students') {
       const rows = (students?.items ?? []).map(s => [s.name, s.email, s.status, String(s.attempted), String(s.avgScore), s.schoolName ?? '']);
       exportCsv('students-report.csv', rows, ['Name', 'Email', 'Status', 'Attempted', 'Avg Score (%)', 'School']);
+    } else if (tab === 'practice') {
+      // Exports the current page only (same as every other tab here) — a
+      // deliberate scalability call, not a shortcut: this table is expected
+      // to reach thousands of rows, and pulling all of them into the browser
+      // just to build a CSV would defeat the point of server-side paging.
+      const rows = (practiceAttempts?.items ?? []).map(a => [
+        a.student.name, a.student.email, a.quiz.title, a.quiz.quizType, a.quiz.subject?.name ?? '',
+        String(a.attemptNumber), a.status, a.startTime, a.endTime ?? '', String(a.timeTakenSec),
+        String(a.score), String(a.percentage), String(a.correctAnswers), String(a.wrongAnswers), String(a.skipped),
+      ]);
+      exportCsv('practice-olympiad-report.csv', rows, [
+        'Student Name', 'Student Email', 'Quiz Title', 'Quiz Type', 'Subject',
+        'Attempt #', 'Status', 'Start Time', 'End Time', 'Time Taken (s)',
+        'Score', 'Percentage', 'Correct', 'Wrong', 'Skipped',
+      ]);
     }
   };
 
@@ -121,14 +167,15 @@ export function ReportsPage() {
       {/* ── Overview Tab ────────────────────────────────────────── */}
       {tab === 'overview' && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
             {statsLoading ? (
-              Array.from({ length: 4 }).map((_, i) => <Card key={i} className="p-5"><Skeleton className="h-20" /></Card>)
+              Array.from({ length: 5 }).map((_, i) => <Card key={i} className="p-5"><Skeleton className="h-20" /></Card>)
             ) : (
               <>
                 <StatCard label="Total Submissions"  value={stats?.counts.submissions ?? 0}   icon={BarChart3}  tone="brand"   />
                 <StatCard label="Avg Score"           value={`${avgScore}%`}                   icon={TrendingUp} tone="emerald" />
                 <StatCard label="Total Assessments"   value={stats?.counts.assessments ?? 0}   icon={FileText}   tone="amber"   />
+                <StatCard label="Practice/Olympiad Attempts" value={stats?.counts.practiceAttempts ?? 0} icon={Trophy} tone="brand" />
                 <StatCard label="Completion Rate"     value={`${completionRate}%`}              icon={CheckCircle2} tone="violet" />
               </>
             )}
@@ -271,6 +318,133 @@ export function ReportsPage() {
             />
           )}
         </Card>
+      )}
+
+      {/* ── Practice/Olympiad Tab ────────────────────────────────── */}
+      {tab === 'practice' && (
+        <>
+          <Card className="p-4 mb-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <Select
+                value={pStudentId}
+                onChange={setPracticeFilter(setPStudentId)}
+                options={[{ value: '', label: 'All students' }, ...((students?.items ?? []).map(s => ({ value: s.id, label: s.name })))]}
+              />
+              <Select
+                value={pSubject}
+                onChange={setPracticeFilter(setPSubject)}
+                options={[{ value: '', label: 'All subjects' }, ...((realSubjects ?? []).map(s => ({ value: s.id, label: s.name })))]}
+              />
+              <Select
+                value={pQuizType}
+                onChange={setPracticeFilter(setPQuizType)}
+                options={[
+                  { value: '',         label: 'All types' },
+                  { value: 'PRACTICE', label: 'Practice'  },
+                  { value: 'OLYMPIAD', label: 'Olympiad'  },
+                ]}
+              />
+              <Select
+                value={pStatus}
+                onChange={setPracticeFilter(setPStatus)}
+                options={[
+                  { value: '',            label: 'All statuses' },
+                  { value: 'IN_PROGRESS', label: 'In progress'  },
+                  { value: 'SUBMITTED',   label: 'Submitted'    },
+                  { value: 'ABANDONED',   label: 'Abandoned'    },
+                ]}
+              />
+              <input
+                type="date"
+                value={pDateFrom}
+                onChange={e => { setPDateFrom(e.target.value); setPPage(1); }}
+                className="h-9 px-3 rounded-xl border border-line bg-surface1 text-[13px] text-fg1"
+                aria-label="From date"
+              />
+              <span className="text-fg4 text-[12px]">to</span>
+              <input
+                type="date"
+                value={pDateTo}
+                onChange={e => { setPDateTo(e.target.value); setPPage(1); }}
+                className="h-9 px-3 rounded-xl border border-line bg-surface1 text-[13px] text-fg1"
+                aria-label="To date"
+              />
+              <Select
+                value={pSortBy}
+                onChange={v => { setPSortBy(v as QuizAttemptSortBy); setPPage(1); }}
+                options={[
+                  { value: 'latest',     label: 'Latest first'   },
+                  { value: 'score_desc', label: 'Highest score'  },
+                  { value: 'score_asc',  label: 'Lowest score'   },
+                  { value: 'time_desc',  label: 'Longest time'   },
+                  { value: 'time_asc',   label: 'Shortest time'  },
+                ]}
+              />
+            </div>
+          </Card>
+
+          <Card className="overflow-hidden">
+            <div className="px-5 py-4 border-b border-line flex items-center justify-between">
+              <h3 className="font-display font-semibold text-[15px] text-fg1">Practice / Olympiad Attempts</h3>
+              <span className="text-[11px] text-fg3">{practiceAttempts?.meta?.total ?? 0} total</span>
+            </div>
+            {practiceError && (
+              <div className="p-4 text-[13px] text-danger">Could not load attempts — {practiceError}</div>
+            )}
+            {practiceLoading ? (
+              <div className="p-4 space-y-3">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
+            ) : (
+              <>
+                <Table
+                  columns={[
+                    { key: 'student', label: 'Student', render: a => (
+                      <div>
+                        <div className="font-semibold text-fg1 text-[13px]">{a.student.name}</div>
+                        <div className="text-[11px] text-fg3">{a.student.email}</div>
+                      </div>
+                    )},
+                    { key: 'quiz', label: 'Quiz', render: a => (
+                      <div>
+                        <div className="text-fg1 truncate max-w-[180px]">{a.quiz.title}</div>
+                        <div className="text-[11px] text-fg3">{a.quiz.subject?.name ?? '—'}</div>
+                      </div>
+                    )},
+                    { key: 'type', label: 'Type', render: a => <Badge tone={a.quiz.quizType === 'OLYMPIAD' ? 'brand' : 'neutral'} dot={false}>{a.quiz.quizType.toLowerCase()}</Badge> },
+                    { key: 'attemptNumber', label: 'Attempt #', render: a => <span className="font-mono">{a.attemptNumber}</span> },
+                    { key: 'status', label: 'Status', render: a => (
+                      <Badge tone={a.status === 'SUBMITTED' ? 'success' : a.status === 'IN_PROGRESS' ? 'warning' : 'neutral'} dot={false}>
+                        {a.status.replace('_', ' ').toLowerCase()}
+                      </Badge>
+                    )},
+                    { key: 'score', label: 'Score', render: a => (
+                      <span className="font-mono">{a.isSubmitted ? `${a.score} (${a.percentage}%)` : '—'}</span>
+                    )},
+                    { key: 'breakdown', label: 'Correct / Wrong / Skipped', render: a => (
+                      <span className="font-mono text-[12px]">
+                        <span className="text-emerald-500">{a.correctAnswers}</span>
+                        {' / '}
+                        <span className="text-rose-500">{a.wrongAnswers}</span>
+                        {' / '}
+                        <span className="text-fg3">{a.skipped}</span>
+                      </span>
+                    )},
+                    { key: 'timeTaken', label: 'Time Taken', render: a => <span className="font-mono text-[12px]">{a.timeTakenSec ? `${Math.round(a.timeTakenSec / 60)}m` : '—'}</span> },
+                    { key: 'startTime', label: 'Started', render: a => <span className="text-[11px] text-fg3">{new Date(a.startTime).toLocaleString()}</span> },
+                    { key: 'endTime', label: 'Submitted', render: a => <span className="text-[11px] text-fg3">{a.endTime ? new Date(a.endTime).toLocaleString() : '—'}</span> },
+                  ]}
+                  rows={practiceAttempts?.items ?? []}
+                  empty={<div className="text-center py-12 text-fg3 text-[13px]">No Practice/Olympiad attempts match these filters</div>}
+                />
+                <Pagination
+                  page={practiceAttempts?.meta?.page ?? 1}
+                  totalPages={practiceAttempts?.meta?.totalPages ?? 1}
+                  onChange={setPPage}
+                  disabled={practiceLoading}
+                />
+              </>
+            )}
+          </Card>
+        </>
       )}
 
       {/* Teacher module is temporarily hidden — restore the 'teachers' Tab

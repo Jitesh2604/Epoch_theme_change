@@ -10,7 +10,14 @@ import {
 } from '../../hooks/usePracticeQuiz';
 import { useQuizExitGuard } from '../../hooks/useQuizExitGuard';
 
-interface Props { navigate: NavigateFn; }
+interface Props {
+  navigate: NavigateFn;
+  /** Present only when resuming a specific paused attempt (from "Resume
+   *  Paused Quizzes") — loads that exact attempt via getAttempt and skips
+   *  straight to the playing phase, instead of starting a brand-new mixed
+   *  quiz via startOlympiad. */
+  resumeAttemptId?: string;
+}
 
 function fmtTime(sec: number) {
   const m = Math.floor(sec / 60);
@@ -35,11 +42,14 @@ function performanceMessage(pct: number): string {
  * student sees an overview screen first and only moves into question 1 once
  * they click "Start Test" — no extra network call, just a later reveal.
  */
-export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
+export const OlympiadPlayPage: React.FC<Props> = ({ navigate, resumeAttemptId }) => {
   const [session, setSession] = useState<OlympiadAttemptData | null>(null);
   const [error, setError]     = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [phase, setPhase]     = useState<'preview' | 'playing'>('preview');
+  // Resuming a specific paused attempt skips the instructions/preview screen
+  // entirely — the student has already seen it, and clicked Resume, not
+  // Attempt Olympiad, so land them straight back on their question.
+  const [phase, setPhase]     = useState<'preview' | 'playing'>(resumeAttemptId ? 'playing' : 'preview');
 
   const [idx, setIdx]           = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
@@ -55,7 +65,15 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
-    practiceApi.startOlympiad()
+
+    // Resuming always loads that exact attempt via getAttempt — never
+    // startOlympiad, which always creates a brand-new mixed quiz. Attempt
+    // Olympiad and Resume are deliberately separate actions.
+    const load = resumeAttemptId
+      ? practiceApi.getAttempt(resumeAttemptId).then(data => ({ ...data, mode: 'OLYMPIAD' as const, perSubject: 0, distribution: [] }))
+      : practiceApi.startOlympiad();
+
+    load
       .then(data => {
         if (!data.questions?.length) { setError('__empty__'); setLoading(false); return; }
         setSession(data);
@@ -86,7 +104,7 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
         setError(/no question|not available|add your subjects/i.test(msg) ? (msg || '__empty__') : (msg || 'Could not start the Olympiad.'));
         setLoading(false);
       });
-  }, []);
+  }, [resumeAttemptId]);
 
   // ── Debounced progress autosave — persists the current question index and
   //     an in-progress (not-yet-locked) draft selection, so a raw refresh
@@ -124,7 +142,7 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
     onConfirmLeave: handlePause,
   });
 
-  if (loading) return <Centered><div style={{ fontSize: 14, color: 'var(--fg-3)' }}>Building your Olympiad…</div></Centered>;
+  if (loading) return <Centered><div style={{ fontSize: 14, color: 'var(--fg-3)' }}>{resumeAttemptId ? 'Loading your paused Olympiad…' : 'Building your Olympiad…'}</div></Centered>;
 
   if (error) {
     const empty = error === '__empty__';

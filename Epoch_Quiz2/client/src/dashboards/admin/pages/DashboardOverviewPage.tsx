@@ -1,4 +1,4 @@
-import { GraduationCap, ClipboardList, TrendingUp, ArrowUpRight } from 'lucide-react';
+import { GraduationCap, ClipboardList, TrendingUp, ArrowUpRight, Trophy } from 'lucide-react';
 import { Card, PageHeader, StatCard, Badge, Avatar, Button, Skeleton } from '../../shared/ui';
 import { useNavigate } from 'react-router-dom';
 import { useDashboardStats } from '../../../hooks/useDashboard';
@@ -28,9 +28,9 @@ export function DashboardOverviewPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         {loading ? (
-          Array.from({ length: 3 }).map((_, i) => (
+          Array.from({ length: 4 }).map((_, i) => (
             <Card key={i} className="p-5"><Skeleton className="h-20" /></Card>
           ))
         ) : (
@@ -39,6 +39,7 @@ export function DashboardOverviewPage() {
                 Teachers" StatCard (and Users icon import) to bring it back. */}
             <StatCard label="Total Students"      value={stats?.counts.students   ?? 0} icon={GraduationCap} tone="violet"  />
             <StatCard label="Total Assessments"   value={stats?.counts.assessments ?? 0} icon={ClipboardList} tone="emerald" />
+            <StatCard label="Practice/Olympiad Attempts" value={stats?.counts.practiceAttempts ?? 0} icon={Trophy} tone="brand" />
             <StatCard label="Completion Rate"     value={`${stats?.completionRate ?? 0}%`} icon={TrendingUp}  tone="amber"  />
           </>
         )}

@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export function Card({ children, className = '', as: As = 'div' as any, ...rest }: any) {
   return (
@@ -296,6 +296,39 @@ export function Table({ columns, rows, empty }: { columns: { key: string; label:
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/**
+ * Server-side pagination control — Prev/Next + "Page X of Y". For tables
+ * backed by a paginated API (as opposed to the fixed-batch `limit: 100/200`
+ * pattern most admin tables use today), so the client never has to hold more
+ * than one page in memory regardless of how large the underlying table gets.
+ */
+export function Pagination({
+  page, totalPages, onChange, disabled = false,
+}: { page: number; totalPages: number; onChange: (page: number) => void; disabled?: boolean }) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between px-4 py-3 border-t border-line">
+      <span className="text-[12px] text-fg3">Page {page} of {totalPages}</span>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline" size="sm" icon={ChevronLeft}
+          onClick={() => onChange(page - 1)}
+          disabled={disabled || page <= 1}
+        >
+          Prev
+        </Button>
+        <Button
+          variant="outline" size="sm" icon={ChevronRight}
+          onClick={() => onChange(page + 1)}
+          disabled={disabled || page >= totalPages}
+        >
+          Next
+        </Button>
+      </div>
     </div>
   );
 }

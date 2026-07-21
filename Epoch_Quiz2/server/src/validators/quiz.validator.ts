@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { Difficulty } from '../lib/enums';
+import { Difficulty, AttemptStatus, QuizType } from '../lib/enums';
+import { paginationSchema } from '../utils/pagination';
 
 export const startPracticeSchema = z.object({
   subjectExternalId: z.string().min(1, 'Subject is required'),
@@ -52,9 +53,25 @@ export const saveProgressSchema = z.object({
   }).optional(),
 });
 
-export type StartPracticeInput    = z.infer<typeof startPracticeSchema>;
-export type PreviewPracticeInput  = z.infer<typeof previewPracticeSchema>;
-export type StartOlympiadInput    = z.infer<typeof startOlympiadSchema>;
-export type SaveAttemptAnswerInput = z.infer<typeof saveAttemptAnswerSchema>;
-export type SubmitAttemptInput    = z.infer<typeof submitAttemptSchema>;
-export type SaveProgressInput     = z.infer<typeof saveProgressSchema>;
+// Admin-only cross-student report — see QuizService.list. Same construction
+// pattern as submission.validator.ts's listSubmissionsQuerySchema, with a
+// richer filter/sort surface since this table is expected to grow large.
+export const listQuizAttemptsQuerySchema = paginationSchema.extend({
+  status:            z.nativeEnum(AttemptStatus).optional(),
+  quizType:          z.nativeEnum(QuizType).optional(),
+  studentId:         z.string().min(1).optional(),
+  subjectExternalId: z.string().min(1).optional(),
+  // Accepts either a date-only ("2026-01-01") or full ISO datetime string —
+  // parsed with `new Date(...)` in the service, which handles both.
+  dateFrom:          z.string().min(1).optional(),
+  dateTo:            z.string().min(1).optional(),
+  sortBy:            z.enum(['latest', 'score_desc', 'score_asc', 'time_desc', 'time_asc']).default('latest'),
+});
+
+export type StartPracticeInput      = z.infer<typeof startPracticeSchema>;
+export type PreviewPracticeInput    = z.infer<typeof previewPracticeSchema>;
+export type StartOlympiadInput      = z.infer<typeof startOlympiadSchema>;
+export type SaveAttemptAnswerInput  = z.infer<typeof saveAttemptAnswerSchema>;
+export type SubmitAttemptInput      = z.infer<typeof submitAttemptSchema>;
+export type SaveProgressInput       = z.infer<typeof saveProgressSchema>;
+export type ListQuizAttemptsInput   = z.infer<typeof listQuizAttemptsQuerySchema>;

@@ -127,6 +127,11 @@ export default function App() {
       // page, not on the marketing site.
       window.location.href = '/student/results';
       page = null;
+    } else if (parts[1]) {
+      // #/olympiad/:attemptId — resuming a specific paused attempt from
+      // "Resume Paused Quizzes", as opposed to bare #/olympiad (Attempt
+      // Olympiad), which always starts a brand-new mixed quiz.
+      page = <OlympiadPlayPage navigate={navigate} resumeAttemptId={parts[1]} />;
     } else {
       page = <OlympiadPlayPage navigate={navigate} />;
     }
