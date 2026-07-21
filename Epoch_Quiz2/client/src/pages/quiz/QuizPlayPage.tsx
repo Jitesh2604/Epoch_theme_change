@@ -179,6 +179,15 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
               </div>
             </div>
 
+            {overview.resuming && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-brand-soft border border-brand/30 mb-4">
+                <PlayCircle size={14} className="text-brand shrink-0" />
+                <p className="text-[12.5px] text-brand font-medium">
+                  Resuming your paused session — you'll pick up right where you left off.
+                </p>
+              </div>
+            )}
+
             <Card className="p-5 mb-4">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <OverviewRow icon={BookOpen}     label="Subject"            value={overview.subject.name} />
@@ -199,9 +208,14 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
                 <h3 className="font-display font-semibold text-[14px] text-fg1">Timer Information</h3>
               </div>
               <p className="text-[12.5px] text-fg2 leading-relaxed">
-                Once you click <strong className="text-fg1">Start Quiz</strong>, a {minutes}-minute countdown begins immediately.
-                The quiz submits automatically if time runs out, so nothing you've answered is lost. The timer does not run
-                while you're on this page — it only starts after you confirm.
+                {overview.resuming ? (
+                  <>Your countdown was paused when you left and picks up from exactly where it stopped — the time you
+                  spent away doesn't count against you.</>
+                ) : (
+                  <>Once you click <strong className="text-fg1">Start Quiz</strong>, a {minutes}-minute countdown begins immediately.
+                  The quiz submits automatically if time runs out, so nothing you've answered is lost. The timer does not run
+                  while you're on this page — it only starts after you confirm.</>
+                )}
               </p>
             </Card>
 
@@ -227,7 +241,7 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
                 <ul className="space-y-2 text-[12.5px] text-fg2 leading-relaxed list-disc pl-4">
                   <li>Once submitted, an answer is locked — you cannot go back to a previous question.</li>
                   <li>Your progress is saved automatically as you go.</li>
-                  <li>Closing or refreshing the page does not pause the timer.</li>
+                  <li>You can pause anytime and resume later — the timer picks up from where you left off.</li>
                   <li>Wrong answers are not negatively marked.</li>
                 </ul>
               </Card>
@@ -245,7 +259,7 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
                 Back
               </Button>
               <Button className="flex-1" icon={PlayCircle} onClick={startQuiz} disabled={starting}>
-                {starting ? 'Starting…' : 'Start Quiz'}
+                {starting ? 'Starting…' : overview.resuming ? 'Resume Quiz' : 'Start Quiz'}
               </Button>
             </div>
           </div>

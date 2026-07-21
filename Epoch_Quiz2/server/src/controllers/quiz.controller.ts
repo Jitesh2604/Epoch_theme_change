@@ -9,6 +9,7 @@ import type {
   StartOlympiadInput,
   SaveAttemptAnswerInput,
   SubmitAttemptInput,
+  SaveProgressInput,
 } from '../validators/quiz.validator';
 
 const param = (req: Request, key: string): string => req.params[key] as string;
@@ -55,6 +56,16 @@ export const QuizController = {
       param(req, 'id'),
       req.user.id,
       req.body as SaveAttemptAnswerInput,
+    );
+    ApiResponse.ok(res, result);
+  }),
+
+  saveProgress: asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user) throw ApiError.unauthorized();
+    const result = await QuizService.saveProgress(
+      param(req, 'id'),
+      req.user.id,
+      req.body as SaveProgressInput,
     );
     ApiResponse.ok(res, result);
   }),

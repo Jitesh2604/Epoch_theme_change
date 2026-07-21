@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   Clock, ChevronLeft, ChevronRight, AlertTriangle,
-  X, FileText, CornerDownRight, CheckCircle2, XCircle,
+  X, FileText, CornerDownRight, CheckCircle2, XCircle, Pause,
 } from 'lucide-react';
 import { Card, Button, ProgressBar, useToasts } from '../../shared/ui';
 import {
@@ -11,6 +11,7 @@ import {
   type TakeQuestion,
   type DraftSave,
 } from '../../../hooks/useSubmissionApi';
+import { useQuizExitGuard } from '../../../hooks/useQuizExitGuard';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -279,7 +280,6 @@ export function AssessmentTakePage() {
   const [drafts, setDrafts]             = useState<Record<string, DraftAnswer>>({});
   const [submitting, setSubmitting]     = useState(false);
   const [confirmOpen, setConfirmOpen]   = useState(false);
-  const [exitAsk, setExitAsk]           = useState(false);
   const [timedOut, setTimedOut]         = useState(false);
   const [autoSubmitFailed, setAutoSubmitFailed] = useState(false);
   const autoSubmitRef                   = useRef(false);
@@ -302,8 +302,12 @@ export function AssessmentTakePage() {
           });
           return;
         }
-        // Normalise to TakeSubmission shape for the timer / question display
-        const expires = new Date(result.startedAt).getTime() + result.assessment.duration * 60_000;
+        // Normalise to TakeSubmission shape for the timer / question display.
+        // totalPausedSec (already resolved server-side if the attempt was
+        // paused) shifts the deadline forward so paused time doesn't count.
+        const expires = new Date(result.startedAt).getTime()
+          + result.assessment.duration * 60_000
+          + (result.totalPausedSec ?? 0) * 1000;
         const fake: TakeSubmission = {
           id:          result.id,
           status:      result.status,
@@ -312,6 +316,7 @@ export function AssessmentTakePage() {
           remainingSec: Math.max(0, Math.floor((expires - Date.now()) / 1000)),
           totalMarks:  result.totalMarks,
           assessment:  result.assessment,
+          currentQuestionIndex: result.currentQuestionIndex ?? 0,
           questions:   result.questions.map((q) => ({
             order:           q.order,
             questionId:      q.questionId,
@@ -361,6 +366,22 @@ export function AssessmentTakePage() {
       return next;
     });
   }, [submission?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Seed the current question from the server on load (fresh start or
+  //     resume) — runs once per submission, not on every local idx change.
+  useEffect(() => {
+    if (submission?.currentQuestionIndex) setIdx(submission.currentQuestionIndex);
+  }, [submission?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Debounced "which question am I on" ping, so a raw refresh (no
+  //     explicit Pause) still resumes at the right question.
+  useEffect(() => {
+    if (!submissionId || !submission) return;
+    const t = setTimeout(() => {
+      assessmentTakeApi.pause(submissionId, { currentQuestionIndex: idx }).catch(() => {/* non-fatal */});
+    }, 500);
+    return () => clearTimeout(t);
+  }, [idx, submissionId, submission]);
 
   // ── Timer ────────────────────────────────────────────────────────
   const expiresAtMs = useMemo(() => {
@@ -424,6 +445,39 @@ export function AssessmentTakePage() {
     },
     [submissionId],
   );
+
+  // ── Pause: flush any pending debounced answer(s), persist the current
+  //     question + freeze the clock server-side, then leave. Also the save
+  //     routine the exit guard runs on browser Back / refresh-warning /
+  //     in-app nav clicks / the X button — see useQuizExitGuard below.
+  const handlePause = useCallback(async () => {
+    const pendingIds = Object.keys(saveTimers.current);
+    pendingIds.forEach((qid) => clearTimeout(saveTimers.current[qid]));
+    saveTimers.current = {};
+
+    if (submissionId) {
+      await Promise.all(
+        pendingIds.map((qid) => {
+          const d = drafts[qid];
+          if (!d) return Promise.resolve();
+          return assessmentTakeApi.saveAnswer(submissionId, {
+            questionId:      qid,
+            selectedOption:  d.selectedOption  ?? null,
+            selectedOptions: d.selectedOptions ?? [],
+            selectedBoolean: d.selectedBoolean ?? null,
+            textAnswer:      d.textAnswer      ?? null,
+          }).catch(() => {/* non-fatal */});
+        }),
+      );
+      await assessmentTakeApi.pause(submissionId, { currentQuestionIndex: idx, paused: true }).catch(() => {/* non-fatal */});
+    }
+    navigate('/student/assessments');
+  }, [submissionId, drafts, idx, navigate]);
+
+  const { confirmOpen: leaveConfirmOpen, requestLeave, stay, confirmLeaveNow } = useQuizExitGuard({
+    active: !!submission && !submitting,
+    onConfirmLeave: handlePause,
+  });
 
   // ── Submit ────────────────────────────────────────────────────────
   const doSubmit = useCallback(
@@ -534,8 +588,19 @@ export function AssessmentTakePage() {
 
         <TimerChip {...timer} />
 
+        <Button
+          variant="outline"
+          icon={Pause}
+          size="sm"
+          onClick={handlePause}
+          disabled={submitting}
+          className="shrink-0"
+        >
+          Pause
+        </Button>
+
         <button
-          onClick={() => setExitAsk(true)}
+          onClick={requestLeave}
           className="w-8 h-8 grid place-items-center rounded-lg text-fg3 hover:text-fg1 hover:bg-surface1 transition shrink-0"
         >
           <X size={15} />
@@ -699,25 +764,25 @@ export function AssessmentTakePage() {
         </div>
       )}
 
-      {/* ── Exit overlay ────────────────────────────────────────── */}
-      {exitAsk && (
+      {/* ── Exit overlay — shown on the X button, browser Back, refresh
+             warning, and in-app nav clicks alike (see useQuizExitGuard). ── */}
+      {leaveConfirmOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <Card className="p-6 max-w-sm w-full">
             <h3 className="font-display font-semibold text-[17px] text-fg1 mb-2">Leave assessment?</h3>
             <p className="text-[13px] text-fg3 mb-5">
-              The timer keeps running while you're away. Your autosaved answers are preserved — you
-              can resume from the Assessments page.
+              Are you sure you want to leave the quiz? Your progress will be saved, and you can resume it later.
             </p>
             <div className="flex gap-3">
-              <Button variant="ghost" className="flex-1" onClick={() => setExitAsk(false)}>
-                Stay
+              <Button variant="ghost" className="flex-1" onClick={stay}>
+                Continue Quiz
               </Button>
               <Button
                 variant="danger"
                 className="flex-1"
-                onClick={() => navigate('/student/assessments')}
+                onClick={confirmLeaveNow}
               >
-                Leave
+                Leave Quiz
               </Button>
             </div>
           </Card>

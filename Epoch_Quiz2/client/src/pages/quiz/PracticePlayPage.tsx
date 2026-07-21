@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { NavigateFn } from '../../types';
 import {
   CheckCircle2, XCircle, ChevronRight, BookOpen, Clock, X, SkipForward,
-  CornerDownRight,
+  CornerDownRight, Pause,
 } from 'lucide-react';
 import { Card, Button, Badge, ProgressBar, useToasts } from '../../dashboards/shared/ui';
 import {
@@ -11,6 +11,7 @@ import {
   type PracticeQuestion,
   type SaveAnswerFeedback,
 } from '../../hooks/usePracticeQuiz';
+import { useQuizExitGuard } from '../../hooks/useQuizExitGuard';
 
 interface PracticePlayPageProps {
   navigate:  NavigateFn;
@@ -161,7 +162,6 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
   const [saving,     setSaving]     = useState(false);
   const [finishing,  setFinishing]  = useState(false);
   const [textInput,  setTextInput]  = useState('');
-  const [exitAsk,    setExitAsk]    = useState(false);
 
   // Keep elapsedRef in sync so submitAnswer callback can read current elapsed time
   useEffect(() => { elapsedRef.current = elapsed; }, [elapsed]);
@@ -191,18 +191,45 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
         return;
       }
       setAttempt(data);
-      // Restore already-saved selections so a refresh resumes in progress.
-      const restored: Record<string, AnswerState> = {};
+
+      // Restore state so a refresh/resume looks exactly like "never left":
+      // already-submitted questions come back locked with their feedback,
+      // and an in-progress (not-yet-submitted) selection comes back as an
+      // editable draft on whichever question it was on.
+      const restoredAnswers:   Record<string, AnswerState>   = {};
+      const restoredSubmitted: Record<string, boolean>       = {};
+      const restoredFeedbacks: Record<string, FeedbackState> = {};
       for (const s of data.savedAnswers ?? []) {
-        if (s.selectedOption || s.selectedOptions?.length || s.textAnswer) {
-          restored[s.questionId] = {
+        if (s.isSubmitted) {
+          restoredSubmitted[s.questionId] = true;
+          restoredAnswers[s.questionId] = {
             selectedOption:  s.selectedOption ?? undefined,
             selectedOptions: s.selectedOptions?.length ? s.selectedOptions : undefined,
             textAnswer:      s.textAnswer ?? undefined,
           };
+          if (s.feedback) {
+            restoredFeedbacks[s.questionId] = {
+              isCorrect:      s.isCorrect,
+              marksAwarded:   s.marksAwarded,
+              correctAnswer:  s.feedback.correctAnswer,
+              correctOptions: s.feedback.correctOptions,
+              correctBoolean: s.feedback.correctBoolean,
+              explanation:    s.feedback.explanation,
+              options:        s.feedback.options,
+            };
+          }
+        } else if (s.draftSelectedOption || s.draftSelectedOptions?.length || s.draftTextAnswer) {
+          restoredAnswers[s.questionId] = {
+            selectedOption:  s.draftSelectedOption ?? undefined,
+            selectedOptions: s.draftSelectedOptions?.length ? s.draftSelectedOptions : undefined,
+            textAnswer:      s.draftTextAnswer ?? undefined,
+          };
         }
       }
-      if (Object.keys(restored).length) setAnswers(restored);
+      if (Object.keys(restoredAnswers).length)   setAnswers(restoredAnswers);
+      if (Object.keys(restoredSubmitted).length) setSubmitted(restoredSubmitted);
+      if (Object.keys(restoredFeedbacks).length) setFeedbacks(restoredFeedbacks);
+      if (data.currentQuestionIndex) setIdx(data.currentQuestionIndex);
     }).catch(() => setLoadErr('Could not load this quiz. It may have already been submitted.'));
   }, [attemptId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -307,6 +334,55 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
     if (q) setAnswers(prev => ({ ...prev, [q.id]: { textAnswer: v } }));
   };
 
+  // ── Debounced progress autosave — persists the current question index and
+  //     an in-progress (not-yet-submitted) draft, so a raw refresh (no
+  //     explicit Pause) still resumes at the right spot with nothing lost.
+  useEffect(() => {
+    if (!attemptId || !q || submitted[q.id]) return;
+    const current = answers[q.id];
+    const t = setTimeout(() => {
+      practiceApi.saveProgress(attemptId, {
+        currentQuestionIndex: idx,
+        ...(current && {
+          draft: {
+            questionId: q.id,
+            ...(current.selectedOption && { selectedOption: current.selectedOption }),
+            ...(current.selectedOptions?.length && { selectedOptions: current.selectedOptions }),
+            ...(current.textAnswer && { textAnswer: current.textAnswer }),
+          },
+        }),
+      }).catch(() => {/* non-fatal */});
+    }, 500);
+    return () => clearTimeout(t);
+  }, [idx, attemptId, q, answers, submitted]);
+
+  // ── Pause: persist the current draft + question index, freeze the clock
+  //     server-side, then leave. Also the save routine the exit guard runs
+  //     on browser Back / refresh-warning / in-app nav clicks / the X button.
+  const handlePause = useCallback(async () => {
+    if (attemptId) {
+      const current = q && !submitted[q.id] ? answers[q.id] : undefined;
+      await practiceApi.saveProgress(attemptId, {
+        currentQuestionIndex: idx,
+        paused: true,
+        ...(current && q && {
+          draft: {
+            questionId: q.id,
+            ...(current.selectedOption && { selectedOption: current.selectedOption }),
+            ...(current.selectedOptions?.length && { selectedOptions: current.selectedOptions }),
+            ...(current.textAnswer && { textAnswer: current.textAnswer }),
+          },
+        }),
+      }).catch(() => {/* non-fatal */});
+    }
+    navigate('play');
+  }, [attemptId, idx, q, submitted, answers, navigate]);
+
+  const { confirmOpen: leaveConfirmOpen, requestLeave, stay, confirmLeaveNow } = useQuizExitGuard({
+    active: !!attempt && !finishing,
+    onConfirmLeave: handlePause,
+  });
+
   // ── Loading / error states ──────────────────────────────────────
 
   if (loadErr) {
@@ -346,7 +422,7 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
       <div className="max-w-2xl mx-auto">
         {toastNode}
         {/* ── Top bar ─────────────────────────────────────────────── */}
-        <div className="flex items-center gap-3 mb-5">
+        <div className="flex items-center gap-3 mb-5 flex-wrap">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-brand-soft text-brand grid place-items-center shrink-0">
               <BookOpen size={14} />
@@ -372,8 +448,12 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
             {idx + 1} / {questions.length}
           </span>
 
+          <Button variant="outline" icon={Pause} size="sm" onClick={handlePause} className="shrink-0">
+            Pause
+          </Button>
+
           <button
-            onClick={() => setExitAsk(true)}
+            onClick={requestLeave}
             className="w-8 h-8 grid place-items-center rounded-lg text-fg3 hover:text-fg1 hover:bg-surface1 transition"
           >
             <X size={15} />
@@ -562,20 +642,21 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
           )}
         </div>
 
-        {/* ── Exit confirmation overlay ───────────────────────────── */}
-        {exitAsk && (
+        {/* ── Exit confirmation overlay — shown on the X button, browser
+               Back, refresh warning, and in-app nav clicks alike. ───────── */}
+        {leaveConfirmOpen && (
           <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
             <Card className="p-6 max-w-sm w-full">
-              <h3 className="font-display font-semibold text-[17px] text-fg1 mb-2">Exit quiz?</h3>
+              <h3 className="font-display font-semibold text-[17px] text-fg1 mb-2">Leave quiz?</h3>
               <p className="text-[13px] text-fg3 mb-5">
-                Your progress won't be saved if you leave now. You can always start a fresh practice session later.
+                Are you sure you want to leave the quiz? Your progress will be saved, and you can resume it later.
               </p>
               <div className="flex gap-3">
-                <Button variant="ghost" className="flex-1" onClick={() => setExitAsk(false)}>
-                  Keep playing
+                <Button variant="ghost" className="flex-1" onClick={stay}>
+                  Continue Quiz
                 </Button>
-                <Button variant="danger" className="flex-1" onClick={() => navigate('play')}>
-                  Exit
+                <Button variant="danger" className="flex-1" onClick={confirmLeaveNow}>
+                  Leave Quiz
                 </Button>
               </div>
             </Card>

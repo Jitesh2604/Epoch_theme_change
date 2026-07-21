@@ -51,6 +51,8 @@ export interface TakeSubmission {
   assessment:  AssessmentMeta;
   questions:   TakeQuestion[];
   savedAnswers: DraftSave[];
+  /** Last question the student was viewing — restored on resume. */
+  currentQuestionIndex?: number;
 }
 
 /** One question in the post-submission results. */
@@ -93,6 +95,10 @@ export interface SubmissionResult {
   timeTakenSec: number;
   assessment:   AssessmentMeta;
   questions:    ResultQuestion[];
+  /** Only meaningful while status is IN_PROGRESS — used to rebuild the
+   *  countdown deadline and restore the last-viewed question on refresh. */
+  totalPausedSec?:       number;
+  currentQuestionIndex?: number;
 }
 
 // ── API ───────────────────────────────────────────────────────────
@@ -125,4 +131,9 @@ export const assessmentTakeApi = {
   /** Finalize the attempt with all current answers. */
   submit: (submissionId: string, answers: DraftSave[]) =>
     api.post<SubmissionResult>(`/submissions/${submissionId}/submit`, { answers }),
+
+  /** Debounced index-tracking ping (paused omitted) and the explicit Pause
+   *  action (paused: true) share this call. */
+  pause: (submissionId: string, data: { currentQuestionIndex: number; paused?: boolean }) =>
+    api.post<{ ok: true }>(`/submissions/${submissionId}/pause`, data),
 };

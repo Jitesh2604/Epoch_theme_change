@@ -17,6 +17,7 @@ import type {
   SubmitAttemptInput,
   GradeAnswerInput,
   ListSubmissionsQuery,
+  PauseSubmissionInput,
 } from '../validators/submission.validator';
 
 // ── DB types ───────────────────────────────────────────────────
@@ -43,6 +44,7 @@ interface LoadedSubmission {
   id: string; studentId: string; assessmentId: string; status: string;
   score: number; totalMarks: number; timeTakenSec: number | null;
   startedAt: Date; submittedAt: Date | null;
+  totalPausedSec: number; currentQuestionIndex: number;
   aTitle: string; aDescription: string | null; aDuration: number; aPassing: number;
   aCreatedById: string; aNegativeMarking: boolean; aNegativeMarksValue: number;
   subId: string | null; subName: string | null; subSlug: string | null;
@@ -54,6 +56,7 @@ interface LoadedSubmission {
 const submissionSelect = {
   id: true, studentId: true, assessmentId: true, status: true, score: true, totalMarks: true,
   timeTakenSec: true, startedAt: true, submittedAt: true,
+  pausedAt: true, totalPausedSec: true, currentQuestionIndex: true,
   assessment: { select: { title: true, description: true, duration: true, passingMarks: true, createdById: true, subjectExternalId: true, negativeMarking: true, negativeMarksValue: true } },
   student: { select: { name: true, email: true } },
 } satisfies Prisma.SubmissionSelect;
@@ -64,6 +67,7 @@ function mapLoaded(s: Prisma.SubmissionGetPayload<{ select: typeof submissionSel
     id: s.id, studentId: s.studentId, assessmentId: s.assessmentId, status: s.status,
     score: s.score, totalMarks: s.totalMarks, timeTakenSec: s.timeTakenSec,
     startedAt: s.startedAt, submittedAt: s.submittedAt,
+    totalPausedSec: s.totalPausedSec, currentQuestionIndex: s.currentQuestionIndex,
     aTitle: s.assessment.title, aDescription: s.assessment.description, aDuration: s.assessment.duration,
     aPassing: s.assessment.passingMarks, aCreatedById: s.assessment.createdById,
     aNegativeMarking: s.assessment.negativeMarking, aNegativeMarksValue: s.assessment.negativeMarksValue,
@@ -77,6 +81,24 @@ async function loadSubmissionFlat(id: string): Promise<LoadedSubmission | null> 
   if (!s) return null;
   const subjectName = await ContentMeta.subjectName(s.assessment.subjectExternalId);
   return mapLoaded(s, subjectName);
+}
+
+/**
+ * The read-only "view a submission" path (GET /submissions/:id) doubles as
+ * the resume path when the viewer is the owning student re-opening an
+ * IN_PROGRESS-but-paused attempt (e.g. a hard refresh instead of using
+ * Start/Continue). Rolls pausedAt into totalPausedSec in that case only —
+ * teachers/admins viewing a student's paused submission must not
+ * inadvertently restart their clock.
+ */
+async function resumeIfOwnPaused(actor: Actor, s: LoadedSubmission): Promise<LoadedSubmission> {
+  if (actor.role !== Role.STUDENT || actor.id !== s.studentId) return s;
+  if (s.status !== SubmissionStatus.IN_PROGRESS) return s;
+  const paused = await prisma.submission.findUnique({ where: { id: s.id }, select: { pausedAt: true, totalPausedSec: true } });
+  if (!paused?.pausedAt) return s;
+  const totalPausedSec = resolveResume(paused.pausedAt, paused.totalPausedSec);
+  await prisma.submission.update({ where: { id: s.id }, data: { pausedAt: null, totalPausedSec } });
+  return { ...s, totalPausedSec };
 }
 
 const aqQuestionSelect = {
@@ -119,10 +141,27 @@ function getOptionsWithImages(aq: AssessmentQuestion): { text: string; imageUrl:
   return filtered.length ? filtered.map(([text, imageUrl]) => ({ text, imageUrl: imageUrl ?? null })) : null;
 }
 
-function durationLeft(startedAt: Date, durationMin: number) {
-  const expiresAt    = new Date(new Date(startedAt).getTime() + durationMin * 60_000);
+/**
+ * `totalPausedSec` shifts the deadline forward by however long the student
+ * has spent paused so far, so paused time never counts against them. Pause
+ * itself is represented purely by `pausedAt` (no status enum change) —
+ * see the schema comment on Submission.
+ */
+function durationLeft(startedAt: Date, durationMin: number, totalPausedSec = 0) {
+  const expiresAt    = new Date(new Date(startedAt).getTime() + durationMin * 60_000 + totalPausedSec * 1000);
   const remainingSec = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
   return { expiresAt, remainingSec };
+}
+
+/**
+ * Rolls an in-progress pause into `totalPausedSec` and clears `pausedAt` —
+ * the "resume" half of pause/resume. Called whenever a student re-enters an
+ * attempt that was left paused (start(), getAttempt()-equivalent reads).
+ * A no-op (returns totalPausedSec unchanged) when the attempt isn't paused.
+ */
+function resolveResume(pausedAt: Date | null, totalPausedSec: number): number {
+  if (!pausedAt) return totalPausedSec;
+  return totalPausedSec + Math.max(0, Math.floor((Date.now() - pausedAt.getTime()) / 1000));
 }
 
 /**
@@ -187,6 +226,7 @@ async function loadOwnInProgress(actor: Actor, submissionId: string) {
     where: { id: submissionId },
     select: {
       id: true, studentId: true, assessmentId: true, status: true, startedAt: true, totalMarks: true,
+      pausedAt: true, totalPausedSec: true, currentQuestionIndex: true,
       assessment: { select: { duration: true, negativeMarking: true, negativeMarksValue: true } },
     },
   });
@@ -244,6 +284,7 @@ function shapeSubmission(s: LoadedSubmission, aqs: AssessmentQuestion[], answers
   return {
     id: s.id, status: s.status, score, totalMarks: total, percent: pct,
     startedAt: s.startedAt, submittedAt: s.submittedAt, timeTakenSec: s.timeTakenSec,
+    totalPausedSec: s.totalPausedSec, currentQuestionIndex: s.currentQuestionIndex,
     assessment: {
       id: s.assessmentId, title: s.aTitle, description: s.aDescription,
       duration: s.aDuration, passingMarks: s.aPassing,
@@ -349,7 +390,7 @@ export const SubmissionService = {
 
     let submission = await prisma.submission.findUnique({
       where: { assessmentId_studentId: { assessmentId, studentId: actor.id } },
-      select: { id: true, status: true, startedAt: true, totalMarks: true },
+      select: { id: true, status: true, startedAt: true, totalMarks: true, pausedAt: true, totalPausedSec: true, currentQuestionIndex: true },
     });
 
     if (submission && submission.status !== SubmissionStatus.IN_PROGRESS) {
@@ -360,11 +401,20 @@ export const SubmissionService = {
       const totalMarks = aqs.reduce((sum, aq) => sum + (aq.marksOverride ?? aq.marks), 0);
       submission = await prisma.submission.create({
         data: { assessmentId, studentId: actor.id, status: SubmissionStatus.IN_PROGRESS, score: 0, totalMarks, timeTakenSec: 0 },
-        select: { id: true, status: true, startedAt: true, totalMarks: true },
+        select: { id: true, status: true, startedAt: true, totalMarks: true, pausedAt: true, totalPausedSec: true, currentQuestionIndex: true },
+      });
+    } else if (submission.pausedAt) {
+      // Resuming a paused attempt — roll the paused interval into totalPausedSec
+      // and clear pausedAt so the deadline math below no longer freezes.
+      const totalPausedSec = resolveResume(submission.pausedAt, submission.totalPausedSec);
+      submission = await prisma.submission.update({
+        where: { id: submission.id },
+        data: { pausedAt: null, totalPausedSec },
+        select: { id: true, status: true, startedAt: true, totalMarks: true, pausedAt: true, totalPausedSec: true, currentQuestionIndex: true },
       });
     }
 
-    const { expiresAt, remainingSec } = durationLeft(submission.startedAt, assessment.duration);
+    const { expiresAt, remainingSec } = durationLeft(submission.startedAt, assessment.duration, submission.totalPausedSec);
     if (remainingSec === 0) {
       const finalized = await finalizeSubmission(submission.id);
       return { autoSubmitted: true, submission: finalized };
@@ -400,6 +450,7 @@ export const SubmissionService = {
       submission: {
         id: submission.id, status: submission.status, startedAt: submission.startedAt,
         expiresAt, remainingSec, totalMarks: submission.totalMarks,
+        currentQuestionIndex: submission.currentQuestionIndex,
         assessment: {
           id: assessment.id, title: assessment.title, description: assessment.description,
           duration: assessment.duration,
@@ -451,6 +502,24 @@ export const SubmissionService = {
       where:  { submissionId_questionId: { submissionId, questionId: input.questionId } },
       create: { submissionId, questionId: input.questionId, ...fields },
       update: fields,
+    });
+    return { ok: true };
+  },
+
+  /**
+   * Persists the current question index and, when `paused` is set, freezes
+   * the countdown by stamping `pausedAt`. Called both as a lightweight,
+   * debounced "which question am I on" ping (paused omitted) and as the
+   * explicit Pause action (paused: true) — see AssessmentTakePage.
+   */
+  async pause(actor: Actor, submissionId: string, input: PauseSubmissionInput) {
+    await loadOwnInProgress(actor, submissionId);
+    await prisma.submission.update({
+      where: { id: submissionId },
+      data: {
+        currentQuestionIndex: input.currentQuestionIndex,
+        ...(input.paused ? { pausedAt: new Date() } : {}),
+      },
     });
     return { ok: true };
   },
@@ -508,7 +577,7 @@ export const SubmissionService = {
   },
 
   async findById(actor: Actor, id: string) {
-    const s = await loadSubmissionFlat(id);
+    let s = await loadSubmissionFlat(id);
     if (!s) throw ApiError.notFound('Submission not found');
 
     if (!isAdminRole(actor.role)) {
@@ -518,6 +587,8 @@ export const SubmissionService = {
         if (s.studentId !== actor.id) throw ApiError.notFound('Submission not found');
       }
     }
+
+    s = await resumeIfOwnPaused(actor, s);
 
     const aqs     = await loadAssessmentQuestions(s.assessmentId);
     const answers = await loadAnswers(id);

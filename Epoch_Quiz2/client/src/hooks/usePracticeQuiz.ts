@@ -35,6 +35,8 @@ export interface PracticeAttemptData {
   timeLimitSec:  number | null;
   totalMarks:    number;
   startTime:     string;
+  /** Last question the student was viewing — restored on resume. */
+  currentQuestionIndex?: number;
   questions:     PracticeQuestion[];
   /** Present when the attempt is re-fetched (refresh / direct nav) — lets the
    *  play page restore in-progress selections. */
@@ -45,6 +47,17 @@ export interface PracticeAttemptData {
     textAnswer:      string | null;
     isSkipped:       boolean;
     isMarkedReview:  boolean;
+    /** True once this question has been submitted (locked, graded) via
+     *  saveAnswer — distinguishes a locked answer from an in-progress draft. */
+    isSubmitted:          boolean;
+    draftSelectedOption:  string | null;
+    draftSelectedOptions: string[];
+    draftTextAnswer:      string | null;
+    isCorrect:    boolean | null;
+    marksAwarded: number;
+    /** Present only when isSubmitted — lets a resumed session show the same
+     *  feedback panel a fresh submit would, without re-deriving grading. */
+    feedback: SaveAnswerFeedback['feedback'] | null;
   }>;
 }
 
@@ -58,6 +71,9 @@ export interface PracticePreview {
   totalMarks:       number;
   marksPerQuestion: number;
   negativeMarking:  boolean;
+  /** True when the student already has a paused/in-progress attempt on this
+   *  subject — "Start Quiz" will resume it rather than starting fresh. */
+  resuming?: boolean;
 }
 
 export interface SaveAnswerFeedback {
@@ -174,4 +190,21 @@ export const practiceApi = {
 
   getAttempt: (attemptId: string) =>
     api.get<PracticeAttemptData>(`/quizzes/attempts/${attemptId}`),
+
+  /** Debounced continuous autosave (paused omitted) and the explicit Pause
+   *  action (paused: true) share this call. `draft` carries the current
+   *  question's in-progress, not-yet-submitted selection, if any. */
+  saveProgress: (
+    attemptId: string,
+    data: {
+      currentQuestionIndex: number;
+      paused?: boolean;
+      draft?: {
+        questionId:      string;
+        selectedOption?: string;
+        selectedOptions?: string[];
+        textAnswer?:     string;
+      };
+    },
+  ) => api.post<{ ok: true }>(`/quizzes/attempts/${attemptId}/progress`, data),
 };

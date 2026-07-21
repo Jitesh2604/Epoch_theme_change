@@ -9,6 +9,7 @@ import {
   saveAttemptAnswerSchema,
   submitAttemptSchema,
   attemptIdParamsSchema,
+  saveProgressSchema,
 } from '../validators/quiz.validator';
 
 const router = new Router();
@@ -54,6 +55,14 @@ router.post(
   validate(attemptIdParamsSchema, 'params'),
   validate(saveAttemptAnswerSchema),
   QuizController.saveAnswer,
+);
+
+router.post(
+  '/attempts/:id/progress',
+  authenticate,
+  validate(attemptIdParamsSchema, 'params'),
+  validate(saveProgressSchema),
+  QuizController.saveProgress,
 );
 
 router.post(

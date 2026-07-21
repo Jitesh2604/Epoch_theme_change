@@ -12,6 +12,7 @@ import {
   listSubmissionsQuerySchema,
   submissionIdParamsSchema,
   submissionAnswerParamsSchema,
+  pauseSubmissionSchema,
 } from '../validators/submission.validator';
 
 const router = new Router();
@@ -44,6 +45,14 @@ router.post(
   validate(submissionIdParamsSchema, 'params'),
   validate(saveAnswerSchema),
   SubmissionController.saveAnswer,
+);
+
+router.post(
+  '/:id/pause',
+  authorize(Role.STUDENT, ...ADMIN_ROLES),
+  validate(submissionIdParamsSchema, 'params'),
+  validate(pauseSubmissionSchema),
+  SubmissionController.pause,
 );
 
 router.post(

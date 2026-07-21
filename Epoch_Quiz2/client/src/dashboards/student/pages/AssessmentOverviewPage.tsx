@@ -11,7 +11,7 @@ import { assessmentTakeApi, type TakeSubmission, type SubmissionResult } from '.
 
 const GENERIC_INSTRUCTIONS = [
   'Read each question carefully before answering.',
-  'Do not refresh or close this tab once the test has started.',
+  'Use Pause if you need to step away — your progress and remaining time are saved, and you can resume later.',
   'Make sure you have a stable internet connection.',
   'Submit your answers before the timer runs out — the test auto-submits at zero.',
 ];

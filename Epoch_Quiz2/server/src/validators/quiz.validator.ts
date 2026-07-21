@@ -39,8 +39,22 @@ export const attemptIdParamsSchema = z.object({
   id: z.string().min(1),
 });
 
+// Debounced continuous autosave (paused omitted) and the explicit Pause
+// action (paused: true) share this shape — see QuizService.saveProgress.
+export const saveProgressSchema = z.object({
+  currentQuestionIndex: z.number().int().min(0),
+  paused:               z.boolean().optional(),
+  draft: z.object({
+    questionId:      z.string().min(1),
+    selectedOption:  z.string().optional(),
+    selectedOptions: z.array(z.string()).optional(),
+    textAnswer:      z.string().max(2000).optional(),
+  }).optional(),
+});
+
 export type StartPracticeInput    = z.infer<typeof startPracticeSchema>;
 export type PreviewPracticeInput  = z.infer<typeof previewPracticeSchema>;
 export type StartOlympiadInput    = z.infer<typeof startOlympiadSchema>;
 export type SaveAttemptAnswerInput = z.infer<typeof saveAttemptAnswerSchema>;
 export type SubmitAttemptInput    = z.infer<typeof submitAttemptSchema>;
+export type SaveProgressInput     = z.infer<typeof saveProgressSchema>;

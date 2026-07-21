@@ -234,26 +234,26 @@ model Question {
 }
 
 model Assessment {
-  id                 String                      @id @default(cuid())
+  id                 String            @id @default(cuid())
   title              String
-  description        String?                     @db.Text
-  questionSelection  QuestionSelection           @default(MANUAL)
-  totalQuestions     Int                         @default(0)
-  duration           Int                         @default(60)
-  totalMarks         Int                         @default(0)
-  passingMarks       Int                         @default(0)
+  description        String?           @db.Text
+  questionSelection  QuestionSelection @default(MANUAL)
+  totalQuestions     Int               @default(0)
+  duration           Int               @default(60)
+  totalMarks         Int               @default(0)
+  passingMarks       Int               @default(0)
   // Enforced end-to-end: validator (assessment.validator.ts), set on
   // create/update (AssessmentService), and applied during grading
   // (gradeAnswer/wrongAnswerPenalty in submission.service.ts) — a wrong,
   // attempted answer is docked negativeMarksValue marks; skipped questions
   // are never penalized; a submission's total score floors at 0.
-  negativeMarking    Boolean                     @default(false)
-  negativeMarksValue Float                       @default(0)
-  status             AssessmentStatus            @default(DRAFT)
+  negativeMarking    Boolean           @default(false)
+  negativeMarksValue Float             @default(0)
+  status             AssessmentStatus  @default(DRAFT)
   publishedAt        DateTime?
   createdById        String
-  createdAt          DateTime                    @default(now())
-  updatedAt          DateTime                    @updatedAt
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
   classExternalId    String?
   subjectExternalId  String?
 
@@ -265,24 +265,24 @@ model Assessment {
   // teacher UI together, and move a field out of this block in the same
   // change that makes it do something. (Mirrors the equivalent block on
   // the Quiz model.)
-  assessmentType     AssessmentType              @default(CHAPTER_TEST)
-  shuffleQuestions   Boolean                     @default(false)
-  showResultAfter    ShowResultAfter             @default(IMMEDIATELY)
-  showExplanation    Boolean                     @default(true)
-  instructions       String?                     @db.Text
-  language           String?                     @default("English")
-  bannerImageUrl     String?
-  startDatetime      DateTime?
-  endDatetime        DateTime?
+  assessmentType   AssessmentType  @default(CHAPTER_TEST)
+  shuffleQuestions Boolean         @default(false)
+  showResultAfter  ShowResultAfter @default(IMMEDIATELY)
+  showExplanation  Boolean         @default(true)
+  instructions     String?         @db.Text
+  language         String?         @default("English")
+  bannerImageUrl   String?
+  startDatetime    DateTime?
+  endDatetime      DateTime?
   // ─────────────────────────────────────────────────────────────────────
 
-  assignedClasses    AssessmentAssignedClass[]
-  assignedStudents   AssessmentAssignedStudent[]
-  chapters           AssessmentChapter[]
-  questions          AssessmentQuestion[]
-  createdBy          User                        @relation("AssessmentCreatedBy", fields: [createdById], references: [id])
-  questionUploads    QuestionUpload[]
-  submissions        Submission[]
+  assignedClasses  AssessmentAssignedClass[]
+  assignedStudents AssessmentAssignedStudent[]
+  chapters         AssessmentChapter[]
+  questions        AssessmentQuestion[]
+  createdBy        User                        @relation("AssessmentCreatedBy", fields: [createdById], references: [id])
+  questionUploads  QuestionUpload[]
+  submissions      Submission[]
 
   @@index([createdById])
   @@index([status])
@@ -348,21 +348,30 @@ model AssessmentAssignedStudent {
 }
 
 model Submission {
-  id           String           @id @default(cuid())
-  assessmentId String
-  studentId    String
-  status       SubmissionStatus @default(IN_PROGRESS)
+  id                   String           @id @default(cuid())
+  assessmentId         String
+  studentId            String
+  status               SubmissionStatus @default(IN_PROGRESS)
   // Float, not Int: marks can be fractional (AssessmentQuestion.marksOverride
   // is Float, and negative marking can deduct fractional values) — matches
   // QuizAttempt.score, the equivalent field on the Practice/Olympiad side.
-  score        Float            @default(0)
-  totalMarks   Float            @default(0)
-  startedAt    DateTime         @default(now())
-  submittedAt  DateTime?
-  timeTakenSec Int              @default(0)
-  answers      Answer[]
-  assessment   Assessment       @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
-  student      User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  score                Float            @default(0)
+  totalMarks           Float            @default(0)
+  startedAt            DateTime         @default(now())
+  submittedAt          DateTime?
+  timeTakenSec         Int              @default(0)
+  // ── Pause / resume ──────────────────────────────────────────────────
+  // Status stays IN_PROGRESS while paused — pausedAt is the sole "is this
+  // currently paused" signal, so nothing that switches on SubmissionStatus
+  // elsewhere needs to change. totalPausedSec accumulates every past pause
+  // interval and is added to the deadline math in durationLeft() so paused
+  // time never counts against the student's remaining time.
+  currentQuestionIndex Int              @default(0)
+  pausedAt             DateTime?
+  totalPausedSec       Int              @default(0)
+  answers              Answer[]
+  assessment           Assessment       @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student              User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([assessmentId, studentId])
   @@index([studentId])
@@ -393,16 +402,16 @@ model Answer {
 }
 
 model Quiz {
-  id                 String                @id @default(cuid())
-  title              String
-  description        String?               @db.Text
-  quizType           QuizType              @default(PRACTICE)
-  questionSelection  QuestionSelection     @default(MANUAL)
-  totalQuestions     Int                   @default(0)
-  totalMarks         Int                   @default(0)
-  duration           Int                   @default(0)
-  language           String?               @default("English")
-  status             QuizStatus            @default(DRAFT)
+  id                String            @id @default(cuid())
+  title             String
+  description       String?           @db.Text
+  quizType          QuizType          @default(PRACTICE)
+  questionSelection QuestionSelection @default(MANUAL)
+  totalQuestions    Int               @default(0)
+  totalMarks        Int               @default(0)
+  duration          Int               @default(0)
+  language          String?           @default("English")
+  status            QuizStatus        @default(DRAFT)
 
   // ── Reserved for future functionality ──────────────────────────────────
   // Practice/Olympiad quizzes are created lazily (getOrCreatePracticeQuiz /
@@ -518,35 +527,40 @@ model QuizAssignedStudent {
   @@index([studentId], map: "quiz_assigned_students_studentId_fkey")
   @@map("quiz_assigned_students")
 }
+
 // ───────────────────────────────────────────────────────────────────────
 
 model QuizAttempt {
-  id             String          @id @default(cuid())
-  quizId         String
-  studentId      String
-  attemptNumber  Int
-  startTime      DateTime        @default(now())
-  endTime        DateTime?
-  timeTakenSec   Int             @default(0)
+  id                   String          @id @default(cuid())
+  quizId               String
+  studentId            String
+  attemptNumber        Int
+  startTime            DateTime        @default(now())
+  endTime              DateTime?
+  timeTakenSec         Int             @default(0)
   /// Server-assigned time budget for this attempt (Subject Practice: from
   /// PracticeConfig by difficulty). Null for attempt types with no time cap
   /// (e.g. Olympiad, or legacy attempts predating this field).
-  timeLimitSec   Int?
-  score          Float           @default(0)
-  correctAnswers Int             @default(0)
-  wrongAnswers   Int             @default(0)
-  skipped        Int             @default(0)
-  percentage     Float           @default(0)
-  rank           Int?
-  isPassed       Boolean?
-  certificateUrl String?
-  isSubmitted    Boolean         @default(false)
-  status         AttemptStatus   @default(IN_PROGRESS)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  answers        AttemptAnswer[]
-  quiz           Quiz            @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  student        User            @relation("StudentAttempts", fields: [studentId], references: [id], onDelete: Cascade)
+  timeLimitSec         Int?
+  score                Float           @default(0)
+  correctAnswers       Int             @default(0)
+  wrongAnswers         Int             @default(0)
+  skipped              Int             @default(0)
+  percentage           Float           @default(0)
+  rank                 Int?
+  isPassed             Boolean?
+  certificateUrl       String?
+  isSubmitted          Boolean         @default(false)
+  status               AttemptStatus   @default(IN_PROGRESS)
+  // ── Pause / resume — same scheme as Submission (see comment there) ──────
+  currentQuestionIndex Int             @default(0)
+  pausedAt             DateTime?
+  totalPausedSec       Int             @default(0)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  answers              AttemptAnswer[]
+  quiz                 Quiz            @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  student              User            @relation("StudentAttempts", fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([quizId, studentId, attemptNumber])
   @@index([quizId])
@@ -556,28 +570,37 @@ model QuizAttempt {
 }
 
 model AttemptAnswer {
-  id              String      @id @default(cuid())
-  attemptId       String
-  questionId      String
-  selectedOption  String?
-  selectedOptions String      @db.LongText
-  textAnswer      String?     @db.Text
-  isCorrect       Boolean?
-  marksAwarded    Float       @default(0)
-  timeSpentSec    Int?
-  isSkipped       Boolean     @default(false)
-  isMarkedReview  Boolean     @default(false)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  attempt         QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  question        Question    @relation(fields: [questionId], references: [id])
+  id                   String      @id @default(cuid())
+  attemptId            String
+  questionId           String
+  selectedOption       String?
+  selectedOptions      String      @db.LongText
+  textAnswer           String?     @db.Text
+  isCorrect            Boolean?
+  marksAwarded         Float       @default(0)
+  timeSpentSec         Int?
+  isSkipped            Boolean     @default(false)
+  isMarkedReview       Boolean     @default(false)
+  // ── Pause / resume draft ─────────────────────────────────────────────
+  // A question is submitted (locked, graded) exactly once via saveAnswer,
+  // which sets isSubmitted true and clears these draft columns. Until then,
+  // a selection the student made but hasn't locked in yet is persisted here
+  // by the debounced progress-autosave / explicit Pause, so it survives a
+  // refresh or pause/resume without affecting grading.
+  isSubmitted          Boolean     @default(false)
+  draftSelectedOption  String?
+  draftSelectedOptions String?     @db.LongText
+  draftTextAnswer      String?     @db.Text
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  attempt              QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question             Question    @relation(fields: [questionId], references: [id])
 
   @@unique([attemptId, questionId])
   @@index([attemptId])
   @@index([questionId])
   @@map("attempt_answers")
 }
-
 
 // "otpCode" is a 64-char crypto.randomBytes(32) hex token for the
 // password-reset email link, not a guessable numeric code — brute-forcing

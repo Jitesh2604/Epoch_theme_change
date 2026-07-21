@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { NavigateFn } from '../../types';
 import { Icon } from '../../components/ui/Icon';
 import { showToast } from '../../components/ui/Toast';
@@ -8,6 +8,7 @@ import {
   type SaveAnswerFeedback,
   type PracticeResult,
 } from '../../hooks/usePracticeQuiz';
+import { useQuizExitGuard } from '../../hooks/useQuizExitGuard';
 
 interface Props { navigate: NavigateFn; }
 
@@ -56,8 +57,28 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
     startedRef.current = true;
     practiceApi.startOlympiad()
       .then(data => {
-        if (!data.questions?.length) setError('__empty__');
-        else { setSession(data); startMs.current = Date.now(); }
+        if (!data.questions?.length) { setError('__empty__'); setLoading(false); return; }
+        setSession(data);
+        startMs.current = Date.now();
+
+        // Resuming: jump straight to the saved question, and if it was
+        // already submitted (paused while looking at its feedback) restore
+        // the locked/graded view; if it only had a draft selection, restore
+        // that as still-editable.
+        const resumeIdx = data.currentQuestionIndex ?? 0;
+        const currentQ  = data.questions[resumeIdx];
+        const saved     = currentQ ? data.savedAnswers?.find(s => s.questionId === currentQ.id) : undefined;
+        if (saved?.isSubmitted && saved.feedback) {
+          setIdx(resumeIdx);
+          setSelected(saved.selectedOption ?? null);
+          setLocked(true);
+          setFeedback({ ok: true, isCorrect: saved.isCorrect, marksAwarded: saved.marksAwarded, feedback: saved.feedback });
+        } else if (saved?.draftSelectedOption) {
+          setIdx(resumeIdx);
+          setSelected(saved.draftSelectedOption);
+        } else if (resumeIdx > 0) {
+          setIdx(resumeIdx);
+        }
         setLoading(false);
       })
       .catch((e: any) => {
@@ -66,6 +87,42 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
         setLoading(false);
       });
   }, []);
+
+  // ── Debounced progress autosave — persists the current question index and
+  //     an in-progress (not-yet-locked) draft selection, so a raw refresh
+  //     still resumes at the right spot with nothing lost.
+  useEffect(() => {
+    if (!session?.attemptId || locked) return;
+    const curQ = session.questions[idx];
+    if (!curQ) return;
+    const t = setTimeout(() => {
+      practiceApi.saveProgress(session.attemptId, {
+        currentQuestionIndex: idx,
+        ...(selected && { draft: { questionId: curQ.id, selectedOption: selected } }),
+      }).catch(() => {/* non-fatal */});
+    }, 500);
+    return () => clearTimeout(t);
+  }, [idx, selected, locked, session]);
+
+  // ── Pause: persist the current draft + question index, then leave. Also
+  //     the save routine the exit guard runs on browser Back / refresh
+  //     warning / in-app nav clicks / the Quit button.
+  const handlePause = useCallback(async () => {
+    if (session?.attemptId) {
+      const curQ = session.questions[idx];
+      await practiceApi.saveProgress(session.attemptId, {
+        currentQuestionIndex: idx,
+        paused: true,
+        ...(!locked && selected && curQ && { draft: { questionId: curQ.id, selectedOption: selected } }),
+      }).catch(() => {/* non-fatal */});
+    }
+    navigate('play');
+  }, [session, idx, selected, locked, navigate]);
+
+  const { confirmOpen: leaveConfirmOpen, requestLeave, stay, confirmLeaveNow } = useQuizExitGuard({
+    active: phase === 'playing' && !result,
+    onConfirmLeave: handlePause,
+  });
 
   if (loading) return <Centered><div style={{ fontSize: 14, color: 'var(--fg-3)' }}>Building your Olympiad…</div></Centered>;
 
@@ -272,8 +329,11 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
       <div className="quiz-head">
         <div className="container">
           <div className="quiz-head-row">
-            <button className="btn btn-ghost sm" onClick={() => { if (confirm('Leave this Olympiad?')) navigate('play'); }}>
+            <button className="btn btn-ghost sm" onClick={requestLeave}>
               <Icon name="arrowLeft" size={14} /> Quit
+            </button>
+            <button className="btn btn-ghost sm" onClick={handlePause}>
+              <Icon name="pause" size={14} /> Pause
             </button>
             <span className="q-pill"><span className="dot" /> Practice Olympiad</span>
             <span className="q-counter">Question <strong>{idx + 1}</strong> / {questions.length}</span>
@@ -332,6 +392,23 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
           </button>}
         </div>
       </div>
+
+      {/* ── Exit confirmation overlay — shown on the Quit button, browser
+             Back, refresh warning, and in-app nav clicks alike. ───────── */}
+      {leaveConfirmOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border-1)', borderRadius: 16, padding: 24, maxWidth: 380, width: '100%' }}>
+            <h3 style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>Leave Olympiad?</h3>
+            <p style={{ fontSize: 13, color: 'var(--fg-3)', marginBottom: 20, lineHeight: 1.6 }}>
+              Are you sure you want to leave the quiz? Your progress will be saved, and you can resume it later.
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={stay}>Continue Quiz</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={confirmLeaveNow}>Leave Quiz</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

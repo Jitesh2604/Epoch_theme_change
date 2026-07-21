@@ -11,6 +11,7 @@ import type {
   StartOlympiadInput,
   SaveAttemptAnswerInput,
   SubmitAttemptInput,
+  SaveProgressInput,
 } from '../validators/quiz.validator';
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -285,6 +286,30 @@ async function createQuizAttempt(
   }
 }
 
+/**
+ * Rolls an in-progress pause into totalPausedSec — the "resume" half of
+ * pause/resume, mirroring submission.service.ts's resolveResume(). A no-op
+ * when the attempt isn't currently paused.
+ */
+function resolveResumeSec(pausedAt: Date | null, totalPausedSec: number): number {
+  if (!pausedAt) return totalPausedSec;
+  return totalPausedSec + Math.max(0, Math.floor((Date.now() - pausedAt.getTime()) / 1000));
+}
+
+/**
+ * An attempt "reuses" — rather than duplicates — when the student already
+ * has one IN_PROGRESS on this quiz. Practice/Olympiad allow multiple
+ * attempts over time (unlike Assessment's one-per-ever), but only one can
+ * be open at once; starting again while one is open resumes it instead of
+ * creating a new row.
+ */
+function findActiveAttempt(quizId: string, studentId: string) {
+  return prisma.quizAttempt.findFirst({
+    where: { quizId, studentId, status: AttemptStatus.IN_PROGRESS },
+    select: { id: true },
+  });
+}
+
 export const QuizService = {
   /**
    * Subjects with at least one gradable question, scoped to `studentId`'s own
@@ -340,6 +365,30 @@ export const QuizService = {
       throw ApiError.badRequest('This category is an Olympiad mode — use the Olympiad flow, not subject practice.');
     }
 
+    // A student can only have one open attempt per subject — if one exists,
+    // show its real (already-committed) config instead of a hypothetical new
+    // one, so the overview screen doesn't promise a difficulty/timer that
+    // "Start Quiz" won't actually honour.
+    const existingQuiz = await prisma.quiz.findFirst({
+      where: { subjectExternalId: input.subjectExternalId, quizType: QuizType.PRACTICE, questionSelection: 'AUTO_RANDOM' },
+      select: { id: true },
+    });
+    const activeAttempt = existingQuiz ? await findActiveAttempt(existingQuiz.id, studentId) : null;
+    if (activeAttempt) {
+      const answers = await prisma.attemptAnswer.findMany({ where: { attemptId: activeAttempt.id }, select: { question: { select: { marks: true } } } });
+      const attempt  = await prisma.quizAttempt.findUnique({ where: { id: activeAttempt.id }, select: { timeLimitSec: true } });
+      return {
+        subject:          { id: input.subjectExternalId, name: subjectName ?? input.subjectExternalId },
+        difficulty:        input.difficulty,
+        questionCount:     answers.length,
+        timeLimitSec:      attempt?.timeLimitSec ?? 0,
+        totalMarks:        answers.reduce((s, a) => s + a.question.marks, 0),
+        marksPerQuestion:  answers.length ? Math.round((answers.reduce((s, a) => s + a.question.marks, 0) / answers.length) * 100) / 100 : 0,
+        negativeMarking:   false,
+        resuming:          true,
+      };
+    }
+
     const profile = await readStudentProfile(studentId);
     const scopeAnd = classBoardAnd(profile.classExternalId, profile.educationBoard);
 
@@ -378,6 +427,16 @@ export const QuizService = {
       throw ApiError.badRequest('This category is an Olympiad mode — use the Olympiad flow, not subject practice.');
     }
 
+    const quizId = await getOrCreatePracticeQuiz(input.subjectExternalId, subjectName, studentId);
+
+    // Only one open attempt per subject — resume it instead of creating a
+    // second, using the resume/refresh path so pausedAt rolls into
+    // totalPausedSec and currentQuestionIndex/drafts come back correctly.
+    // The difficulty just picked is moot in this case: you can't have two
+    // concurrent attempts on the same subject.
+    const active = await findActiveAttempt(quizId, studentId);
+    if (active) return QuizService.getAttempt(active.id, studentId);
+
     // Scope to the student's class AND board (never other classes/boards).
     const profile = await readStudentProfile(studentId);
     const scopeAnd = classBoardAnd(profile.classExternalId, profile.educationBoard);
@@ -400,7 +459,6 @@ export const QuizService = {
 
     const subject = { id: input.subjectExternalId, name: subjectName ?? input.subjectExternalId, slug: slugify(subjectName ?? input.subjectExternalId), kind: 'SUBJECT' };
     const selected = shuffleArray(allQuestions).slice(0, config.questionCount);
-    const quizId   = await getOrCreatePracticeQuiz(input.subjectExternalId, subjectName, studentId);
 
     const { attemptId, attemptNumber } = await createQuizAttempt(quizId, studentId, timeLimitSec);
 
@@ -445,7 +503,13 @@ export const QuizService = {
       selectedOption, selectedOptions: input.selectedOptions ?? [], textAnswer, isSkipped,
     });
 
-    const fields = { selectedOption, selectedOptions, textAnswer, timeSpentSec, isSkipped, isMarkedReview, isCorrect, marksAwarded };
+    // Submitting locks the question in — isSubmitted flips true and any
+    // in-progress draft (from the pause/progress autosave) is cleared since
+    // the real, graded answer now supersedes it.
+    const fields = {
+      selectedOption, selectedOptions, textAnswer, timeSpentSec, isSkipped, isMarkedReview, isCorrect, marksAwarded,
+      isSubmitted: true, draftSelectedOption: null, draftSelectedOptions: null, draftTextAnswer: null,
+    };
     await prisma.attemptAnswer.upsert({
       where:  { attemptId_questionId: { attemptId, questionId: input.questionId } },
       create: { attemptId, questionId: input.questionId, ...fields },
@@ -462,6 +526,48 @@ export const QuizService = {
         options:        getOptions(question),
       },
     };
+  },
+
+  /**
+   * Debounced continuous autosave (paused omitted) and the explicit Pause
+   * action (paused: true) share this one call — mirrors
+   * SubmissionService.pause(). Never grades or locks a question; that only
+   * happens via saveAnswer.
+   */
+  async saveProgress(attemptId: string, studentId: string, input: SaveProgressInput) {
+    const attempt = await prisma.quizAttempt.findUnique({ where: { id: attemptId }, select: { studentId: true, status: true } });
+    if (!attempt) throw ApiError.notFound('Attempt not found');
+    if (attempt.studentId !== studentId) throw ApiError.forbidden('Not your attempt');
+    if (attempt.status !== AttemptStatus.IN_PROGRESS) throw ApiError.badRequest('Attempt is already finalised');
+
+    await prisma.quizAttempt.update({
+      where: { id: attemptId },
+      data: {
+        currentQuestionIndex: input.currentQuestionIndex,
+        ...(input.paused ? { pausedAt: new Date() } : {}),
+      },
+    });
+
+    if (input.draft) {
+      const existing = await prisma.attemptAnswer.findUnique({
+        where: { attemptId_questionId: { attemptId, questionId: input.draft.questionId } },
+        select: { id: true, isSubmitted: true },
+      });
+      // Only ever draft onto a pre-created stub row for a question that's
+      // actually part of this attempt, and only while it's still unlocked.
+      if (existing && !existing.isSubmitted) {
+        await prisma.attemptAnswer.update({
+          where: { id: existing.id },
+          data: {
+            draftSelectedOption:  input.draft.selectedOption ?? null,
+            draftSelectedOptions: input.draft.selectedOptions ? toJson(input.draft.selectedOptions) : null,
+            draftTextAnswer:      input.draft.textAnswer ?? null,
+          },
+        });
+      }
+    }
+
+    return { ok: true };
   },
 
   async submitAttempt(attemptId: string, studentId: string, input: SubmitAttemptInput) {
@@ -528,6 +634,7 @@ export const QuizService = {
       where: { id: attemptId },
       select: {
         id: true, studentId: true, status: true, startTime: true, attemptNumber: true, quizId: true, timeLimitSec: true,
+        pausedAt: true, totalPausedSec: true, currentQuestionIndex: true,
         quiz: { select: { subjectExternalId: true } },
       },
     });
@@ -535,6 +642,19 @@ export const QuizService = {
     if (attempt.studentId !== studentId) throw ApiError.forbidden('Not your attempt');
 
     if (attempt.status === AttemptStatus.SUBMITTED) return buildResult(attemptId);
+
+    // Re-entering an IN_PROGRESS attempt (refresh, or startPractice/
+    // startOlympiad finding one already open) doubles as "resume": roll any
+    // paused interval into totalPausedSec and clear pausedAt.
+    let totalPausedSec = attempt.totalPausedSec;
+    if (attempt.pausedAt) {
+      totalPausedSec = resolveResumeSec(attempt.pausedAt, attempt.totalPausedSec);
+      await prisma.quizAttempt.update({ where: { id: attemptId }, data: { pausedAt: null, totalPausedSec } });
+    }
+    // Shift the timer anchor forward by the accumulated paused time so the
+    // client's existing useCountdown(startTime, timeLimitSec) formula needs
+    // no changes — it just receives an already-adjusted startTime.
+    const effectiveStartTime = new Date(attempt.startTime.getTime() + totalPausedSec * 1000);
 
     const answers = await prisma.attemptAnswer.findMany({
       where: { attemptId },
@@ -544,7 +664,7 @@ export const QuizService = {
           select: {
             id: true, type: true, prompt: true, marks: true, difficulty: true,
             optionA: true, optionB: true, optionC: true, optionD: true,
-            correctAnswer: true, correctOptions: true, correctBoolean: true,
+            correctAnswer: true, correctOptions: true, correctBoolean: true, explanation: true,
           },
         },
       },
@@ -567,7 +687,8 @@ export const QuizService = {
       timeLimitSec:  attempt.timeLimitSec,
       totalMarks:    answers.reduce((sum, a) => sum + a.question.marks, 0),
       status:        attempt.status,
-      startTime:     attempt.startTime,
+      startTime:     effectiveStartTime,
+      currentQuestionIndex: attempt.currentQuestionIndex,
       questions,
       savedAnswers: answers.map(a => ({
         questionId:      a.questionId,
@@ -576,6 +697,22 @@ export const QuizService = {
         textAnswer:      a.textAnswer,
         isSkipped:       Boolean(a.isSkipped),
         isMarkedReview:  Boolean(a.isMarkedReview),
+        isSubmitted:     Boolean(a.isSubmitted),
+        draftSelectedOption:  a.draftSelectedOption,
+        draftSelectedOptions: parseStrArr(a.draftSelectedOptions ?? '[]'),
+        draftTextAnswer:      a.draftTextAnswer,
+        // Only meaningful once isSubmitted — lets a resumed session show the
+        // exact same feedback panel a fresh submit would, without asking the
+        // client to re-derive grading from raw correct-answer data.
+        isCorrect:      a.isCorrect,
+        marksAwarded:   a.marksAwarded,
+        feedback: Boolean(a.isSubmitted) ? {
+          correctAnswer:  a.question.correctAnswer,
+          correctOptions: parseStrArr(a.question.correctOptions),
+          correctBoolean: a.question.correctBoolean,
+          explanation:    a.question.explanation,
+          options:        getOptions(a.question),
+        } : null,
       })),
     };
   },
@@ -598,6 +735,18 @@ export const QuizService = {
       .sort((a, b) => a.name.localeCompare(b.name));
 
     const perSubject = input.perSubject ?? await getOlympiadPerSubject();
+
+    // Only one open Olympiad attempt at a time — resume it instead of
+    // building a new mixed set (the class-scoped Olympiad quiz row is
+    // shared, so this check is per-student on that one row).
+    const className = await ContentMeta.className(profile.classExternalId);
+    const existingQuizId = await getOrCreateOlympiadQuiz(profile.classExternalId, className, studentId);
+    const active = await findActiveAttempt(existingQuizId, studentId);
+    if (active) {
+      const resumed = await QuizService.getAttempt(active.id, studentId);
+      return { ...resumed, mode: 'OLYMPIAD' as const, perSubject, distribution: [] };
+    }
+
     const scopeAnd = classBoardAnd(profile.classExternalId, profile.educationBoard);
 
     // Balanced pull: up to `perSubject` random questions from each subject,
@@ -620,8 +769,7 @@ export const QuizService = {
     }
 
     const selected = shuffleArray(picked);
-    const className = await ContentMeta.className(profile.classExternalId);
-    const quizId   = await getOrCreateOlympiadQuiz(profile.classExternalId, className, studentId);
+    const quizId   = existingQuizId;
 
     const { attemptId, attemptNumber } = await createQuizAttempt(quizId, studentId);
     await prisma.attemptAnswer.createMany({
