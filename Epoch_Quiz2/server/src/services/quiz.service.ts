@@ -286,10 +286,24 @@ async function createQuizAttempt(
 }
 
 export const QuizService = {
-  async getSubjectsWithQuestions() {
+  /**
+   * Subjects with at least one gradable question, scoped to `studentId`'s own
+   * class/board when given (same rule as `classBoardAnd` — a question counts
+   * if it's the student's class/board or untagged/global). Without this scope
+   * a student could see a subject/difficulty combo here that `previewPractice`
+   * / `startPractice` then rejects with "No questions available", because
+   * those calls apply the class/board scope but this listing didn't.
+   */
+  async getSubjectsWithQuestions(studentId?: string) {
+    const profile = studentId ? await readStudentProfile(studentId) : null;
+    const scopeAnd = profile ? classBoardAnd(profile.classExternalId, profile.educationBoard) : [];
+
     const counts = await prisma.question.groupBy({
       by: ['subjectExternalId', 'difficulty'],
-      where: { status: 'ACTIVE', type: { in: GRADABLE_TYPES }, subjectExternalId: { not: null } },
+      where: {
+        status: 'ACTIVE', type: { in: GRADABLE_TYPES }, subjectExternalId: { not: null },
+        ...(scopeAnd.length && { AND: scopeAnd }),
+      },
       _count: { _all: true },
     });
 

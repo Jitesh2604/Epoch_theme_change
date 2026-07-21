@@ -14,8 +14,8 @@ import type {
 const param = (req: Request, key: string): string => req.params[key] as string;
 
 export const QuizController = {
-  getSubjects: asyncHandler(async (_req, res) => {
-    const subjects = await QuizService.getSubjectsWithQuestions();
+  getSubjects: asyncHandler(async (req: Request, res: Response) => {
+    const subjects = await QuizService.getSubjectsWithQuestions(req.user?.id);
     ApiResponse.ok(res, subjects);
   }),
 

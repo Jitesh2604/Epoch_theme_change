@@ -1,12 +1,12 @@
 import { useEffect } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { GraduationCap, ArrowRight, Sparkles } from 'lucide-react';
-import { getRole, setAuth, pathForRole, type Role } from './shared/auth';
+import { getRole, pathForRole } from './shared/auth';
 
 // Teacher module is temporarily hidden — remove this comment and restore the
 // 'teacher' entry (with its UserCog icon import) below to bring it back.
-const ROLES: { id: Role; label: string; desc: string; icon: any; gradient: string; border: string; iconBg: string; path: string }[] = [
+const ROLES: { id: string; label: string; desc: string; icon: any; gradient: string; border: string; iconBg: string }[] = [
   {
     id: 'student',
     label: 'Student',
@@ -15,12 +15,10 @@ const ROLES: { id: Role; label: string; desc: string; icon: any; gradient: strin
     gradient: 'from-[#F7F2E8] to-transparent dark:from-[rgba(136,144,99,0.15)] dark:to-transparent',
     border: 'border-[rgba(136,144,99,0.25)] dark:border-[rgba(138,144,104,0.25)]',
     iconBg: 'bg-[#F7F2E8] text-[#6A7448] dark:bg-[rgba(138,144,104,0.18)] dark:text-[#8A9068]',
-    path: '/student',
   },
 ];
 
 export function RoleSelectionPage() {
-  const navigate = useNavigate();
   const existing = getRole();
 
   useEffect(() => {
@@ -32,9 +30,14 @@ export function RoleSelectionPage() {
 
   if (existing) return <Navigate to={pathForRole(existing)} replace />;
 
-  const pick = (r: typeof ROLES[number]) => {
-    setAuth({ role: r.id, signedInAt: Date.now() });
-    navigate(r.path);
+  // This page never establishes a session itself — it only routes visitors
+  // who hit a bare dashboard URL (e.g. a stale bookmark) to real
+  // authentication. Dashboard access requires a genuine backend session
+  // (access + refresh token), which only /auth/login and /auth/register
+  // issue; RequireRole trusts the 'epoch-auth' flag, which authStore only
+  // ever sets as a side effect of a real login/register/refresh call.
+  const pick = () => {
+    window.location.href = '/#/signup';
   };
 
   return (
@@ -62,7 +65,7 @@ export function RoleSelectionPage() {
               How will you be using <em className="text-brand not-italic">Epoch Quiz</em> today?
             </h1>
             <p className="text-[15px] text-fg2 max-w-2xl mx-auto">
-              Pick your role to enter the right workspace.
+              Create an account to enter the right workspace.
             </p>
           </motion.div>
 
@@ -70,7 +73,7 @@ export function RoleSelectionPage() {
             {ROLES.map((r, i) => (
               <motion.button
                 key={r.id}
-                onClick={() => pick(r)}
+                onClick={pick}
                 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 + i * 0.08 }}
                 whileHover={{ y: -4 }}
                 className={`group text-left relative overflow-hidden rounded-2xl border ${r.border} bg-surface1 shadow-elev1 p-7 hover:shadow-elev2 transition`}
@@ -83,7 +86,7 @@ export function RoleSelectionPage() {
                   <h3 className="font-display font-semibold text-[22px] text-fg1 mb-2">{r.label}</h3>
                   <p className="text-[13.5px] text-fg2 leading-relaxed mb-6">{r.desc}</p>
                   <div className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand group-hover:gap-2.5 transition-all">
-                    Enter dashboard <ArrowRight size={14} />
+                    Sign up <ArrowRight size={14} />
                   </div>
                 </div>
               </motion.button>
@@ -95,8 +98,10 @@ export function RoleSelectionPage() {
           </div>
 
           <div className="text-center mt-2 text-[12.5px] text-fg3">
-            Want to explore the public quiz site instead?{' '}
-            <button onClick={() => { window.location.href = '/home'; }} className="text-brand font-semibold hover:underline">Go to homepage</button>
+            Already have an account?{' '}
+            <button onClick={() => { window.location.href = '/#/login'; }} className="text-brand font-semibold hover:underline">Log in</button>
+            {' '}or{' '}
+            <button onClick={() => { window.location.href = '/#/home'; }} className="text-brand font-semibold hover:underline">go to the homepage</button>
           </div>
         </div>
       </main>
