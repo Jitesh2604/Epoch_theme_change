@@ -18,13 +18,6 @@ export const submitAttemptSchema = z.object({
   answers: z.array(answerInputSchema).max(1000).optional().default([]),
 });
 
-// Debounced "which question am I on" ping (paused omitted) and the explicit
-// Pause action (paused: true) share this one shape.
-export const pauseSubmissionSchema = z.object({
-  currentQuestionIndex: z.number().int().min(0),
-  paused:               z.boolean().optional(),
-});
-
 export const gradeAnswerSchema = z.object({
   marksAwarded: z.coerce.number().int().min(0).max(100),
   // Optional override; if omitted we derive correctness from marksAwarded > 0.
@@ -51,4 +44,3 @@ export type SaveAnswerInput        = z.infer<typeof saveAnswerSchema>;
 export type SubmitAttemptInput     = z.infer<typeof submitAttemptSchema>;
 export type GradeAnswerInput       = z.infer<typeof gradeAnswerSchema>;
 export type ListSubmissionsQuery   = z.infer<typeof listSubmissionsQuerySchema>;
-export type PauseSubmissionInput   = z.infer<typeof pauseSubmissionSchema>;

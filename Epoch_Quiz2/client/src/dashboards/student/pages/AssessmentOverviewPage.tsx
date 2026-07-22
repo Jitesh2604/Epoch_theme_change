@@ -4,14 +4,31 @@ import {
   Clock, FileText, Target, ListChecks, ArrowLeft, Play, Info, AlertTriangle,
 } from 'lucide-react';
 import { Card, Button, Badge, Skeleton, useToasts } from '../../shared/ui';
+import { StandaloneHeader } from '../../shared/StandaloneHeader';
 import { SessionOverScreen } from '../../shared/SessionOverScreen';
 import { SESSION_END_DATE } from '../../../config/assessmentSession';
 import { useAssessment } from '../../../hooks/useAssessments';
 import { assessmentTakeApi, type TakeSubmission, type SubmissionResult } from '../../../hooks/useSubmissionApi';
 
+/** This page is deliberately a dedicated exam-landing page, not a dashboard
+ *  page — see DashboardApp.tsx: the whole Assessment flow (entry, details,
+ *  exam, result) is a set of standalone top-level routes; there is no
+ *  Student Dashboard. Every return path here shares this same minimal
+ *  full-page shell. */
+function StandalonePage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-bg text-fg1 font-body">
+      <StandaloneHeader />
+      <main className="px-5 md:px-8 lg:px-10 py-6 lg:py-8 max-w-[1480px] w-full mx-auto">
+        {children}
+      </main>
+    </div>
+  );
+}
+
 const GENERIC_INSTRUCTIONS = [
   'Read each question carefully before answering.',
-  'Use Pause if you need to step away — your progress and remaining time are saved, and you can resume later.',
+  'Avoid refreshing or navigating away once the test has started — the timer keeps running in the background even if you do.',
   'Make sure you have a stable internet connection.',
   'Submit your answers before the timer runs out — the test auto-submits at zero.',
 ];
@@ -40,7 +57,9 @@ export function AssessmentOverviewPage() {
   // Blocks direct/bookmarked links into the assessment flow once the
   // session is over — the listing page already stops linking here, but a
   // stale link shouldn't still work.
-  if (Date.now() >= SESSION_END_DATE.getTime()) return <SessionOverScreen />;
+  if (Date.now() >= SESSION_END_DATE.getTime()) {
+    return <StandalonePage><SessionOverScreen /></StandalonePage>;
+  }
 
   const handleStart = async () => {
     if (!assessmentId) return;
@@ -51,12 +70,12 @@ export function AssessmentOverviewPage() {
       if (resp.autoSubmitted) {
         const result = resp.submission as SubmissionResult;
         push({ kind: 'info', title: 'Time already expired', sub: 'Redirecting to your results…' });
-        setTimeout(() => navigate(`/student/assessment-result/${result.id}`, { state: { result } }), 400);
+        setTimeout(() => navigate(`/assessment/result/${result.id}`, { state: { result } }), 400);
         return;
       }
 
       const sub = resp.submission as TakeSubmission;
-      navigate(`/student/take/${sub.id}`, { state: { submission: sub } });
+      navigate(`/assessment/take/${sub.id}`, { state: { submission: sub } });
     } catch (e: any) {
       push({ kind: 'danger', title: 'Cannot start', sub: e.message });
       setStarting(false);
@@ -65,40 +84,49 @@ export function AssessmentOverviewPage() {
 
   if (loading) {
     return (
-      <div className="max-w-2xl mx-auto space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Card className="p-6"><Skeleton className="h-28" /></Card>
-        <Card className="p-6"><Skeleton className="h-40" /></Card>
-      </div>
+      <StandalonePage>
+        <div className="max-w-2xl mx-auto space-y-4">
+          <Skeleton className="h-8 w-48" />
+          <Card className="p-6"><Skeleton className="h-28" /></Card>
+          <Card className="p-6"><Skeleton className="h-40" /></Card>
+        </div>
+      </StandalonePage>
     );
   }
 
   if (error || !assessment) {
     return (
-      <div className="max-w-md mx-auto text-center py-20">
-        <div className="w-14 h-14 mx-auto rounded-2xl bg-surface1 border border-line grid place-items-center text-fg3 mb-4">
-          <AlertTriangle size={22} />
+      <StandalonePage>
+        <div className="max-w-md mx-auto text-center py-20">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-surface1 border border-line grid place-items-center text-fg3 mb-4">
+            <AlertTriangle size={22} />
+          </div>
+          <h2 className="font-display font-semibold text-[18px] text-fg1 mb-1.5">Assessment not found</h2>
+          <p className="text-[13px] text-fg3 mb-5">{error || "This assessment isn't available or isn't assigned to you."}</p>
+          <Button onClick={() => navigate('/assessment')}>Back to Assessments</Button>
         </div>
-        <h2 className="font-display font-semibold text-[18px] text-fg1 mb-1.5">Assessment not found</h2>
-        <p className="text-[13px] text-fg3 mb-5">{error || "This assessment isn't available or isn't assigned to you."}</p>
-        <Button onClick={() => navigate('/student/assessments')}>Back to Assessments</Button>
-      </div>
+      </StandalonePage>
     );
   }
 
   const passPct = assessment.totalMarks > 0 ? Math.round((assessment.passingMarks / assessment.totalMarks) * 100) : 0;
 
   return (
+    <StandalonePage>
     <div className="max-w-2xl mx-auto pb-10">
       {node}
 
-      <button
-        onClick={() => navigate('/student/assessments')}
+      {/* Goes to Home, not /assessment — with a single assessment per
+          session, "back to Assessments" would just redirect straight back
+          to this same page (see AssessmentEntryPage). There is no Student
+          Dashboard to return to. */}
+      <a
+        href="/#/home"
         className="flex items-center gap-1.5 text-[12.5px] text-fg3 hover:text-fg1 transition mb-5"
       >
         <ArrowLeft size={13} />
-        Back to Assessments
-      </button>
+        Home
+      </a>
 
       {/* ── Header ─────────────────────────────────────────────── */}
       <Card className="p-6 mb-4">
@@ -142,14 +170,18 @@ export function AssessmentOverviewPage() {
           <Info size={15} className="text-brand" />
           Instructions
         </h3>
-        <ul className="space-y-2">
-          {GENERIC_INSTRUCTIONS.map((line, i) => (
-            <li key={i} className="flex items-start gap-2.5 text-[13px] text-fg2 leading-relaxed">
-              <span className="w-1.5 h-1.5 rounded-full bg-brand mt-1.5 shrink-0" />
-              {line}
-            </li>
-          ))}
-        </ul>
+        {assessment.instructions ? (
+          <p className="text-[13px] text-fg2 leading-relaxed whitespace-pre-line">{assessment.instructions}</p>
+        ) : (
+          <ul className="space-y-2">
+            {GENERIC_INSTRUCTIONS.map((line, i) => (
+              <li key={i} className="flex items-start gap-2.5 text-[13px] text-fg2 leading-relaxed">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand mt-1.5 shrink-0" />
+                {line}
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       <Button
@@ -162,5 +194,6 @@ export function AssessmentOverviewPage() {
         {starting ? 'Starting…' : 'Start Assessment'}
       </Button>
     </div>
+    </StandalonePage>
   );
 }

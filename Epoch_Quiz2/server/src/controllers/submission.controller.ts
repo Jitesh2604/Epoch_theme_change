@@ -9,7 +9,6 @@ import type {
   SubmitAttemptInput,
   GradeAnswerInput,
   ListSubmissionsQuery,
-  PauseSubmissionInput,
 } from '../validators/submission.validator';
 
 function actorFrom(req: Request): Actor {
@@ -28,11 +27,6 @@ export const SubmissionController = {
   saveAnswer: asyncHandler(async (req: Request, res: Response) => {
     const out = await SubmissionService.saveAnswer(actorFrom(req), p(req, 'id'), req.body as SaveAnswerInput);
     ApiResponse.ok(res, out, 'Answer saved');
-  }),
-
-  pause: asyncHandler(async (req: Request, res: Response) => {
-    const out = await SubmissionService.pause(actorFrom(req), p(req, 'id'), req.body as PauseSubmissionInput);
-    ApiResponse.ok(res, out, 'Progress saved');
   }),
 
   submit: asyncHandler(async (req: Request, res: Response) => {

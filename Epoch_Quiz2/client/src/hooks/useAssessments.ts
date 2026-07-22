@@ -5,6 +5,7 @@ export interface Assessment {
   id: string;
   title: string;
   description: string | null;
+  instructions: string | null;
   duration: number;
   totalMarks: number;
   passingMarks: number;
@@ -16,6 +17,9 @@ export interface Assessment {
   negativeMarksValue: number;
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   publishedAt: string | null;
+  resultsPublished: boolean;
+  resultPublishAt: string | null;
+  resultsVisible: boolean;
   subject: { id: string; name: string; slug: string } | null;
   createdBy: { id: string; name: string; email: string };
   questionCount: number;
@@ -52,19 +56,16 @@ export interface AssessmentAssignments {
 }
 
 export const assessmentApi = {
-  create:    (data: { title: string; description?: string; duration: number; subjectExternalId?: string; classExternalId?: string; passingMarks?: number; negativeMarking?: boolean; negativeMarksValue?: number; assignedClassIds?: string[]; assignedStudentIds?: string[] }) =>
+  create:    (data: { title: string; description?: string; instructions?: string | null; duration: number; subjectExternalId?: string; classExternalId?: string; passingMarks?: number; negativeMarking?: boolean; negativeMarksValue?: number; resultsPublished?: boolean; resultPublishAt?: string | null; assignedClassIds?: string[]; assignedStudentIds?: string[] }) =>
                api.post<Assessment>('/assessments', data),
-  // Backend (PATCH/DELETE /assessments/:id) is fully implemented — including
-  // the "archived assessments can't be edited" and "can't delete an
-  // assessment with submissions" business rules — but there is no "Edit
-  // assessment" or "Delete assessment" UI yet. Keep these wrappers for when
-  // those screens are built; they are not dead code.
-  update:    (id: string, data: Partial<{ title: string; description: string; duration: number; subjectExternalId: string; classExternalId: string; passingMarks: number; negativeMarking: boolean; negativeMarksValue: number }>) =>
+  update:    (id: string, data: Partial<{ title: string; description: string; instructions: string | null; duration: number; subjectExternalId: string; classExternalId: string; passingMarks: number; negativeMarking: boolean; negativeMarksValue: number; resultsPublished: boolean; resultPublishAt: string | null }>) =>
                api.patch<Assessment>(`/assessments/${id}`, data),
   remove:    (id: string) => api.delete(`/assessments/${id}`),
   publish:   (id: string) => api.post<Assessment>(`/assessments/${id}/publish`),
   unpublish: (id: string) => api.post<Assessment>(`/assessments/${id}/unpublish`),
   archive:   (id: string) => api.post<Assessment>(`/assessments/${id}/archive`),
+  publishResults:   (id: string) => api.post<Assessment>(`/assessments/${id}/publish-results`),
+  unpublishResults: (id: string) => api.post<Assessment>(`/assessments/${id}/unpublish-results`),
   // Assignment (replace-set): pass classIds and/or studentIds
   assign:         (id: string, data: { classIds?: string[]; studentIds?: string[] }) =>
                     api.post<AssessmentAssignments>(`/assessments/${id}/assign`, data),

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BookOpen, CheckCircle2, MessageSquareText } from 'lucide-react';
 import { Card, Button, Badge, Modal, useToasts } from './ui';
 import { questionApi } from '../../hooks/useQuestions';
@@ -6,6 +6,12 @@ import type { Question } from '../../hooks/useQuestions';
 import { useClasses } from '../../hooks/useCatalog';
 import { useRealSubjects } from '../../hooks/useSubjects';
 import { EDUCATION_BOARD_OPTIONS } from '../../lib/educationBoards';
+
+/** Default create function — Practice/Olympiad's question bank. Pass
+ *  `createFn={assessmentQuestionApi.create}` to save into the (physically
+ *  separate) Assessment Question Bank instead — same form, different
+ *  destination table, so the two banks stay independent while sharing UI. */
+const defaultCreateFn = (payload: any) => questionApi.create(payload);
 
 type QuestionType = 'MCQ_SINGLE' | 'TRUE_FALSE' | 'DESCRIPTIVE';
 
@@ -27,22 +33,80 @@ interface DraftQuestion {
   educationBoard: string;
 }
 
-interface Props {
+/** Minimal shape this modal needs to prefill an edit — satisfied by both
+ *  Question (Practice) and AssessmentBankQuestion (Assessment), which are
+ *  structurally identical. Only MCQ_SINGLE/TRUE_FALSE/DESCRIPTIVE are
+ *  editable here, matching what the create flow itself supports. */
+export interface EditableQuestion {
+  id: string;
+  type: string;
+  prompt: string;
+  promptImageUrl: string | null;
+  options: string[] | null;
+  optionImageUrls: { A: string | null; B: string | null; C: string | null; D: string | null };
+  correctOption: number | null;
+  correctBoolean: boolean | null;
+  modelAnswer: string | null;
+  explanation: string | null;
+  explanationImageUrl: string | null;
+  marks: number;
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+  subjectExternalId: string | null;
+  classExternalId: string | null;
+  educationBoard: string | null;
+}
+
+function draftFromExisting(q: EditableQuestion): DraftQuestion {
+  const base: DraftQuestion = {
+    type: q.type as QuestionType,
+    marks: q.marks,
+    prompt: q.prompt,
+    promptImageUrl: q.promptImageUrl ?? '',
+    explanation: q.explanation ?? '',
+    explanationImageUrl: q.explanationImageUrl ?? '',
+    difficulty: q.difficulty,
+    subjectId: q.subjectExternalId ?? '',
+    classId: q.classExternalId ?? '',
+    educationBoard: q.educationBoard ?? '',
+  };
+  if (q.type === 'MCQ_SINGLE') {
+    base.options = [0, 1, 2, 3].map(i => q.options?.[i] ?? '');
+    base.optionImageUrls = [q.optionImageUrls.A, q.optionImageUrls.B, q.optionImageUrls.C, q.optionImageUrls.D].map(v => v ?? '');
+    base.correctIndex = q.correctOption ?? 0;
+  }
+  if (q.type === 'TRUE_FALSE') base.correctBool = q.correctBoolean ?? true;
+  if (q.type === 'DESCRIPTIVE') base.answer = q.modelAnswer ?? '';
+  return base;
+}
+
+interface Props<Q> {
   open: boolean;
   onClose: () => void;
-  /** Called after the question is created in the bank (not yet attached to anything). */
-  onCreated: (question: Question) => void;
-  /** Pre-fill the subject (e.g. an assessment's own subject). */
+  /** Called after the question is created/updated in the bank. */
+  onCreated: (question: Q) => void;
+  /** Pre-fill the subject (e.g. an assessment's own subject). Ignored in edit mode. */
   defaultSubjectId?: string;
+  /** Which bank to create into — defaults to the Practice/Olympiad bank
+   *  (questionApi.create). Pass assessmentQuestionApi.create to create into
+   *  the separate Assessment Question Bank instead. */
+  createFn?: (payload: any) => Promise<Q>;
+  /** When set, the modal opens directly into edit mode for this question
+   *  (skips the type picker) and calls updateFn instead of createFn. */
+  editing?: EditableQuestion | null;
+  updateFn?: (id: string, payload: any) => Promise<Q>;
 }
 
 /**
  * Two-step "create a new question" flow: pick a type, then fill in an inline
- * draft editor. Always creates directly in the Question Bank via
- * `questionApi.create` — callers decide what to do next (attach to an
- * assessment, or just refresh a bank listing).
+ * draft editor. Creates directly in a question bank via `createFn` (Practice
+ * by default) — callers decide what to do next (attach to an assessment, or
+ * just refresh a bank listing). Pass `editing` + `updateFn` to reuse the same
+ * draft editor to edit an existing question instead.
  */
-export function CreateQuestionModal({ open, onClose, onCreated, defaultSubjectId }: Props) {
+export function CreateQuestionModal<Q = Question>({
+  open, onClose, onCreated, defaultSubjectId, editing, updateFn,
+  createFn = defaultCreateFn as unknown as (payload: any) => Promise<Q>,
+}: Props<Q>) {
   const [pickType, setPickType] = useState<QuestionType>('MCQ_SINGLE');
   const [draft, setDraft] = useState<DraftQuestion | null>(null);
   const [saving, setSaving] = useState(false);
@@ -50,6 +114,13 @@ export function CreateQuestionModal({ open, onClose, onCreated, defaultSubjectId
 
   const { data: classes } = useClasses();
   const { data: subjects } = useRealSubjects();
+
+  // Edit mode seeds the draft immediately (no type-picker step); create mode
+  // waits for startDraft() to be called from the picker.
+  useEffect(() => {
+    if (open && editing) setDraft(draftFromExisting(editing));
+    if (!open) setDraft(null);
+  }, [open, editing]);
 
   const startDraft = (type: QuestionType) => {
     const base: DraftQuestion = {
@@ -104,9 +175,11 @@ export function CreateQuestionModal({ open, onClose, onCreated, defaultSubjectId
         payload.modelAnswer = draft.answer || undefined;
       }
 
-      const created = await questionApi.create(payload);
+      const saved = editing
+        ? await updateFn!(editing.id, payload)
+        : await createFn(payload);
       setDraft(null);
-      onCreated(created);
+      onCreated(saved);
     } catch (e: any) {
       push({ kind: 'danger', title: 'Failed', sub: e.message });
     } finally {
@@ -118,8 +191,8 @@ export function CreateQuestionModal({ open, onClose, onCreated, defaultSubjectId
     <>
       {node}
 
-      {/* Step 1 — type picker */}
-      <Modal open={open && !draft} onClose={onClose} title="Create a new question" size="sm">
+      {/* Step 1 — type picker (skipped entirely in edit mode) */}
+      <Modal open={open && !draft && !editing} onClose={onClose} title="Create a new question" size="sm">
         <div className="space-y-2">
           {([
             { type: 'MCQ_SINGLE'  as QuestionType, icon: BookOpen,          label: 'Multiple choice', desc: '4 options, single correct answer.' },
@@ -150,7 +223,7 @@ export function CreateQuestionModal({ open, onClose, onCreated, defaultSubjectId
       </Modal>
 
       {/* Step 2 — inline draft editor */}
-      <Modal open={open && !!draft} onClose={discard} title="New question" size="lg">
+      <Modal open={open && !!draft} onClose={discard} title={editing ? 'Edit question' : 'New question'} size="lg">
         {draft && (
           <Card className="p-0 border-none shadow-none">
             <div className="flex items-center gap-2 mb-3">
@@ -301,9 +374,9 @@ export function CreateQuestionModal({ open, onClose, onCreated, defaultSubjectId
                 />
               </div>
               <div className="ml-auto flex gap-2">
-                <Button variant="ghost" size="sm" onClick={discard}>Discard</Button>
+                <Button variant="ghost" size="sm" onClick={discard}>{editing ? 'Cancel' : 'Discard'}</Button>
                 <Button size="sm" icon={CheckCircle2} onClick={saveDraft} disabled={saving}>
-                  {saving ? 'Saving…' : 'Save question'}
+                  {saving ? 'Saving…' : editing ? 'Save changes' : 'Save question'}
                 </Button>
               </div>
             </div>

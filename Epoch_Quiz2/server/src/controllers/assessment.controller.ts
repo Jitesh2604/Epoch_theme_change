@@ -61,6 +61,16 @@ export const AssessmentController = {
     ApiResponse.ok(res, a, 'Assessment archived');
   }),
 
+  publishResults: asyncHandler(async (req: Request, res: Response) => {
+    const a = await AssessmentService.publishResults(actorFrom(req), p(req, 'id'));
+    ApiResponse.ok(res, a, 'Results published');
+  }),
+
+  unpublishResults: asyncHandler(async (req: Request, res: Response) => {
+    const a = await AssessmentService.unpublishResults(actorFrom(req), p(req, 'id'));
+    ApiResponse.ok(res, a, 'Results unpublished');
+  }),
+
   assign: asyncHandler(async (req: Request, res: Response) => {
     const a = await AssessmentService.assign(actorFrom(req), p(req, 'id'), req.body as AssignAssessmentInput);
     ApiResponse.ok(res, a, 'Assessment assignment updated');

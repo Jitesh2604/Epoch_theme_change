@@ -5,10 +5,10 @@ import {
   X, Search, CheckSquare, Square, BookOpen, CheckCircle2,
   Filter, ChevronLeft, ChevronRight,
 } from 'lucide-react';
-import { Button, Badge, Skeleton } from '../../shared/ui';
-import { useQuestions } from '../../../hooks/useQuestions';
-import { useSubjects } from '../../../hooks/useSubjects';
-import type { Question } from '../../../hooks/useQuestions';
+import { Button, Badge, Skeleton } from './ui';
+import { useAssessmentBankQuestions } from '../../hooks/useAssessmentQuestionBank';
+import { useSubjects } from '../../hooks/useSubjects';
+import type { AssessmentBankQuestion as Question } from '../../hooks/useAssessmentQuestionBank';
 
 interface Props {
   open: boolean;
@@ -123,7 +123,7 @@ export function QuestionBankPickerModal({ open, onClose, assessmentId, onAdd }: 
 
   const { data: subjects } = useSubjects();
 
-  const { data, loading, error } = useQuestions({
+  const { data, loading, error } = useAssessmentBankQuestions({
     page,
     limit: 12,
     search:   search  || undefined,
@@ -200,7 +200,7 @@ export function QuestionBankPickerModal({ open, onClose, assessmentId, onAdd }: 
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-line shrink-0">
               <div>
-                <h3 className="font-display font-semibold text-[16px] text-fg1">Browse Question Bank</h3>
+                <h3 className="font-display font-semibold text-[16px] text-fg1">Browse Assessment Question Bank</h3>
                 <p className="text-[12px] text-fg3">Select questions to add to this assessment.</p>
               </div>
               <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg text-fg3 hover:text-fg1 hover:bg-surface1">

@@ -79,8 +79,8 @@ export function ReportsPage() {
       const subj = s.assessment.subject?.name ?? 'Other';
       if (!m[subj]) m[subj] = { attempts: 0, totalPct: 0, passed: 0 };
       m[subj].attempts++;
-      m[subj].totalPct += s.percent;
-      if (s.percent >= 50) m[subj].passed++;
+      m[subj].totalPct += s.percent ?? 0;
+      if ((s.percent ?? 0) >= 50) m[subj].passed++;
     }
     return Object.entries(m)
       .map(([subject, v]) => ({ subject, attempts: v.attempts, avg: Math.round(v.totalPct / v.attempts), passRate: Math.round((v.passed / v.attempts) * 100) }))
@@ -88,7 +88,7 @@ export function ReportsPage() {
   }, [filteredSubs]);
 
   const avgScore = filteredSubs.length
-    ? Math.round(filteredSubs.reduce((s, r) => s + r.percent, 0) / filteredSubs.length)
+    ? Math.round(filteredSubs.reduce((s, r) => s + (r.percent ?? 0), 0) / filteredSubs.length)
     : 0;
   const completionRate = stats?.completionRate ?? 0;
 

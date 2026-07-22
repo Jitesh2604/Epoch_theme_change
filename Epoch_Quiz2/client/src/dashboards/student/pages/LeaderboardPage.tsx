@@ -1,7 +1,19 @@
 import { Trophy, Crown, Medal } from 'lucide-react';
 import { PageHeader, Card, Avatar, Badge, ProgressBar, Skeleton } from '../../shared/ui';
+import { StandaloneHeader } from '../../shared/StandaloneHeader';
 import { useGlobalLeaderboard } from '../../../hooks/useLeaderboard';
 import { loadUser } from '../../../lib/authStore';
+
+function StandalonePage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-bg text-fg1 font-body">
+      <StandaloneHeader subtitle="Leaderboard" />
+      <main className="px-5 md:px-8 lg:px-10 py-6 lg:py-8 max-w-[1480px] w-full mx-auto">
+        {children}
+      </main>
+    </div>
+  );
+}
 
 export function LeaderboardPage() {
   const { data: entries, loading, error } = useGlobalLeaderboard({ limit: 20 });
@@ -11,7 +23,7 @@ export function LeaderboardPage() {
   const rest = entries?.slice(3) ?? [];
 
   return (
-    <>
+    <StandalonePage>
       <PageHeader
         eyebrow="Student · Leaderboard"
         title="Leaderboard"
@@ -86,6 +98,6 @@ export function LeaderboardPage() {
           </Card>
         </>
       )}
-    </>
+    </StandalonePage>
   );
 }

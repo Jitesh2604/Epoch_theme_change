@@ -8,9 +8,6 @@ import type {
   CreateQuestionInput,
   UpdateQuestionInput,
   ListQuestionsQuery,
-  AttachQuestionsInput,
-  UpdateAssessmentQuestionInput,
-  ReorderQuestionsInput,
 } from '../validators/question.validator';
 
 function actorFrom(req: Request): Actor {
@@ -20,6 +17,8 @@ function actorFrom(req: Request): Actor {
 
 const p = (req: Request, key: string): string => req.params[key] as string;
 
+// Practice/Olympiad question bank only — see assessmentQuestion.controller.ts
+// for the physically separate Assessment Question Bank.
 export const QuestionController = {
   create: asyncHandler(async (req: Request, res: Response) => {
     const q = await QuestionService.create(actorFrom(req), req.body as CreateQuestionInput);
@@ -47,39 +46,5 @@ export const QuestionController = {
   remove: asyncHandler(async (req: Request, res: Response) => {
     await QuestionService.remove(actorFrom(req), p(req, 'id'));
     ApiResponse.ok(res, { ok: true }, 'Question deleted');
-  }),
-
-  listForAssessment: asyncHandler(async (req: Request, res: Response) => {
-    const items = await QuestionService.listForAssessment(actorFrom(req), p(req, 'id'));
-    ApiResponse.ok(res, items);
-  }),
-
-  attach: asyncHandler(async (req: Request, res: Response) => {
-    const result = await QuestionService.attach(
-      actorFrom(req),
-      p(req, 'id'),
-      req.body as AttachQuestionsInput,
-    );
-    ApiResponse.ok(res, result, 'Question(s) attached');
-  }),
-
-  detach: asyncHandler(async (req: Request, res: Response) => {
-    await QuestionService.detach(actorFrom(req), p(req, 'id'), p(req, 'questionId'));
-    ApiResponse.ok(res, { ok: true }, 'Question detached');
-  }),
-
-  updateAttachment: asyncHandler(async (req: Request, res: Response) => {
-    const updated = await QuestionService.updateAttachment(
-      actorFrom(req),
-      p(req, 'id'),
-      p(req, 'questionId'),
-      req.body as UpdateAssessmentQuestionInput,
-    );
-    ApiResponse.ok(res, updated, 'Attachment updated');
-  }),
-
-  reorder: asyncHandler(async (req: Request, res: Response) => {
-    await QuestionService.reorder(actorFrom(req), p(req, 'id'), req.body as ReorderQuestionsInput);
-    ApiResponse.ok(res, { ok: true }, 'Order updated');
   }),
 };

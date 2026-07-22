@@ -4,11 +4,23 @@ import {
   Building, MapPin, User, Phone, Clock, GraduationCap,
 } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, StatCard, Avatar, Skeleton, Select } from '../../shared/ui';
+import { StandaloneHeader } from '../../shared/StandaloneHeader';
 import { loadUser } from '../../../lib/authStore';
 import { userApi, useMyProfile } from '../../../hooks/useUsers';
 import { useMyStats } from '../../../hooks/useLeaderboard';
 import { useClasses } from '../../../hooks/useCatalog';
 import { useToasts } from '../../shared/ui';
+
+function StandalonePage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-bg text-fg1 font-body">
+      <StandaloneHeader subtitle="Profile" />
+      <main className="px-5 md:px-8 lg:px-10 py-6 lg:py-8 max-w-[1480px] w-full mx-auto">
+        {children}
+      </main>
+    </div>
+  );
+}
 
 function formatDate(iso?: string | Date | null) {
   if (!iso) return '—';
@@ -72,7 +84,7 @@ export function ProfilePage() {
   const sp           = profile?.studentProfile;
 
   return (
-    <>
+    <StandalonePage>
       {node}
       <PageHeader
         eyebrow="Account"
@@ -198,7 +210,7 @@ export function ProfilePage() {
           </Card>
         </div>
       </div>
-    </>
+    </StandalonePage>
   );
 }
 

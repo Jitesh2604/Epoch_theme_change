@@ -33,6 +33,13 @@ export function signOut() {
   localStorage.removeItem('epoch-refresh-token');
 }
 
+/**
+ * Where a role's "home" area lives within the DashboardApp router tree.
+ * Student has no dashboard home anymore — /assessment (the standalone
+ * Assessment entry point) is the closest analog, and is a real route in
+ * this same tree so same-tree <Navigate> targets stay valid.
+ */
 export function pathForRole(role: Role): string {
+  if (role === 'student') return '/assessment';
   return `/${role}`;
 }

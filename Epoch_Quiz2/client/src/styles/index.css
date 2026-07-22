@@ -201,6 +201,7 @@ select option {
 }
 .dropdown-item:hover { background: var(--surface-2); }
 .dropdown-item.danger { color: var(--danger); }
+.dropdown-item.active { color: var(--brand); font-weight: 600; background: rgba(53, 64, 36, 0.06); }
 
 .menu-btn { display: none; }
 
@@ -834,26 +835,25 @@ main { flex: 1; position: relative; z-index: 1; }
 .lb-name { flex: 1; font-size: 13px; font-weight: 500; color: var(--fg-1); }
 .lb-score { font-family: var(--font-mono); font-size: 13px; color: var(--fg-2); font-weight: 600; }
 
-/* ===== Instructions ===== */
-.instr-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
-@media (max-width: 880px) { .instr-cols { grid-template-columns: 1fr; } }
-.instr-list { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.instr { min-width: 0; }
-.instr > div:last-child { min-width: 0; }
-.instr h4, .instr p { overflow-wrap: anywhere; }
-.instr {
-  display: flex; gap: 16px; padding: 20px 24px;
+/* ===== FAQ ===== */
+.faq-list { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.faq-item {
+  min-width: 0;
   background: var(--surface-1);
   border: 1px solid var(--border-1); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-elev-1);
+  overflow: hidden;
 }
-.instr .i-num {
-  width: 36px; height: 36px; display: grid; place-items: center;
-  font-family: var(--font-body); font-size: 14px; font-weight: 600;
-  background: var(--olive-50); color: var(--brand); border-radius: 8px; flex-shrink: 0;
+.faq-item summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 18px 22px; cursor: pointer; list-style: none;
+  font-family: var(--font-display); font-size: 15px; font-weight: 600; color: var(--fg-1);
 }
-.instr h4 { font-family: var(--font-display); font-size: 16px; font-weight: 600; margin-bottom: 4px; }
-.instr p { font-size: 13.5px; color: var(--fg-2); line-height: 1.60; }
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item .faq-chevron { flex-shrink: 0; color: var(--fg-3); transition: transform var(--dur-base) var(--ease); }
+.faq-item[open] .faq-chevron { transform: rotate(180deg); }
+.faq-item[open] summary { border-bottom: 1px solid var(--border-1); }
+.faq-item p { margin: 0; padding: 16px 22px 20px; font-size: 13.5px; color: var(--fg-2); line-height: 1.60; overflow-wrap: anywhere; }
 
 /* ===== Toast ===== */
 .toast-stack {
@@ -1469,6 +1469,7 @@ main { flex: 1; position: relative; z-index: 1; }
   .assess-pills { display: none; }
   .assess-search-wrap { min-width: unset; }
 }
+/* ============================================================
    Dashboard color corrections — light mode (default)
    Tailwind -300/-400 shades are designed for dark backgrounds.
    Light mode overrides ensure readability. Dark mode restores them.

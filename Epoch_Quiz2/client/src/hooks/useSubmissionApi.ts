@@ -51,8 +51,6 @@ export interface TakeSubmission {
   assessment:  AssessmentMeta;
   questions:   TakeQuestion[];
   savedAnswers: DraftSave[];
-  /** Last question the student was viewing — restored on resume. */
-  currentQuestionIndex?: number;
 }
 
 /** One question in the post-submission results. */
@@ -83,22 +81,23 @@ export interface ResultQuestion {
   marksAwarded?:       number;
 }
 
-/** Returned by POST /submissions/:id/submit  OR  GET /submissions/:id (after submission). */
+/** Returned by POST /submissions/:id/submit  OR  GET /submissions/:id (after submission).
+ *  Before results are published, score/totalMarks/percent/questions are
+ *  withheld entirely by the backend — always branch on resultsVisible first. */
 export interface SubmissionResult {
   id:           string;
   status:       string;
-  score:        number;
-  totalMarks:   number;
-  percent:      number;
+  score?:       number;
+  totalMarks?:  number;
+  percent?:     number;
   startedAt:    string;
   submittedAt:  string | null;
   timeTakenSec: number;
+  resultsPublished: boolean;
+  resultPublishAt:  string | null;
+  resultsVisible:   boolean;
   assessment:   AssessmentMeta;
-  questions:    ResultQuestion[];
-  /** Only meaningful while status is IN_PROGRESS — used to rebuild the
-   *  countdown deadline and restore the last-viewed question on refresh. */
-  totalPausedSec?:       number;
-  currentQuestionIndex?: number;
+  questions?:   ResultQuestion[];
 }
 
 // ── API ───────────────────────────────────────────────────────────
@@ -131,9 +130,4 @@ export const assessmentTakeApi = {
   /** Finalize the attempt with all current answers. */
   submit: (submissionId: string, answers: DraftSave[]) =>
     api.post<SubmissionResult>(`/submissions/${submissionId}/submit`, { answers }),
-
-  /** Debounced index-tracking ping (paused omitted) and the explicit Pause
-   *  action (paused: true) share this call. */
-  pause: (submissionId: string, data: { currentQuestionIndex: number; paused?: boolean }) =>
-    api.post<{ ok: true }>(`/submissions/${submissionId}/pause`, data),
 };

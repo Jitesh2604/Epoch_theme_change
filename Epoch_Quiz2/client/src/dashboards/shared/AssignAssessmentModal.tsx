@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Users, GraduationCap, Search } from 'lucide-react';
-import { Modal, Button, Badge, Skeleton } from '../../shared/ui';
-import { assessmentApi } from '../../../hooks/useAssessments';
-import { useClasses } from '../../../hooks/useCatalog';
-import { useStudents } from '../../../hooks/useUsers';
+import { Modal, Button, Badge, Skeleton } from './ui';
+import { assessmentApi } from '../../hooks/useAssessments';
+import { useClasses } from '../../hooks/useCatalog';
+import { useStudents } from '../../hooks/useUsers';
 
 interface Props {
   assessmentId: string;

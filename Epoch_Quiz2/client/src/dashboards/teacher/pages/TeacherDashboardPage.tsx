@@ -95,8 +95,8 @@ export function TeacherDashboardPage() {
                     <div className="text-[11px] text-fg3 truncate">{s.assessment.title}</div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="font-mono text-[13px] text-fg1">{s.percent}%</div>
-                    <Badge tone={s.percent >= 50 ? 'success' : 'danger'} dot={false}>{s.score}/{s.totalMarks}</Badge>
+                    <div className="font-mono text-[13px] text-fg1">{s.percent ?? 0}%</div>
+                    <Badge tone={(s.percent ?? 0) >= 50 ? 'success' : 'danger'} dot={false}>{s.score}/{s.totalMarks}</Badge>
                   </div>
                 </div>
               ))}

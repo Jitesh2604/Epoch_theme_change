@@ -36,7 +36,7 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
                   <button className="btn btn-primary lg" onClick={() => navigate('play')}>
                     {cur.cta} <Icon name="arrowRight" size={16} />
                   </button>
-                  <button className="btn btn-ghost lg" onClick={() => navigate('instruction')}>{t('home.howItWorks')}</button>
+                  <button className="btn btn-ghost lg" onClick={() => navigate('faq')}>{t('home.howItWorks')}</button>
                 </div>
               </div>
               <div className="hero-visual">
@@ -66,7 +66,7 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
               <p>Pick a subject, pick a difficulty, and start practicing — no teacher required.</p>
               <span className="cat-arrow"><Icon name="arrowUpRight" size={18} /></span>
             </button>
-            <button className="cat-card" onClick={() => { window.location.href = '/student/assessments'; }}>
+            <button className="cat-card" onClick={() => { window.location.href = '/assessment'; }}>
               <div className="cat-ico"><Icon name="fileText" size={20} /></div>
               <h3>Attempt Olympiad</h3>
               <p>Attempt assessments assigned to your class.</p>

@@ -31,7 +31,7 @@ import { toJson } from '../utils/json';
 import { ApiError } from '../utils/ApiError';
 import { isAdminRole } from '../utils/roles';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
-import { recalcTotalMarks } from './question.service';
+import { recalcTotalMarks } from './assessmentQuestion.service';
 import { ContentMeta } from './content.service';
 import type { Actor } from './assessment.service';
 import type { ListUploadsQuery } from '../validators/upload.validator';
@@ -359,28 +359,32 @@ export const ExcelService = {
 
     const createdIds: string[] = [];
     await prisma.$transaction(async (txc) => {
+      // Rows destined for an assessment (target set) go into the physically
+      // separate Assessment Question Bank; everything else (the general
+      // pool, used by Practice/Olympiad) still goes into `questions` exactly
+      // as before — these two tables never mix.
       for (const row of valid) {
         const d = row.data;
-        const created = await txc.question.create({
-          data: {
-            type: d.type, prompt: d.prompt, marks: d.marks, difficulty: d.difficulty,
-            tags: toJson(d.tags), correctOptions: '[]',
-            subjectExternalId: d.subjectId ?? null,
-            optionA: d.optionA ?? null, optionB: d.optionB ?? null, optionC: d.optionC ?? null, optionD: d.optionD ?? null,
-            correctAnswer: d.correctAnswer ?? null,
-            correctBoolean: d.correctBoolean ?? null,
-            modelAnswer: d.modelAnswer ?? null,
-            explanation: d.explanation ?? null,
-            promptImageUrl: d.promptImageUrl ?? null,
-            optionAImageUrl: d.optionAImageUrl ?? null,
-            optionBImageUrl: d.optionBImageUrl ?? null,
-            optionCImageUrl: d.optionCImageUrl ?? null,
-            optionDImageUrl: d.optionDImageUrl ?? null,
-            explanationImageUrl: d.explanationImageUrl ?? null,
-            createdById: actor.id,
-          },
-          select: { id: true },
-        });
+        const data = {
+          type: d.type, prompt: d.prompt, marks: d.marks, difficulty: d.difficulty,
+          tags: toJson(d.tags), correctOptions: '[]',
+          subjectExternalId: d.subjectId ?? null,
+          optionA: d.optionA ?? null, optionB: d.optionB ?? null, optionC: d.optionC ?? null, optionD: d.optionD ?? null,
+          correctAnswer: d.correctAnswer ?? null,
+          correctBoolean: d.correctBoolean ?? null,
+          modelAnswer: d.modelAnswer ?? null,
+          explanation: d.explanation ?? null,
+          promptImageUrl: d.promptImageUrl ?? null,
+          optionAImageUrl: d.optionAImageUrl ?? null,
+          optionBImageUrl: d.optionBImageUrl ?? null,
+          optionCImageUrl: d.optionCImageUrl ?? null,
+          optionDImageUrl: d.optionDImageUrl ?? null,
+          explanationImageUrl: d.explanationImageUrl ?? null,
+          createdById: actor.id,
+        };
+        const created = target
+          ? await txc.assessmentQuestionBank.create({ data, select: { id: true } })
+          : await txc.question.create({ data, select: { id: true } });
         createdIds.push(created.id);
       }
 

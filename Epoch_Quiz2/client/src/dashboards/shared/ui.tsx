@@ -36,10 +36,10 @@ type BtnVariant = 'primary' | 'ghost' | 'soft' | 'danger' | 'outline';
 type BtnSize = 'sm' | 'md' | 'lg';
 
 export function Button({
-  children, onClick, type = 'button', variant = 'primary', size = 'md', className = '', icon: Icon, disabled,
+  children, onClick, type = 'button', variant = 'primary', size = 'md', className = '', icon: Icon, disabled, title,
 }: {
   children?: ReactNode; onClick?: (e: any) => void; type?: 'button' | 'submit'; variant?: BtnVariant; size?: BtnSize;
-  className?: string; icon?: any; disabled?: boolean;
+  className?: string; icon?: any; disabled?: boolean; title?: string;
 }) {
   const sizes: Record<BtnSize, string> = {
     sm: 'h-8 px-3 text-[12px] rounded-lg',
@@ -58,6 +58,7 @@ export function Button({
       type={type}
       onClick={onClick}
       disabled={disabled}
+      title={title}
       className={`inline-flex items-center justify-center gap-2 font-semibold font-body transition active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none ${sizes[size]} ${variants[variant]} ${className}`}
     >
       {Icon && <Icon size={size === 'sm' ? 13 : 15} />}

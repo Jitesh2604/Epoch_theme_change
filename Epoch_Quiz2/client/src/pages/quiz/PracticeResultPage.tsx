@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
+import type { ElementType } from 'react';
 import type { NavigateFn } from '../../types';
 import {
   CheckCircle2, XCircle, MinusCircle, Clock, Trophy, RotateCcw,
-  BookOpen, ChevronDown, ChevronUp,
+  BookOpen, ChevronDown, ChevronUp, Calendar, Hash, ListChecks, PlayCircle, FlagOff,
 } from 'lucide-react';
 import { Card, Button, Badge, ProgressBar } from '../../dashboards/shared/ui';
 import { practiceApi, type PracticeResult, type PracticeResultAnswer } from '../../hooks/usePracticeQuiz';
@@ -26,6 +27,27 @@ function fmtTime(sec: number) {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+function fmtDateTime(iso: string | null) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: 'medium', timeStyle: 'short',
+  });
+}
+
+function DetailRow({ icon: Icon, label, value }: { icon: ElementType; label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-xl border border-line bg-surface1/50">
+      <div className="w-8 h-8 rounded-lg bg-brand-soft text-brand grid place-items-center shrink-0">
+        <Icon size={14} />
+      </div>
+      <div className="min-w-0">
+        <div className="text-[11px] text-fg3">{label}</div>
+        <div className="text-[13px] font-semibold text-fg1 truncate">{value}</div>
+      </div>
+    </div>
+  );
 }
 
 // ── Question review item ──────────────────────────────────────────
@@ -179,6 +201,34 @@ export function PracticeResultPage({ navigate, attemptId }: PracticeResultPagePr
   return (
     <div className="container" style={{ paddingTop: 24, paddingBottom: 40 }}>
       <div className="max-w-2xl mx-auto">
+        {/* ── Attempt header ─────────────────────────────────────── */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-11 h-11 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0">
+            <Trophy size={20} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="font-display font-semibold text-[18px] text-fg1 truncate">{result.quiz.title}</h1>
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              {result.quiz.subject && (
+                <Badge tone="brand" dot={false} className="text-[10px]">{result.quiz.subject.name}</Badge>
+              )}
+              <Badge tone="neutral" dot={false} className="text-[10px]">Attempt #{result.attemptNumber}</Badge>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Attempt details ────────────────────────────────────── */}
+        <Card className="p-5 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <DetailRow icon={Calendar}   label="Date & Time"     value={fmtDateTime(result.startTime)} />
+            <DetailRow icon={PlayCircle} label="Start Time"      value={fmtDateTime(result.startTime)} />
+            <DetailRow icon={FlagOff}    label="End Time"        value={fmtDateTime(result.endTime)} />
+            <DetailRow icon={Hash}       label="Total Questions" value={String(result.questionCount)} />
+            <DetailRow icon={ListChecks} label="Question Type"   value={result.quiz.quizType === 'OLYMPIAD' ? 'Practice Olympiad' : 'Subject Practice'} />
+            <DetailRow icon={Clock}      label="Time Taken"      value={fmtTime(result.timeTakenSec)} />
+          </div>
+        </Card>
+
         {/* ── Score hero ─────────────────────────────────────────── */}
         <Card className="p-6 mb-4 text-center relative overflow-hidden">
           <div className="absolute inset-0 pointer-events-none">

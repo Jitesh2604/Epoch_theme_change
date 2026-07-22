@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Users, ClipboardList, MoreVertical } from 'lucide-react';
+import { Clock, Users, ClipboardList, FilePlus2, UserPlus, Archive, Trash2 } from 'lucide-react';
 import { PageHeader, Card, Button, SearchInput, Select, Badge, EmptyState, Skeleton } from '../../shared/ui';
 import { useAssessments, assessmentApi } from '../../../hooks/useAssessments';
 import { useToasts } from '../../shared/ui';
+import { AssignAssessmentModal } from '../../shared/AssignAssessmentModal';
 
 export function AssessmentsPage() {
   const [q, setQ] = useState('');
@@ -16,22 +17,46 @@ export function AssessmentsPage() {
 
   const navigate = useNavigate();
   const { push, node } = useToasts();
+  const [assignFor, setAssignFor] = useState<{ id: string; title: string } | null>(null);
 
   const rows = data?.items ?? [];
 
   const handleArchive = async (id: string, title: string) => {
+    if (!confirm(`Archive "${title}"? It will no longer be available to students.`)) return;
     await assessmentApi.archive(id);
     push({ kind: 'success', title: 'Archived', sub: `"${title}" has been archived.` });
     refetch();
   };
 
+  const handleDelete = async (id: string, title: string) => {
+    if (!confirm(`Delete "${title}" permanently? This cannot be undone.`)) return;
+    try {
+      await assessmentApi.remove(id);
+      push({ kind: 'success', title: 'Deleted', sub: `"${title}" has been removed.` });
+      refetch();
+    } catch (e: any) {
+      push({ kind: 'danger', title: 'Cannot delete', sub: e.message });
+    }
+  };
+
   return (
     <>
       {node}
+      {assignFor && (
+        <AssignAssessmentModal
+          assessmentId={assignFor.id}
+          title={assignFor.title}
+          open={!!assignFor}
+          onClose={() => setAssignFor(null)}
+          onDone={refetch}
+          push={push}
+        />
+      )}
       <PageHeader
         eyebrow="Content"
         title="Assessment Management"
         subtitle="Every assessment created on your publication, with controls for status, visibility, and performance."
+        actions={<Button icon={FilePlus2} onClick={() => navigate('/admin/create-assessment')}>New assessment</Button>}
       />
 
       <Card className="p-4 mb-5">
@@ -59,7 +84,14 @@ export function AssessmentsPage() {
           {Array.from({ length: 6 }).map((_, i) => <Card key={i} className="p-5"><Skeleton className="h-36" /></Card>)}
         </div>
       ) : rows.length === 0 ? (
-        <Card><EmptyState icon={ClipboardList} title="No assessments match" desc="Try adjusting the search or filters above." /></Card>
+        <Card>
+          <EmptyState
+            icon={ClipboardList}
+            title="No assessments match"
+            desc="Try adjusting the search or filters above."
+            action={<Button icon={FilePlus2} onClick={() => navigate('/admin/create-assessment')}>New assessment</Button>}
+          />
+        </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {rows.map(a => (
@@ -68,18 +100,9 @@ export function AssessmentsPage() {
                 <div className="w-11 h-11 rounded-xl bg-brand-soft text-brand grid place-items-center">
                   <ClipboardList size={18} />
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge tone={a.status === 'PUBLISHED' ? 'success' : a.status === 'DRAFT' ? 'warning' : 'neutral'}>
-                    {a.status.toLowerCase()}
-                  </Badge>
-                  <button
-                    onClick={() => handleArchive(a.id, a.title)}
-                    className="w-8 h-8 rounded-lg grid place-items-center text-fg3 hover:text-fg1 hover:bg-surface1"
-                    title="Archive"
-                  >
-                    <MoreVertical size={15} />
-                  </button>
-                </div>
+                <Badge tone={a.status === 'PUBLISHED' ? 'success' : a.status === 'DRAFT' ? 'warning' : 'neutral'}>
+                  {a.status.toLowerCase()}
+                </Badge>
               </div>
               <h3 className="font-display font-semibold text-[16px] text-fg1 leading-snug group-hover:text-brand transition mb-1">{a.title}</h3>
               <p className="text-[12.5px] text-fg3 leading-relaxed line-clamp-2 mb-3">{a.description ?? 'No description'}</p>
@@ -87,7 +110,7 @@ export function AssessmentsPage() {
                 By <span className="text-fg2">{a.createdBy.name}</span>
                 {a.subject && <> · {a.subject.name}</>}
               </div>
-              <div className="grid grid-cols-3 gap-2 text-center pt-3 border-t border-line mt-auto">
+              <div className="grid grid-cols-3 gap-2 text-center pt-3 border-t border-line mb-4">
                 <div>
                   <div className="font-mono font-semibold text-[14px] text-fg1 flex items-center justify-center gap-1"><ClipboardList size={12} className="text-fg3" />{a.questionCount}</div>
                   <div className="text-[10px] text-fg3 uppercase tracking-wider mt-0.5">questions</div>
@@ -101,17 +124,20 @@ export function AssessmentsPage() {
                   <div className="text-[10px] text-fg3 uppercase tracking-wider mt-0.5">attempts</div>
                 </div>
               </div>
-              {/* A dedicated Preview action (view-only, no management controls)
-                  used to sit next to Manage here, but both navigated to the
-                  exact same page — a confusing duplicate. Removed for now;
-                  re-add it as its own button once there's a real read-only
-                  preview distinct from Manage. Manage is the one true entry
-                  point into this assessment's page — extend that page
-                  (question editing, settings, scheduling, publishing, etc.)
-                  rather than introducing another duplicate route. */}
-              <div className="flex gap-2 mt-4">
-                <Button size="sm" className="w-full"
-                  onClick={() => navigate(`/admin/assessments/${a.id}`)}>Manage</Button>
+
+              <div className="flex flex-wrap gap-2 mt-auto">
+                <Button size="sm" className="flex-1 min-w-[7rem]"
+                  onClick={() => navigate(`/admin/assessments/${a.id}/questions`)}>Manage</Button>
+                {a.status !== 'ARCHIVED' && (
+                  <Button variant="soft" size="sm" icon={UserPlus}
+                    onClick={() => setAssignFor({ id: a.id, title: a.title })}>Assign</Button>
+                )}
+                {a.status !== 'ARCHIVED' && (
+                  <Button variant="ghost" size="sm" icon={Archive}
+                    onClick={() => handleArchive(a.id, a.title)} title="Archive" />
+                )}
+                <Button variant="ghost" size="sm" icon={Trash2}
+                  onClick={() => handleDelete(a.id, a.title)} title="Delete" />
               </div>
             </Card>
           ))}

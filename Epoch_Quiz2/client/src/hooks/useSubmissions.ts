@@ -4,12 +4,17 @@ import { useAsync } from './useApi';
 export interface SubmissionListItem {
   id: string;
   status: 'IN_PROGRESS' | 'SUBMITTED' | 'GRADED';
-  score: number;
+  score: number | null;
   totalMarks: number;
-  percent: number;
+  percent: number | null;
   startedAt: string;
   submittedAt: string | null;
   timeTakenSec: number;
+  // Absent (undefined) on rows returned by /submissions (admin/teacher list),
+  // which is never gated — only /submissions/me populates these.
+  resultsPublished?: boolean;
+  resultPublishAt?: string | null;
+  resultsVisible?: boolean;
   assessment: { id: string; title: string; subject: { id: string; name: string } | null };
   student?: { id: string; name: string; email: string };
 }

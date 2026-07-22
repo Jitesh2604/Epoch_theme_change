@@ -9,24 +9,26 @@ import { ContentService, ContentMeta } from './content.service';
 import { SettingsService } from './settings.service';
 import type { Actor } from './assessment.service';
 import type {
-  CreateQuestionInput,
-  UpdateQuestionInput,
-  ListQuestionsQuery,
-} from '../validators/question.validator';
+  CreateAssessmentQuestionInput,
+  UpdateAssessmentQuestionBankInput,
+  ListAssessmentQuestionsQuery,
+  AttachQuestionsInput,
+  UpdateAssessmentQuestionInput,
+  ReorderQuestionsInput,
+} from '../validators/assessmentQuestion.validator';
 
 // ── Query shape ────────────────────────────────────────────────
 //
-// This is the Practice/Olympiad question bank ONLY — it reads and writes
-// `prisma.question` exclusively. Assessment questions live in a physically
-// separate table (`AssessmentQuestionBank`) with their own CRUD in
-// `assessmentQuestion.service.ts`, so the two modules can never see or
-// touch each other's content.
+// The Assessment Question Bank — a table physically separate from `Question`
+// (Practice/Olympiad's bank). Everything here reads/writes
+// `prisma.assessmentQuestionBank` exclusively; it is structurally impossible
+// for a question created here to ever surface inside Practice/Olympiad.
 
 const questionInclude = {
   createdBy: { select: { id: true, name: true, email: true } },
-} satisfies Prisma.QuestionInclude;
+} satisfies Prisma.AssessmentQuestionBankInclude;
 
-type QuestionWithRel = Prisma.QuestionGetPayload<{ include: typeof questionInclude }>;
+type QuestionWithRel = Prisma.AssessmentQuestionBankGetPayload<{ include: typeof questionInclude }>;
 
 const IDX_TO_LETTER = ['A', 'B', 'C', 'D'] as const;
 
@@ -66,9 +68,6 @@ function toPublic(row: QuestionWithRel, subjectNames?: Map<string, string>) {
     prompt:         row.prompt,
     promptImageUrl: row.promptImageUrl,
     options:        opts.length > 0 ? opts : null,
-    // Per-letter, matching `options`' A/B/C/D order — not filtered/compacted
-    // like `opts` above, so a caller can always address "option B's image"
-    // by letter regardless of which option text fields are empty.
     optionImageUrls: {
       A: row.optionAImageUrl, B: row.optionBImageUrl,
       C: row.optionCImageUrl, D: row.optionDImageUrl,
@@ -103,11 +102,6 @@ function toPublic(row: QuestionWithRel, subjectNames?: Map<string, string>) {
 
 // ── helpers ────────────────────────────────────────────────────
 
-/**
- * Validate a subject EXTERNAL id against the live (cached) Content API. When the
- * API is unconfigured we cannot validate, so we accept the value as-is rather
- * than block question authoring.
- */
 async function ensureSubjectExists(subjectExternalId: string): Promise<void> {
   if (!ContentService.isConfigured()) return;
   if (!(await ContentMeta.subjectExists(subjectExternalId))) {
@@ -115,12 +109,6 @@ async function ensureSubjectExists(subjectExternalId: string): Promise<void> {
   }
 }
 
-/**
- * Validate academic external ids supplied on a question payload against the
- * live catalog. Only the class dimension is validated against the API (books
- * and chapters are per-book lookups the list endpoints don't expose cheaply);
- * they are stored as-is. No local catalog tables exist anymore.
- */
 async function validateAcademicFks(input: { classExternalId?: string | null }): Promise<void> {
   if (input.classExternalId && ContentService.isConfigured()) {
     if (!(await ContentMeta.classExists(input.classExternalId))) {
@@ -130,7 +118,7 @@ async function validateAcademicFks(input: { classExternalId?: string | null }): 
 }
 
 async function loadQuestionOwned(id: string, actor: Actor, mode: 'read' | 'write'): Promise<QuestionWithRel> {
-  const row = await prisma.question.findUnique({ where: { id }, include: questionInclude });
+  const row = await prisma.assessmentQuestionBank.findUnique({ where: { id }, include: questionInclude });
   if (!row) throw ApiError.notFound('Question not found');
   if (isAdminRole(actor.role)) return row;
   if (actor.role === Role.TEACHER && row.createdById === actor.id) return row;
@@ -138,10 +126,31 @@ async function loadQuestionOwned(id: string, actor: Actor, mode: 'read' | 'write
   throw ApiError.forbidden('You do not have access to this question');
 }
 
+async function loadAssessmentForWrite(id: string, actor: Actor) {
+  const a = await prisma.assessment.findUnique({ where: { id }, select: { id: true, status: true, createdById: true } });
+  if (!a) throw ApiError.notFound('Assessment not found');
+  if (isAdminRole(actor.role)) return a;
+  if (actor.role === Role.TEACHER && a.createdById === actor.id) return a;
+  throw ApiError.forbidden('You can only modify assessments you created');
+}
+
+/** Recompute an assessment's total marks from its attached questions. */
+export async function recalcTotalMarks(assessmentId: string, client: Prisma.TransactionClient): Promise<number> {
+  const rows = await client.assessmentQuestion.findMany({
+    where: { assessmentId },
+    select: { marksOverride: true, question: { select: { marks: true } } },
+  });
+  const total = rows.reduce((sum, r) => sum + (r.marksOverride ?? r.question.marks), 0);
+  await client.assessment.update({ where: { id: assessmentId }, data: { totalMarks: Math.round(total) } });
+  return total;
+}
+
 // ── service ───────────────────────────────────────────────────
 
-export const QuestionService = {
-  async create(actor: Actor, input: CreateQuestionInput) {
+export const AssessmentQuestionService = {
+  // ── Bank CRUD (create/list/findById/update/remove) ──────────
+
+  async create(actor: Actor, input: CreateAssessmentQuestionInput) {
     if (actor.role !== Role.TEACHER && !isAdminRole(actor.role)) {
       throw ApiError.forbidden('Only teachers can create questions');
     }
@@ -150,7 +159,7 @@ export const QuestionService = {
 
     const marks = input.marks ?? (Number(await SettingsService.get('assessment.defaultMarks')) || 1);
 
-    const data: Prisma.QuestionUncheckedCreateInput = {
+    const data: Prisma.AssessmentQuestionBankUncheckedCreateInput = {
       type:              input.type,
       prompt:            input.prompt,
       promptImageUrl:    input.promptImageUrl ?? null,
@@ -195,34 +204,33 @@ export const QuestionService = {
       data.modelAnswer = input.modelAnswer ?? null;
     }
 
-    const created = await prisma.question.create({ data, include: questionInclude });
+    const created = await prisma.assessmentQuestionBank.create({ data, include: questionInclude });
     return toPublic(created, await ContentMeta.subjects());
   },
 
-  async list(actor: Actor, query: ListQuestionsQuery) {
+  async list(actor: Actor, query: ListAssessmentQuestionsQuery) {
     const { page, limit, type, difficulty, search, mine } = query;
     const subjectExternalId   = (query as Record<string, unknown>).subjectExternalId  as string | undefined;
     const tag                 = (query as Record<string, unknown>).tag                as string | undefined;
+    const excludeAssessmentId = (query as Record<string, unknown>).excludeAssessmentId as string | undefined;
 
     if (actor.role === Role.STUDENT) throw ApiError.forbidden('Students cannot browse the question bank');
 
-    const where: Prisma.QuestionWhereInput = {
+    const where: Prisma.AssessmentQuestionBankWhereInput = {
       ...(type && { type }),
       ...(difficulty && { difficulty }),
       ...(subjectExternalId && { subjectExternalId }),
       ...(search && { prompt: { contains: search } }),
+      ...(excludeAssessmentId && { assessmentLinks: { none: { assessmentId: excludeAssessmentId } } }),
     };
 
-    // Question Bank is a shared, central repository (per QuestionBankPage's
-    // own subtitle) — teachers and admins both see every question by default,
-    // scoped to just their own via `mine` if requested.
     if (mine) where.createdById = actor.id;
 
     const { skip, take } = pageToSkipTake(page, limit);
 
     let [rows, total] = await Promise.all([
-      prisma.question.findMany({ where, include: questionInclude, orderBy: { createdAt: 'desc' }, skip, take }),
-      prisma.question.count({ where }),
+      prisma.assessmentQuestionBank.findMany({ where, include: questionInclude, orderBy: { createdAt: 'desc' }, skip, take }),
+      prisma.assessmentQuestionBank.count({ where }),
     ]);
 
     if (tag) {
@@ -239,12 +247,12 @@ export const QuestionService = {
     return toPublic(row, await ContentMeta.subjects());
   },
 
-  async update(actor: Actor, id: string, input: UpdateQuestionInput) {
+  async update(actor: Actor, id: string, input: UpdateAssessmentQuestionBankInput) {
     const existing = await loadQuestionOwned(id, actor, 'write');
     if (input.subjectExternalId) await ensureSubjectExists(input.subjectExternalId);
     await validateAcademicFks(input);
 
-    const data: Prisma.QuestionUncheckedUpdateInput = {};
+    const data: Prisma.AssessmentQuestionBankUncheckedUpdateInput = {};
     if (input.prompt            !== undefined) data.prompt = input.prompt;
     if (input.marks             !== undefined) data.marks = input.marks;
     if (input.difficulty        !== undefined) data.difficulty = input.difficulty;
@@ -287,14 +295,176 @@ export const QuestionService = {
       data.modelAnswer = input.modelAnswer;
     }
 
-    await prisma.question.update({ where: { id }, data });
+    await prisma.$transaction(async (txc) => {
+      await txc.assessmentQuestionBank.update({ where: { id }, data });
+      if (input.marks !== undefined && input.marks !== existing.marks) {
+        const affected = await txc.assessmentQuestion.findMany({
+          where: { questionId: id, marksOverride: null },
+          select: { assessmentId: true }, distinct: ['assessmentId'],
+        });
+        for (const a of affected) await recalcTotalMarks(a.assessmentId, txc);
+      }
+    });
 
-    const updated = await prisma.question.findUnique({ where: { id }, include: questionInclude });
+    const updated = await prisma.assessmentQuestionBank.findUnique({ where: { id }, include: questionInclude });
     return toPublic(updated!, await ContentMeta.subjects());
   },
 
   async remove(actor: Actor, id: string) {
     await loadQuestionOwned(id, actor, 'write');
-    await prisma.question.delete({ where: { id } });
+
+    const answerCount = await prisma.answer.count({ where: { questionId: id } });
+    if (answerCount > 0) {
+      throw ApiError.conflict('Cannot delete a question that has been answered in a submission; remove it from assessments instead');
+    }
+
+    const affected = await prisma.assessmentQuestion.findMany({
+      where: { questionId: id }, select: { assessmentId: true }, distinct: ['assessmentId'],
+    });
+
+    await prisma.$transaction(async (txc) => {
+      await txc.assessmentQuestionBank.delete({ where: { id } });
+      for (const a of affected) await recalcTotalMarks(a.assessmentId, txc);
+    });
+  },
+
+  // ── Assessment ↔ Question ─────────────────────────────────
+
+  async listForAssessment(actor: Actor, assessmentId: string) {
+    await loadAssessmentForWrite(assessmentId, actor);
+
+    const rows = await prisma.assessmentQuestion.findMany({
+      where: { assessmentId },
+      orderBy: { order: 'asc' },
+      include: { question: { include: questionInclude } },
+    });
+
+    const subjectNames = await ContentMeta.subjects();
+    return rows.map((r) => ({
+      order:                r.order,
+      assessmentQuestionId: r.id,
+      marksOverride:        r.marksOverride,
+      effectiveMarks:       r.marksOverride ?? r.question.marks,
+      negMarksOverride:     r.negMarksOverride,
+      question:             toPublic(r.question, subjectNames),
+    }));
+  },
+
+  async attach(actor: Actor, assessmentId: string, input: AttachQuestionsInput) {
+    const a = await loadAssessmentForWrite(assessmentId, actor);
+    if (a.status === 'ARCHIVED') throw ApiError.badRequest('Archived assessments cannot be modified');
+
+    const items =
+      'questionIds' in input
+        ? input.questionIds.map((qid: string) => ({ questionId: qid, marksOverride: null as number | null, negMarksOverride: null as number | null }))
+        : [{
+            questionId: input.questionId,
+            marksOverride: (input as { marks?: number }).marks ?? null,
+            negMarksOverride: (input as { negMarks?: number }).negMarks ?? null,
+          }];
+
+    const qIds = items.map((i) => i.questionId);
+    const existing = await prisma.assessmentQuestionBank.findMany({ where: { id: { in: qIds } }, select: { id: true } });
+    const foundIds = new Set(existing.map((r) => r.id));
+    const missing = items.find((i) => !foundIds.has(i.questionId));
+    if (missing) throw ApiError.badRequest(`Question not found: ${missing.questionId}`);
+
+    const already = await prisma.assessmentQuestion.findMany({
+      where: { assessmentId, questionId: { in: qIds } }, select: { questionId: true },
+    });
+    const alreadySet = new Set(already.map((r) => r.questionId));
+    const toAttach = items.filter((i) => !alreadySet.has(i.questionId));
+
+    let attached = 0;
+    await prisma.$transaction(async (txc) => {
+      const maxRow = await txc.assessmentQuestion.aggregate({ where: { assessmentId }, _max: { order: true } });
+      let nextOrder = (maxRow._max.order ?? 0) + 1;
+
+      for (const it of toAttach) {
+        await txc.assessmentQuestion.create({
+          data: { assessmentId, questionId: it.questionId, order: nextOrder++, marksOverride: it.marksOverride, negMarksOverride: it.negMarksOverride },
+        });
+        attached++;
+      }
+      if (attached > 0) await recalcTotalMarks(assessmentId, txc);
+    });
+
+    return { attached, skipped: alreadySet.size };
+  },
+
+  async detach(actor: Actor, assessmentId: string, questionId: string) {
+    const a = await loadAssessmentForWrite(assessmentId, actor);
+    if (a.status === 'ARCHIVED') throw ApiError.badRequest('Archived assessments cannot be modified');
+
+    const row = await prisma.assessmentQuestion.findUnique({
+      where: { assessmentId_questionId: { assessmentId, questionId } }, select: { id: true },
+    });
+    if (!row) throw ApiError.notFound('Question is not attached to this assessment');
+
+    await prisma.$transaction(async (txc) => {
+      await txc.assessmentQuestion.delete({ where: { id: row.id } });
+      const remaining = await txc.assessmentQuestion.findMany({
+        where: { assessmentId }, orderBy: { order: 'asc' }, select: { id: true },
+      });
+      for (let i = 0; i < remaining.length; i++) {
+        await txc.assessmentQuestion.update({ where: { id: remaining[i].id }, data: { order: i + 1 } });
+      }
+      await recalcTotalMarks(assessmentId, txc);
+    });
+  },
+
+  async updateAttachment(actor: Actor, assessmentId: string, questionId: string, input: UpdateAssessmentQuestionInput) {
+    const a = await loadAssessmentForWrite(assessmentId, actor);
+    if (a.status === 'ARCHIVED') throw ApiError.badRequest('Archived assessments cannot be modified');
+
+    const row = await prisma.assessmentQuestion.findUnique({
+      where: { assessmentId_questionId: { assessmentId, questionId } }, select: { id: true },
+    });
+    if (!row) throw ApiError.notFound('Question is not attached to this assessment');
+
+    await prisma.$transaction(async (txc) => {
+      const data: Prisma.AssessmentQuestionUncheckedUpdateInput = {
+        ...(input.marks !== undefined && { marksOverride: input.marks }),
+        ...(input.negMarks !== undefined && { negMarksOverride: input.negMarks }),
+        ...(input.order !== undefined && { order: input.order }),
+      };
+      if (Object.keys(data).length) await txc.assessmentQuestion.update({ where: { id: row.id }, data });
+      if (input.marks !== undefined) await recalcTotalMarks(assessmentId, txc);
+    });
+
+    return prisma.assessmentQuestion.findUnique({ where: { id: row.id } });
+  },
+
+  async reorder(actor: Actor, assessmentId: string, input: ReorderQuestionsInput) {
+    const a = await loadAssessmentForWrite(assessmentId, actor);
+    if (a.status === 'ARCHIVED') throw ApiError.badRequest('Archived assessments cannot be modified');
+
+    const orders = new Set<number>();
+    for (const o of input.order) {
+      if (orders.has(o.order)) throw ApiError.badRequest(`Duplicate order: ${o.order}`);
+      orders.add(o.order);
+    }
+
+    const current = await prisma.assessmentQuestion.findMany({
+      where: { assessmentId }, select: { id: true, questionId: true },
+    });
+    const byQid = new Map(current.map((r) => [r.questionId, r.id]));
+
+    for (const item of input.order) {
+      if (!byQid.has(item.questionId)) throw ApiError.badRequest(`Question not attached: ${item.questionId}`);
+    }
+    if (input.order.length !== current.length) {
+      throw ApiError.badRequest('Reorder payload must include every attached question');
+    }
+
+    await prisma.$transaction(async (txc) => {
+      const BASE = current.length + 10_000;
+      for (let i = 0; i < current.length; i++) {
+        await txc.assessmentQuestion.update({ where: { id: current[i].id }, data: { order: BASE + i } });
+      }
+      for (const item of input.order) {
+        await txc.assessmentQuestion.update({ where: { id: byQid.get(item.questionId)! }, data: { order: item.order } });
+      }
+    });
   },
 };

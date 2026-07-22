@@ -114,6 +114,16 @@ export interface PracticeResultAnswer {
 
 export interface PracticeResult {
   attemptId:      string;
+  attemptNumber:  number;
+  quiz: {
+    id:       string;
+    title:    string;
+    quizType: string | null;
+    subject:  { id: string; name: string } | null;
+  };
+  startTime:      string;
+  endTime:        string | null;
+  questionCount:  number;
   score:          number;
   totalMarks:     number;
   percent:        number;
@@ -151,6 +161,7 @@ export interface OlympiadAttemptSummary {
   startTime:      string;
   endTime:        string | null;
   quizTitle:      string;
+  quizType:       'PRACTICE' | 'OLYMPIAD' | 'CHAPTER_TEST' | 'MOCK_TEST' | 'LIVE_QUIZ' | 'ASSIGNMENT' | null;
   questionCount:  number;
 }
 

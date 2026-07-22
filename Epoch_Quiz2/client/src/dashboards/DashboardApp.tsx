@@ -1,10 +1,16 @@
 import { useEffect, useState, Component, type ReactNode, type ErrorInfo } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { RoleSelectionPage } from './RoleSelectionPage';
 import { AdminDashboard } from './admin/AdminDashboard';
 // Teacher module is temporarily hidden — see DashboardApp route below.
 // import { TeacherDashboard } from './teacher/TeacherDashboard';
-import { StudentDashboard } from './student/StudentDashboard';
+import { AssessmentEntryPage } from './student/pages/AssessmentEntryPage';
+import { AssessmentOverviewPage } from './student/pages/AssessmentOverviewPage';
+import { AssessmentTakePage } from './student/pages/AssessmentTakePage';
+import { AssessmentResultPage } from './student/pages/AssessmentResultPage';
+import { ResultsPage } from './student/pages/ResultsPage';
+import { LeaderboardPage } from './student/pages/LeaderboardPage';
+import { ProfilePage } from './student/pages/ProfilePage';
 import { RequireRole } from './shared/RequireRole';
 import { getRole, pathForRole, signOut } from './shared/auth';
 import { refreshSession, getRefreshToken } from '../lib/authStore';
@@ -74,7 +80,24 @@ export function DashboardApp() {
         {/* Teacher module is temporarily hidden — re-add this route (and the
             TeacherDashboard import above) to bring it back. */}
         {/* <Route path="/teacher/*" element={<RequireRole role="teacher"><TeacherDashboard /></RequireRole>} /> */}
-        <Route path="/student/*" element={<RequireRole role="student"><StudentDashboard /></RequireRole>} />
+
+        {/* There is no Student Dashboard — these are flat, top-level
+            standalone routes (not nested under a "/student" prefix, which
+            would itself imply a dashboard area). Each renders its own
+            minimal shell (StandaloneHeader, or nothing at all for the exam
+            itself) instead of DashboardLayout's sidebar/topbar. Reachable
+            from the main site navbar's Assessment/Results/Leaderboard
+            links and the profile menu's Profile link — see NavBar.tsx. */}
+        <Route element={<RequireRole role="student"><Outlet /></RequireRole>}>
+          <Route path="/assessment"                     element={<AssessmentEntryPage />} />
+          <Route path="/assessment/:assessmentId"        element={<AssessmentOverviewPage />} />
+          <Route path="/assessment/take/:submissionId"   element={<AssessmentTakePage />} />
+          <Route path="/assessment/result/:submissionId" element={<AssessmentResultPage />} />
+          <Route path="/results"     element={<ResultsPage />} />
+          <Route path="/leaderboard" element={<LeaderboardPage />} />
+          <Route path="/profile"     element={<ProfilePage />} />
+        </Route>
+
         <Route path="*" element={<RootFallback />} />
       </Routes>
     </BrowserRouter>

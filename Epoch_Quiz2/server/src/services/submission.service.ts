@@ -7,7 +7,7 @@ import { pageMeta, pageToSkipTake } from '../utils/pagination';
 import { parseStrArr, parseIntArr, toJson } from '../utils/json';
 import { ContentMeta } from './content.service';
 import type { Actor } from './assessment.service';
-import { assessmentVisibleToStudent } from './assessment.service';
+import { assessmentVisibleToStudent, isResultVisible } from './assessment.service';
 
 function slugify(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'subject';
@@ -17,7 +17,6 @@ import type {
   SubmitAttemptInput,
   GradeAnswerInput,
   ListSubmissionsQuery,
-  PauseSubmissionInput,
 } from '../validators/submission.validator';
 
 // ── DB types ───────────────────────────────────────────────────
@@ -44,9 +43,9 @@ interface LoadedSubmission {
   id: string; studentId: string; assessmentId: string; status: string;
   score: number; totalMarks: number; timeTakenSec: number | null;
   startedAt: Date; submittedAt: Date | null;
-  totalPausedSec: number; currentQuestionIndex: number;
   aTitle: string; aDescription: string | null; aDuration: number; aPassing: number;
   aCreatedById: string; aNegativeMarking: boolean; aNegativeMarksValue: number;
+  aResultsPublished: boolean; aResultPublishAt: Date | null;
   subId: string | null; subName: string | null; subSlug: string | null;
   stName: string | null; stEmail: string | null;
 }
@@ -56,8 +55,7 @@ interface LoadedSubmission {
 const submissionSelect = {
   id: true, studentId: true, assessmentId: true, status: true, score: true, totalMarks: true,
   timeTakenSec: true, startedAt: true, submittedAt: true,
-  pausedAt: true, totalPausedSec: true, currentQuestionIndex: true,
-  assessment: { select: { title: true, description: true, duration: true, passingMarks: true, createdById: true, subjectExternalId: true, negativeMarking: true, negativeMarksValue: true } },
+  assessment: { select: { title: true, description: true, duration: true, passingMarks: true, createdById: true, subjectExternalId: true, negativeMarking: true, negativeMarksValue: true, resultsPublished: true, resultPublishAt: true } },
   student: { select: { name: true, email: true } },
 } satisfies Prisma.SubmissionSelect;
 
@@ -67,10 +65,10 @@ function mapLoaded(s: Prisma.SubmissionGetPayload<{ select: typeof submissionSel
     id: s.id, studentId: s.studentId, assessmentId: s.assessmentId, status: s.status,
     score: s.score, totalMarks: s.totalMarks, timeTakenSec: s.timeTakenSec,
     startedAt: s.startedAt, submittedAt: s.submittedAt,
-    totalPausedSec: s.totalPausedSec, currentQuestionIndex: s.currentQuestionIndex,
     aTitle: s.assessment.title, aDescription: s.assessment.description, aDuration: s.assessment.duration,
     aPassing: s.assessment.passingMarks, aCreatedById: s.assessment.createdById,
     aNegativeMarking: s.assessment.negativeMarking, aNegativeMarksValue: s.assessment.negativeMarksValue,
+    aResultsPublished: s.assessment.resultsPublished, aResultPublishAt: s.assessment.resultPublishAt,
     subId: subExternalId, subName: subExternalId ? subjectName : null, subSlug: subExternalId && subjectName ? slugify(subjectName) : null,
     stName: s.student.name, stEmail: s.student.email,
   };
@@ -81,24 +79,6 @@ async function loadSubmissionFlat(id: string): Promise<LoadedSubmission | null> 
   if (!s) return null;
   const subjectName = await ContentMeta.subjectName(s.assessment.subjectExternalId);
   return mapLoaded(s, subjectName);
-}
-
-/**
- * The read-only "view a submission" path (GET /submissions/:id) doubles as
- * the resume path when the viewer is the owning student re-opening an
- * IN_PROGRESS-but-paused attempt (e.g. a hard refresh instead of using
- * Start/Continue). Rolls pausedAt into totalPausedSec in that case only —
- * teachers/admins viewing a student's paused submission must not
- * inadvertently restart their clock.
- */
-async function resumeIfOwnPaused(actor: Actor, s: LoadedSubmission): Promise<LoadedSubmission> {
-  if (actor.role !== Role.STUDENT || actor.id !== s.studentId) return s;
-  if (s.status !== SubmissionStatus.IN_PROGRESS) return s;
-  const paused = await prisma.submission.findUnique({ where: { id: s.id }, select: { pausedAt: true, totalPausedSec: true } });
-  if (!paused?.pausedAt) return s;
-  const totalPausedSec = resolveResume(paused.pausedAt, paused.totalPausedSec);
-  await prisma.submission.update({ where: { id: s.id }, data: { pausedAt: null, totalPausedSec } });
-  return { ...s, totalPausedSec };
 }
 
 const aqQuestionSelect = {
@@ -141,27 +121,10 @@ function getOptionsWithImages(aq: AssessmentQuestion): { text: string; imageUrl:
   return filtered.length ? filtered.map(([text, imageUrl]) => ({ text, imageUrl: imageUrl ?? null })) : null;
 }
 
-/**
- * `totalPausedSec` shifts the deadline forward by however long the student
- * has spent paused so far, so paused time never counts against them. Pause
- * itself is represented purely by `pausedAt` (no status enum change) —
- * see the schema comment on Submission.
- */
-function durationLeft(startedAt: Date, durationMin: number, totalPausedSec = 0) {
-  const expiresAt    = new Date(new Date(startedAt).getTime() + durationMin * 60_000 + totalPausedSec * 1000);
+function durationLeft(startedAt: Date, durationMin: number) {
+  const expiresAt    = new Date(new Date(startedAt).getTime() + durationMin * 60_000);
   const remainingSec = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
   return { expiresAt, remainingSec };
-}
-
-/**
- * Rolls an in-progress pause into `totalPausedSec` and clears `pausedAt` —
- * the "resume" half of pause/resume. Called whenever a student re-enters an
- * attempt that was left paused (start(), getAttempt()-equivalent reads).
- * A no-op (returns totalPausedSec unchanged) when the attempt isn't paused.
- */
-function resolveResume(pausedAt: Date | null, totalPausedSec: number): number {
-  if (!pausedAt) return totalPausedSec;
-  return totalPausedSec + Math.max(0, Math.floor((Date.now() - pausedAt.getTime()) / 1000));
 }
 
 /**
@@ -226,7 +189,6 @@ async function loadOwnInProgress(actor: Actor, submissionId: string) {
     where: { id: submissionId },
     select: {
       id: true, studentId: true, assessmentId: true, status: true, startedAt: true, totalMarks: true,
-      pausedAt: true, totalPausedSec: true, currentQuestionIndex: true,
       assessment: { select: { duration: true, negativeMarking: true, negativeMarksValue: true } },
     },
   });
@@ -284,7 +246,7 @@ function shapeSubmission(s: LoadedSubmission, aqs: AssessmentQuestion[], answers
   return {
     id: s.id, status: s.status, score, totalMarks: total, percent: pct,
     startedAt: s.startedAt, submittedAt: s.submittedAt, timeTakenSec: s.timeTakenSec,
-    totalPausedSec: s.totalPausedSec, currentQuestionIndex: s.currentQuestionIndex,
+    resultsPublished: s.aResultsPublished, resultPublishAt: s.aResultPublishAt, resultsVisible: resultsVisibleFor(s),
     assessment: {
       id: s.assessmentId, title: s.aTitle, description: s.aDescription,
       duration: s.aDuration, passingMarks: s.aPassing,
@@ -295,6 +257,29 @@ function shapeSubmission(s: LoadedSubmission, aqs: AssessmentQuestion[], answers
   };
 }
 
+/**
+ * Returned in place of shapeSubmission for a student's own completed
+ * submission before results are published — no score, totalMarks, percent,
+ * or question review, so the withheld data never touches the wire.
+ */
+function shapePendingResult(s: LoadedSubmission) {
+  return {
+    id: s.id, status: s.status,
+    startedAt: s.startedAt, submittedAt: s.submittedAt, timeTakenSec: s.timeTakenSec,
+    resultsPublished: s.aResultsPublished, resultPublishAt: s.aResultPublishAt, resultsVisible: false,
+    assessment: {
+      id: s.assessmentId, title: s.aTitle, description: s.aDescription,
+      duration: s.aDuration, passingMarks: s.aPassing,
+      subject: s.subId ? { id: s.subId, name: s.subName, slug: s.subSlug } : null,
+    },
+    student: { id: s.studentId, name: s.stName, email: s.stEmail },
+  };
+}
+
+function resultsVisibleFor(s: LoadedSubmission): boolean {
+  return isResultVisible({ resultsPublished: s.aResultsPublished, resultPublishAt: s.aResultPublishAt });
+}
+
 async function finalizeSubmission(submissionId: string) {
   const s = await loadSubmissionFlat(submissionId);
   if (!s) throw ApiError.notFound('Submission not found');
@@ -303,7 +288,7 @@ async function finalizeSubmission(submissionId: string) {
 
   if (s.status !== SubmissionStatus.IN_PROGRESS) {
     const answers = await loadAnswers(submissionId);
-    return shapeSubmission(s, aqs, answers, true);
+    return resultsVisibleFor(s) ? shapeSubmission(s, aqs, answers, true) : shapePendingResult(s);
   }
 
   const existingAnswers = await loadAnswers(submissionId);
@@ -355,7 +340,7 @@ async function finalizeSubmission(submissionId: string) {
 
   const finalSub     = await loadSubmissionFlat(submissionId);
   const finalAnswers = await loadAnswers(submissionId);
-  return shapeSubmission(finalSub!, aqs, finalAnswers, true);
+  return resultsVisibleFor(finalSub!) ? shapeSubmission(finalSub!, aqs, finalAnswers, true) : shapePendingResult(finalSub!);
 }
 
 async function recomputeSubmissionScore(txc: Prisma.TransactionClient, submissionId: string): Promise<void> {
@@ -390,7 +375,7 @@ export const SubmissionService = {
 
     let submission = await prisma.submission.findUnique({
       where: { assessmentId_studentId: { assessmentId, studentId: actor.id } },
-      select: { id: true, status: true, startedAt: true, totalMarks: true, pausedAt: true, totalPausedSec: true, currentQuestionIndex: true },
+      select: { id: true, status: true, startedAt: true, totalMarks: true },
     });
 
     if (submission && submission.status !== SubmissionStatus.IN_PROGRESS) {
@@ -401,20 +386,11 @@ export const SubmissionService = {
       const totalMarks = aqs.reduce((sum, aq) => sum + (aq.marksOverride ?? aq.marks), 0);
       submission = await prisma.submission.create({
         data: { assessmentId, studentId: actor.id, status: SubmissionStatus.IN_PROGRESS, score: 0, totalMarks, timeTakenSec: 0 },
-        select: { id: true, status: true, startedAt: true, totalMarks: true, pausedAt: true, totalPausedSec: true, currentQuestionIndex: true },
-      });
-    } else if (submission.pausedAt) {
-      // Resuming a paused attempt — roll the paused interval into totalPausedSec
-      // and clear pausedAt so the deadline math below no longer freezes.
-      const totalPausedSec = resolveResume(submission.pausedAt, submission.totalPausedSec);
-      submission = await prisma.submission.update({
-        where: { id: submission.id },
-        data: { pausedAt: null, totalPausedSec },
-        select: { id: true, status: true, startedAt: true, totalMarks: true, pausedAt: true, totalPausedSec: true, currentQuestionIndex: true },
+        select: { id: true, status: true, startedAt: true, totalMarks: true },
       });
     }
 
-    const { expiresAt, remainingSec } = durationLeft(submission.startedAt, assessment.duration, submission.totalPausedSec);
+    const { expiresAt, remainingSec } = durationLeft(submission.startedAt, assessment.duration);
     if (remainingSec === 0) {
       const finalized = await finalizeSubmission(submission.id);
       return { autoSubmitted: true, submission: finalized };
@@ -450,7 +426,6 @@ export const SubmissionService = {
       submission: {
         id: submission.id, status: submission.status, startedAt: submission.startedAt,
         expiresAt, remainingSec, totalMarks: submission.totalMarks,
-        currentQuestionIndex: submission.currentQuestionIndex,
         assessment: {
           id: assessment.id, title: assessment.title, description: assessment.description,
           duration: assessment.duration,
@@ -472,8 +447,8 @@ export const SubmissionService = {
       throw ApiError.badRequest('Time is up — attempt was auto-submitted');
     }
 
-    const question = await prisma.question.findFirst({
-      where: { id: input.questionId, assessments: { some: { assessmentId: s.assessmentId } } },
+    const question = await prisma.assessmentQuestionBank.findFirst({
+      where: { id: input.questionId, assessmentLinks: { some: { assessmentId: s.assessmentId } } },
       select: { id: true, type: true, marks: true, correctAnswer: true, correctOptions: true, correctBoolean: true },
     });
     if (!question) throw ApiError.badRequest('Question is not part of this assessment');
@@ -506,31 +481,13 @@ export const SubmissionService = {
     return { ok: true };
   },
 
-  /**
-   * Persists the current question index and, when `paused` is set, freezes
-   * the countdown by stamping `pausedAt`. Called both as a lightweight,
-   * debounced "which question am I on" ping (paused omitted) and as the
-   * explicit Pause action (paused: true) — see AssessmentTakePage.
-   */
-  async pause(actor: Actor, submissionId: string, input: PauseSubmissionInput) {
-    await loadOwnInProgress(actor, submissionId);
-    await prisma.submission.update({
-      where: { id: submissionId },
-      data: {
-        currentQuestionIndex: input.currentQuestionIndex,
-        ...(input.paused ? { pausedAt: new Date() } : {}),
-      },
-    });
-    return { ok: true };
-  },
-
   async submit(actor: Actor, submissionId: string, input: SubmitAttemptInput) {
     const s = await loadOwnInProgress(actor, submissionId);
 
     if (input.answers && input.answers.length > 0) {
       const qIds     = input.answers.map((a: SaveAnswerInput) => a.questionId);
-      const validQs  = await prisma.question.findMany({
-        where: { id: { in: qIds }, assessments: { some: { assessmentId: s.assessmentId } } }, select: { id: true },
+      const validQs  = await prisma.assessmentQuestionBank.findMany({
+        where: { id: { in: qIds }, assessmentLinks: { some: { assessmentId: s.assessmentId } } }, select: { id: true },
       });
       const validIds = new Set(validQs.map((r) => r.id));
       const unknown  = input.answers.find((a: SaveAnswerInput) => !validIds.has(a.questionId));
@@ -543,7 +500,7 @@ export const SubmissionService = {
       const negEffMap = new Map<string, number | null>();
       for (const r of effRows) { effMap.set(r.questionId, r.marksOverride); negEffMap.set(r.questionId, r.negMarksOverride); }
 
-      const qRows   = await prisma.question.findMany({
+      const qRows   = await prisma.assessmentQuestionBank.findMany({
         where: { id: { in: qIds } }, select: { id: true, type: true, marks: true, correctAnswer: true, correctOptions: true, correctBoolean: true },
       });
       const qMap    = new Map<string, typeof qRows[number]>();
@@ -577,7 +534,7 @@ export const SubmissionService = {
   },
 
   async findById(actor: Actor, id: string) {
-    let s = await loadSubmissionFlat(id);
+    const s = await loadSubmissionFlat(id);
     if (!s) throw ApiError.notFound('Submission not found');
 
     if (!isAdminRole(actor.role)) {
@@ -588,11 +545,15 @@ export const SubmissionService = {
       }
     }
 
-    s = await resumeIfOwnPaused(actor, s);
+    const inProgress = s.status === SubmissionStatus.IN_PROGRESS;
+    const isOwner    = actor.role === Role.STUDENT && s.studentId === actor.id;
+    if (isOwner && !inProgress && !resultsVisibleFor(s)) {
+      return shapePendingResult(s);
+    }
 
     const aqs     = await loadAssessmentQuestions(s.assessmentId);
     const answers = await loadAnswers(id);
-    return shapeSubmission(s, aqs, answers, s.status !== SubmissionStatus.IN_PROGRESS);
+    return shapeSubmission(s, aqs, answers, !inProgress);
   },
 
   async listMine(actor: Actor, query: ListSubmissionsQuery) {
@@ -609,20 +570,26 @@ export const SubmissionService = {
     const [rows, total, subjectNames] = await Promise.all([
       prisma.submission.findMany({
         where, orderBy: { startedAt: 'desc' }, skip, take,
-        select: { id: true, status: true, score: true, totalMarks: true, timeTakenSec: true, startedAt: true, submittedAt: true, assessment: { select: { id: true, title: true, subjectExternalId: true } } },
+        select: {
+          id: true, status: true, score: true, totalMarks: true, timeTakenSec: true, startedAt: true, submittedAt: true,
+          assessment: { select: { id: true, title: true, subjectExternalId: true, resultsPublished: true, resultPublishAt: true } },
+        },
       }),
       prisma.submission.count({ where }),
       ContentMeta.subjects(),
     ]);
 
     const items = rows.map((s) => {
-      const score = s.score ?? 0; const totalMarks = s.totalMarks ?? 0;
+      const totalMarks = s.totalMarks ?? 0;
       const subExt = s.assessment.subjectExternalId;
       const subName = subExt ? subjectNames.get(subExt) ?? null : null;
+      const resultsVisible = isResultVisible(s.assessment);
+      const score = resultsVisible ? (s.score ?? 0) : null;
       return {
         id: s.id, status: s.status, score, totalMarks,
-        percent: totalMarks > 0 ? Math.round((score / totalMarks) * 10000) / 100 : 0,
+        percent: resultsVisible && totalMarks > 0 ? Math.round(((s.score ?? 0) / totalMarks) * 10000) / 100 : null,
         startedAt: s.startedAt, submittedAt: s.submittedAt, timeTakenSec: s.timeTakenSec,
+        resultsPublished: s.assessment.resultsPublished, resultPublishAt: s.assessment.resultPublishAt, resultsVisible,
         assessment: { id: s.assessment.id, title: s.assessment.title, subject: subExt ? { id: subExt, name: subName, slug: subName ? slugify(subName) : null } : null },
       };
     });

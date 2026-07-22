@@ -14,7 +14,7 @@ export function AnalyticsPage() {
     const subj = s.assessment.subject?.name ?? 'Other';
     if (!subjectMap[subj]) subjectMap[subj] = { attempts: 0, totalPct: 0 };
     subjectMap[subj].attempts++;
-    subjectMap[subj].totalPct += s.percent;
+    subjectMap[subj].totalPct += s.percent ?? 0;
   }
   const subjects = Object.entries(subjectMap)
     .map(([name, v]) => ({ name, attempts: v.attempts, avg: Math.round(v.totalPct / v.attempts) }))
@@ -79,8 +79,8 @@ export function AnalyticsPage() {
                     <div className="text-[11px] text-fg3 truncate">{s.assessment.title}</div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="font-mono text-[13px] text-fg1">{s.percent}%</div>
-                    <Badge tone={s.percent >= 50 ? 'success' : 'danger'} dot={false}>{s.status.toLowerCase()}</Badge>
+                    <div className="font-mono text-[13px] text-fg1">{s.percent ?? 0}%</div>
+                    <Badge tone={(s.percent ?? 0) >= 50 ? 'success' : 'danger'} dot={false}>{s.status.toLowerCase()}</Badge>
                   </div>
                 </div>
               ))}

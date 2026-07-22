@@ -1,22 +1,36 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
-  ChevronLeft, Plus, CheckCircle2, GripVertical, Trash2, Library, ArrowUp, ArrowDown, Eye, Pencil,
+  ChevronLeft, Plus, CheckCircle2, GripVertical, Trash2, Library, ArrowUp, ArrowDown, Eye, Pencil, UserPlus,
 } from 'lucide-react';
-import { PageHeader, Card, Button, Badge, Skeleton } from '../../shared/ui';
-import { useToasts } from '../../shared/ui';
-import { CreateQuestionModal } from '../../shared/CreateQuestionModal';
-import { useAssessmentQuestions, questionApi } from '../../../hooks/useQuestions';
-import { useAssessment, assessmentApi } from '../../../hooks/useAssessments';
-import type { Question } from '../../../hooks/useQuestions';
+import { PageHeader, Card, Button, Badge, Skeleton } from './ui';
+import { useToasts } from './ui';
+import { CreateQuestionModal } from './CreateQuestionModal';
+import {
+  useAssessmentQuestions, assessmentQuestionLinkApi, assessmentQuestionApi,
+} from '../../hooks/useAssessmentQuestionBank';
+import { useAssessment, assessmentApi } from '../../hooks/useAssessments';
+import type { AssessmentBankQuestion as Question } from '../../hooks/useAssessmentQuestionBank';
 import { QuestionBankPickerModal } from './QuestionBankPickerModal';
+import { AssignAssessmentModal } from './AssignAssessmentModal';
+import { EditAssessmentModal } from './EditAssessmentModal';
 
+/**
+ * Shared between Teacher (`/teacher/assessments/:id/questions`) and Admin
+ * (`/admin/assessments/:id/questions`) — same page, same data/workflows
+ * (backed by the Assessment Question Bank, physically separate from
+ * Practice/Olympiad's bank), only the "back" destination differs per role.
+ */
 export function QuestionManagementPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id: assessmentId } = useParams<{ id: string }>();
+  const backTo = location.pathname.startsWith('/admin') ? '/admin/assessments' : '/teacher/assessments';
   const [createOpen, setCreateOpen] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [bankOpen, setBankOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const { push, node } = useToasts();
 
   const { data: assessment, refetch: refetchAssessment } = useAssessment(assessmentId!);
@@ -27,7 +41,7 @@ export function QuestionManagementPage() {
   const handleQuestionCreated = async (created: Question) => {
     if (!assessmentId) return;
     try {
-      await questionApi.attachToAssessment(assessmentId, created.id);
+      await assessmentQuestionLinkApi.attachToAssessment(assessmentId, created.id);
       push({ kind: 'success', title: 'Question saved to bank and added' });
       setCreateOpen(false);
       refetch();
@@ -40,7 +54,7 @@ export function QuestionManagementPage() {
   const handleBankAdd = async (questionIds: string[]) => {
     if (!assessmentId) return;
     try {
-      await questionApi.bulkAttachToAssessment(assessmentId, questionIds);
+      await assessmentQuestionLinkApi.bulkAttachToAssessment(assessmentId, questionIds);
       push({ kind: 'success', title: `${questionIds.length} question${questionIds.length !== 1 ? 's' : ''} added` });
       refetch();
       refetchAssessment();
@@ -54,7 +68,7 @@ export function QuestionManagementPage() {
     if (!assessmentId) return;
     setSaving(questionId);
     try {
-      await questionApi.detachFromAssessment(assessmentId, questionId);
+      await assessmentQuestionLinkApi.detachFromAssessment(assessmentId, questionId);
       push({ kind: 'info', title: 'Question removed' });
       refetch();
       refetchAssessment();
@@ -79,7 +93,7 @@ export function QuestionManagementPage() {
     newOrder[targetIdx].order = tmp;
 
     try {
-      await questionApi.reorder(assessmentId!, newOrder);
+      await assessmentQuestionLinkApi.reorder(assessmentId!, newOrder);
       refetch();
     } catch (e: any) {
       push({ kind: 'danger', title: 'Reorder failed', sub: e.message });
@@ -91,9 +105,42 @@ export function QuestionManagementPage() {
     try {
       await assessmentApi.publish(assessmentId);
       push({ kind: 'success', title: 'Assessment published', sub: 'Students can now attempt it.' });
-      navigate('/teacher/assessments');
+      navigate(backTo);
     } catch (e: any) {
       push({ kind: 'danger', title: 'Cannot publish', sub: e.message });
+    }
+  };
+
+  const handleUnpublish = async () => {
+    if (!assessmentId) return;
+    try {
+      await assessmentApi.unpublish(assessmentId);
+      push({ kind: 'info', title: 'Unpublished', sub: 'Assessment moved back to draft.' });
+      refetchAssessment();
+    } catch (e: any) {
+      push({ kind: 'danger', title: 'Failed', sub: e.message });
+    }
+  };
+
+  const handlePublishResults = async () => {
+    if (!assessmentId) return;
+    try {
+      await assessmentApi.publishResults(assessmentId);
+      push({ kind: 'success', title: 'Results published', sub: 'Students can now view their scores.' });
+      refetchAssessment();
+    } catch (e: any) {
+      push({ kind: 'danger', title: 'Cannot publish results', sub: e.message });
+    }
+  };
+
+  const handleUnpublishResults = async () => {
+    if (!assessmentId) return;
+    try {
+      await assessmentApi.unpublishResults(assessmentId);
+      push({ kind: 'info', title: 'Results unpublished', sub: 'Students can no longer view their scores.' });
+      refetchAssessment();
+    } catch (e: any) {
+      push({ kind: 'danger', title: 'Failed', sub: e.message });
     }
   };
 
@@ -104,10 +151,10 @@ export function QuestionManagementPage() {
       {node}
 
       <button
-        onClick={() => navigate('/teacher/assessments')}
+        onClick={() => navigate(backTo)}
         className="inline-flex items-center gap-1 text-[12.5px] text-fg3 hover:text-fg1 mb-4"
       >
-        <ChevronLeft size={14} />Back to my assessments
+        <ChevronLeft size={14} />Back to assessments
       </button>
 
       <PageHeader
@@ -115,14 +162,19 @@ export function QuestionManagementPage() {
         title={assessment?.title ?? 'Manage questions'}
         subtitle={assessment?.description ?? 'Add and arrange questions for this assessment.'}
         actions={<>
-          {assessment?.status === 'DRAFT' && (
-            <Button variant="outline" onClick={() => navigate('/teacher/assessments')}>Back</Button>
-          )}
+          <Button variant="outline" icon={Pencil} onClick={() => setEditOpen(true)}>Edit details</Button>
+          <Button variant="outline" icon={UserPlus} onClick={() => setAssignOpen(true)}>Assign</Button>
           {assessment?.status === 'DRAFT' && (
             <Button icon={CheckCircle2} onClick={handlePublish}>Publish</Button>
           )}
           {assessment?.status === 'PUBLISHED' && (
-            <Button variant="soft" icon={Eye}>Published</Button>
+            <Button variant="soft" icon={Eye} onClick={handleUnpublish}>Published — click to unpublish</Button>
+          )}
+          {assessment && !assessment.resultsPublished && (
+            <Button icon={CheckCircle2} onClick={handlePublishResults}>Publish Results</Button>
+          )}
+          {assessment?.resultsPublished && (
+            <Button variant="soft" icon={Eye} onClick={handleUnpublishResults}>Results Published — click to unpublish</Button>
           )}
         </>}
       />
@@ -338,6 +390,19 @@ export function QuestionManagementPage() {
               </div>
             )}
 
+            {assessment && (
+              <div className="mt-3 pt-3 border-t border-line">
+                <div className="text-[11px] text-fg3 mb-1">Results</div>
+                <Badge tone={assessment.resultsVisible ? 'success' : 'neutral'}>
+                  {assessment.resultsVisible
+                    ? 'Published'
+                    : assessment.resultPublishAt
+                      ? `Scheduled for ${new Date(assessment.resultPublishAt).toLocaleDateString()}`
+                      : 'Pending'}
+                </Badge>
+              </div>
+            )}
+
             {assessment?.status === 'DRAFT' && qList.length > 0 && (
               <Button
                 className="w-full mt-4"
@@ -357,21 +422,42 @@ export function QuestionManagementPage() {
         </div>
       </div>
 
-      {/* Create question — type picker + draft editor, saves to bank then attaches */}
-      <CreateQuestionModal
+      {/* Create question — type picker + draft editor, saves into the
+          Assessment Question Bank (not Practice's) then attaches */}
+      <CreateQuestionModal<Question>
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         onCreated={handleQuestionCreated}
         defaultSubjectId={assessment?.subject?.id}
+        createFn={assessmentQuestionApi.create}
       />
 
-      {/* Question Bank picker modal */}
+      {/* Assessment Question Bank picker modal */}
       <QuestionBankPickerModal
         open={bankOpen}
         onClose={() => setBankOpen(false)}
         assessmentId={assessmentId!}
         onAdd={handleBankAdd}
       />
+
+      {assessmentId && (
+        <AssignAssessmentModal
+          assessmentId={assessmentId}
+          title={assessment?.title ?? 'Assessment'}
+          open={assignOpen}
+          onClose={() => setAssignOpen(false)}
+          push={push}
+        />
+      )}
+
+      {assessmentId && (
+        <EditAssessmentModal
+          assessmentId={assessmentId}
+          open={editOpen}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => { setEditOpen(false); refetchAssessment(); }}
+        />
+      )}
     </>
   );
 }

@@ -4,15 +4,19 @@ import { paginationSchema } from '../utils/pagination';
 
 const titleSchema       = z.string().trim().min(3, 'Title must be at least 3 characters').max(160);
 const descriptionSchema = z.string().trim().max(5000).optional().nullable();
+const instructionsSchema = z.string().trim().max(5000).optional().nullable();
 const durationSchema    = z.coerce.number().int().min(1, 'Duration must be ≥ 1 minute').max(60 * 24);
 const negativeMarkingSchema      = z.coerce.boolean().optional();
 const negativeMarksValueSchema   = z.coerce.number().min(0, 'Negative marks value must be ≥ 0').max(100).optional();
+const resultsPublishedSchema     = z.coerce.boolean().optional();
+const resultPublishAtSchema      = z.coerce.date().optional().nullable();
 
 const idArraySchema = z.array(z.string().min(1)).max(500);
 
 export const createAssessmentSchema = z.object({
   title:        titleSchema,
   description:  descriptionSchema,
+  instructions: instructionsSchema,
   // Optional: falls back to the live assessment.defaultDuration admin
   // setting in AssessmentService.create when omitted.
   duration:     durationSchema.optional(),
@@ -21,6 +25,8 @@ export const createAssessmentSchema = z.object({
   passingMarks: z.coerce.number().int().min(0).optional(),
   negativeMarking:    negativeMarkingSchema,
   negativeMarksValue: negativeMarksValueSchema,
+  resultsPublished: resultsPublishedSchema,
+  resultPublishAt:  resultPublishAtSchema,
   // Optional assignment at creation time (replace-set semantics)
   assignedClassIds:   idArraySchema.optional(),
   assignedStudentIds: idArraySchema.optional(),
@@ -38,11 +44,14 @@ export const assignAssessmentSchema = z.object({
 export const updateAssessmentSchema = z.object({
   title:        titleSchema.optional(),
   description:  descriptionSchema,
+  instructions: instructionsSchema,
   duration:     durationSchema.optional(),
   subjectExternalId:    z.string().min(1).optional().nullable(),
   passingMarks: z.coerce.number().int().min(0).optional(),
   negativeMarking:    negativeMarkingSchema,
   negativeMarksValue: negativeMarksValueSchema,
+  resultsPublished: resultsPublishedSchema,
+  resultPublishAt:  resultPublishAtSchema,
 }).refine((v) => Object.keys(v).length > 0, { message: 'No fields to update' });
 
 export const listAssessmentsQuerySchema = paginationSchema.extend({

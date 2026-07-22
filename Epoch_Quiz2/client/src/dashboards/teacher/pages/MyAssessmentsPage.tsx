@@ -7,7 +7,7 @@ import {
 import { PageHeader, Card, Button, SearchInput, Select, Badge, EmptyState, Skeleton } from '../../shared/ui';
 import { useAssessments, assessmentApi } from '../../../hooks/useAssessments';
 import { useToasts } from '../../shared/ui';
-import { AssignAssessmentModal } from './AssignAssessmentModal';
+import { AssignAssessmentModal } from '../../shared/AssignAssessmentModal';
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });

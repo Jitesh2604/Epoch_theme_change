@@ -1,24 +1,30 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { ChevronLeft, ArrowRight, Wand2, FilePlus2, Sparkles } from 'lucide-react';
-import { PageHeader, Card, Button } from '../../shared/ui';
-import { useToasts } from '../../shared/ui';
-import { assessmentApi } from '../../../hooks/useAssessments';
-import { useSubjects } from '../../../hooks/useSubjects';
+import { PageHeader, Card, Button } from './ui';
+import { useToasts } from './ui';
+import { assessmentApi } from '../../hooks/useAssessments';
+import { useSubjects } from '../../hooks/useSubjects';
 
 interface FormData {
   title: string;
   description: string;
+  instructions: string;
   subjectId: string;
   duration: number;
   passingMarks: number;
 }
 
+/** Shared between Teacher and Admin — same create flow, only the eyebrow
+ *  label and post-create destination differ per role. */
 export function CreateAssessmentPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isAdmin = location.pathname.startsWith('/admin');
+  const assessmentsPath = isAdmin ? '/admin/assessments' : '/teacher/assessments';
   const { register, handleSubmit, formState: { errors }, watch } = useForm<FormData>({
-    defaultValues: { title: '', description: '', subjectId: '', duration: 30, passingMarks: 0 },
+    defaultValues: { title: '', description: '', instructions: '', subjectId: '', duration: 30, passingMarks: 0 },
   });
   const { push, node } = useToasts();
   const [submitting, setSubmitting] = useState(false);
@@ -30,12 +36,13 @@ export function CreateAssessmentPage() {
       const assessment = await assessmentApi.create({
         title:        data.title,
         description:  data.description || undefined,
+        instructions: data.instructions || undefined,
         duration:     data.duration,
         subjectExternalId: data.subjectId || undefined,
         passingMarks: data.passingMarks,
       });
       push({ kind: 'success', title: 'Assessment created', sub: `"${data.title}" is ready — add questions next.` });
-      setTimeout(() => navigate(`/teacher/assessments/${assessment.id}/questions`), 600);
+      setTimeout(() => navigate(`${assessmentsPath}/${assessment.id}/questions`), 600);
     } catch (e: any) {
       push({ kind: 'danger', title: 'Failed to create', sub: e.message });
       setSubmitting(false);
@@ -51,7 +58,7 @@ export function CreateAssessmentPage() {
         <ChevronLeft size={14} />Back
       </button>
       <PageHeader
-        eyebrow="Teacher · Create"
+        eyebrow={isAdmin ? 'Admin · Create' : 'Teacher · Create'}
         title="Create a new assessment"
         subtitle="Define the essentials. You'll add questions in the next step."
       />
@@ -72,6 +79,15 @@ export function CreateAssessmentPage() {
                 {...register('description')}
                 rows={4}
                 placeholder="Describe what this assessment covers…"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-surface1 border border-line text-[13px] text-fg1 focus:outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20"
+              />
+            </Field>
+
+            <Field label="Instructions" error={errors.instructions?.message}>
+              <textarea
+                {...register('instructions')}
+                rows={3}
+                placeholder="Shown to students before they start — e.g. read each question carefully, no negative marking…"
                 className="w-full px-3.5 py-2.5 rounded-xl bg-surface1 border border-line text-[13px] text-fg1 focus:outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/20"
               />
             </Field>
@@ -107,7 +123,7 @@ export function CreateAssessmentPage() {
             </Field>
 
             <div className="flex justify-end gap-2 pt-3 border-t border-line">
-              <Button variant="ghost" type="button" onClick={() => navigate('/teacher/assessments')}>Cancel</Button>
+              <Button variant="ghost" type="button" onClick={() => navigate(assessmentsPath)}>Cancel</Button>
               <Button type="submit" icon={ArrowRight} disabled={submitting}>
                 {submitting ? 'Creating…' : 'Continue to questions'}
               </Button>

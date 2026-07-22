@@ -2,7 +2,7 @@ import { Router } from '../core/router';
 import { Role } from '../lib/enums';
 import { ADMIN_ROLES } from '../utils/roles';
 import { AssessmentController } from '../controllers/assessment.controller';
-import { QuestionController } from '../controllers/question.controller';
+import { AssessmentQuestionController } from '../controllers/assessmentQuestion.controller';
 import { SubmissionController } from '../controllers/submission.controller';
 import { LeaderboardController } from '../controllers/leaderboard.controller';
 import { authenticate } from '../middlewares/authenticate';
@@ -20,7 +20,7 @@ import {
   updateAssessmentQuestionSchema,
   reorderQuestionsSchema,
   assessmentQuestionParamsSchema,
-} from '../validators/question.validator';
+} from '../validators/assessmentQuestion.validator';
 import { assessmentLeaderboardQuerySchema } from '../validators/leaderboard.validator';
 
 const router = new Router();
@@ -85,6 +85,20 @@ router.post(
   AssessmentController.archive,
 );
 
+router.post(
+  '/:id/publish-results',
+  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  validate(assessmentIdParamsSchema, 'params'),
+  AssessmentController.publishResults,
+);
+
+router.post(
+  '/:id/unpublish-results',
+  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  validate(assessmentIdParamsSchema, 'params'),
+  AssessmentController.unpublishResults,
+);
+
 // ── assignment (assign to classes / students) ─────────────────
 router.get(
   '/:id/assignments',
@@ -107,7 +121,7 @@ router.get(
   '/:id/questions',
   authorize(Role.TEACHER, ...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
-  QuestionController.listForAssessment,
+  AssessmentQuestionController.listForAssessment,
 );
 
 router.post(
@@ -115,7 +129,7 @@ router.post(
   authorize(Role.TEACHER, ...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
   validate(attachQuestionsSchema),
-  QuestionController.attach,
+  AssessmentQuestionController.attach,
 );
 
 // Bulk reorder — must come before "/:id/questions/:questionId"
@@ -125,7 +139,7 @@ router.patch(
   authorize(Role.TEACHER, ...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
   validate(reorderQuestionsSchema),
-  QuestionController.reorder,
+  AssessmentQuestionController.reorder,
 );
 
 router.patch(
@@ -133,14 +147,14 @@ router.patch(
   authorize(Role.TEACHER, ...ADMIN_ROLES),
   validate(assessmentQuestionParamsSchema, 'params'),
   validate(updateAssessmentQuestionSchema),
-  QuestionController.updateAttachment,
+  AssessmentQuestionController.updateAttachment,
 );
 
 router.delete(
   '/:id/questions/:questionId',
   authorize(Role.TEACHER, ...ADMIN_ROLES),
   validate(assessmentQuestionParamsSchema, 'params'),
-  QuestionController.detach,
+  AssessmentQuestionController.detach,
 );
 
 // ── student: start an attempt for this assessment ─────────────

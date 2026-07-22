@@ -17,9 +17,9 @@ export function Topbar({ user, onMenuClick }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const basePath = location.pathname.startsWith('/teacher') ? '/teacher'
-                 : location.pathname.startsWith('/student') ? '/student'
-                 : '/admin';
+  // Topbar only ever renders for Admin/Teacher now — Student has no
+  // Dashboard (no DashboardLayout, so no Topbar) anymore.
+  const basePath = location.pathname.startsWith('/teacher') ? '/teacher' : '/admin';
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -103,11 +103,7 @@ export function Topbar({ user, onMenuClick }: Props) {
                   // avoid a dead link — add it back here once an Admin
                   // ProfilePage + `/admin/profile` route exist.
                   ...(basePath !== '/admin' ? [{ label: 'Profile', action: () => navigate(`${basePath}/profile`) }] : []),
-                  // Student's `/student/settings` was only an alias for the
-                  // Profile page and has been removed, so this item is hidden
-                  // for that role too — add it back once a real Student
-                  // settings page exists. Admin's Settings page is real.
-                  ...(basePath !== '/student' ? [{ label: 'Account settings', action: () => navigate(`${basePath}/settings`) }] : []),
+                  { label: 'Account settings', action: () => navigate(`${basePath}/settings`) },
                 ].map((it, i) => (
                   <button
                     key={i}
@@ -119,7 +115,7 @@ export function Topbar({ user, onMenuClick }: Props) {
                 ))}
                 <div className="h-px bg-line my-1" />
                 <button
-                  onClick={() => { setMenuOpen(false); logout().finally(() => { signOut(); window.location.href = '/login'; }); }}
+                  onClick={() => { setMenuOpen(false); logout().finally(() => { signOut(); window.location.href = '/#/login'; }); }}
                   className="w-full text-left px-3 py-2 rounded-lg text-[13px] text-danger hover:bg-surface2"
                 >
                   Sign out

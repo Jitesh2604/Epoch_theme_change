@@ -4,7 +4,7 @@ import { Icon } from '../../components/ui/Icon';
 import { showToast } from '../../components/ui/Toast';
 import { AuthIllustration } from './_shared';
 import { Section, ProfileField, SelectField, ImagePicker, EducationBoardField } from './profileFields';
-import { loadUser, updateProfile, toUIRole } from '../../lib/authStore';
+import { loadUser, updateProfile } from '../../lib/authStore';
 import { ApiError } from '../../lib/api';
 import type { ProfileUpdateData } from '../../lib/authStore';
 import { catalogPresets, useClasses } from '../../hooks/useCatalog';
@@ -18,7 +18,8 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
   useEffect(() => {
     if (!user) { navigate('login'); return; }
     if (user.role !== 'STUDENT') { navigate('complete-profile'); return; }
-    if (user.profileComplete) { window.location.href = `/${toUIRole(user.role)}`; }
+    // No Student Dashboard to send them to — Home, same as a normal login.
+    if (user.profileComplete) { window.location.href = '/#/home'; }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Form state ───────────────────────────────────────────────

@@ -31,12 +31,25 @@ function slugify(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'subject';
 }
 
+/**
+ * A submission's results are withheld from the owning student until the
+ * admin either flips resultsPublished on, or the configured resultPublishAt
+ * date arrives — whichever happens first. Admin/teacher views are never
+ * gated by this; only used for the student-facing result shape.
+ */
+export function isResultVisible(a: { resultsPublished: boolean; resultPublishAt: Date | null }): boolean {
+  if (a.resultsPublished) return true;
+  if (a.resultPublishAt && Date.now() >= a.resultPublishAt.getTime()) return true;
+  return false;
+}
+
 function toPublic(a: AssessmentWithRel, subjectNames?: Map<string, string>) {
   const subjectName = a.subjectExternalId ? subjectNames?.get(a.subjectExternalId) ?? null : null;
   return {
     id:            a.id,
     title:         a.title,
     description:   a.description,
+    instructions:  a.instructions,
     duration:      a.duration,
     totalMarks:    a.totalMarks,
     passingMarks:  a.passingMarks,
@@ -44,6 +57,9 @@ function toPublic(a: AssessmentWithRel, subjectNames?: Map<string, string>) {
     negativeMarksValue: a.negativeMarksValue,
     status:        a.status,
     publishedAt:   a.publishedAt,
+    resultsPublished: a.resultsPublished,
+    resultPublishAt:  a.resultPublishAt,
+    resultsVisible:   isResultVisible(a),
     subject:       a.subjectExternalId
       ? { id: a.subjectExternalId, name: subjectName, slug: slugify(subjectName ?? '') || null }
       : null,
@@ -159,12 +175,15 @@ export const AssessmentService = {
         data: {
           title:             input.title,
           description:       input.description ?? null,
+          instructions:      input.instructions ?? null,
           duration,
           totalMarks:        0,
           passingMarks:      input.passingMarks ?? 0,
           negativeMarking:    input.negativeMarking ?? false,
           negativeMarksValue: input.negativeMarksValue ?? 0,
           status:            AssessmentStatus.DRAFT,
+          resultsPublished:  input.resultsPublished ?? false,
+          resultPublishAt:   input.resultPublishAt ?? null,
           subjectExternalId: input.subjectExternalId ?? null,
           classExternalId:   input.classExternalId ?? null,
           createdById:       actor.id,
@@ -262,11 +281,14 @@ export const AssessmentService = {
       data: {
         ...(input.title             !== undefined && { title: input.title }),
         ...(input.description       !== undefined && { description: input.description }),
+        ...(input.instructions      !== undefined && { instructions: input.instructions }),
         ...(input.duration          !== undefined && { duration: input.duration }),
         ...(input.subjectExternalId !== undefined && { subjectExternalId: input.subjectExternalId }),
         ...(input.passingMarks      !== undefined && { passingMarks: input.passingMarks }),
         ...(input.negativeMarking      !== undefined && { negativeMarking: input.negativeMarking }),
         ...(input.negativeMarksValue   !== undefined && { negativeMarksValue: input.negativeMarksValue }),
+        ...(input.resultsPublished  !== undefined && { resultsPublished: input.resultsPublished }),
+        ...(input.resultPublishAt  !== undefined && { resultPublishAt: input.resultPublishAt }),
       },
       include: assessmentInclude,
     });
@@ -307,6 +329,24 @@ export const AssessmentService = {
     if (existing.status === AssessmentStatus.ARCHIVED) throw ApiError.badRequest('Assessment is already archived');
     const updated = await prisma.assessment.update({
       where: { id }, data: { status: AssessmentStatus.ARCHIVED, publishedAt: null }, include: assessmentInclude,
+    });
+    return toPublic(updated, await ContentMeta.subjects());
+  },
+
+  async publishResults(actor: Actor, id: string) {
+    const existing = await loadAuthorized(id, actor, 'write');
+    if (existing.resultsPublished) throw ApiError.badRequest('Results are already published');
+    const updated = await prisma.assessment.update({
+      where: { id }, data: { resultsPublished: true }, include: assessmentInclude,
+    });
+    return toPublic(updated, await ContentMeta.subjects());
+  },
+
+  async unpublishResults(actor: Actor, id: string) {
+    const existing = await loadAuthorized(id, actor, 'write');
+    if (!existing.resultsPublished) throw ApiError.badRequest('Results are not published');
+    const updated = await prisma.assessment.update({
+      where: { id }, data: { resultsPublished: false }, include: assessmentInclude,
     });
     return toPublic(updated, await ContentMeta.subjects());
   },

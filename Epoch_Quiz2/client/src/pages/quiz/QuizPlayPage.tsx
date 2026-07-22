@@ -99,8 +99,8 @@ function OverviewRow({ icon: Icon, label, value }: { icon: React.ElementType; la
 /**
  * Practice Olympiad entry point — Subject Selection → Quiz Overview → Start
  * Quiz, entirely on the marketing site's `/play` route (and its `play/quiz/:id`,
- * `play/result/:id` children — see App.tsx). Never touches `/student/practice`;
- * closing/cancelling out of any step here just stays on `/play`.
+ * `play/result/:id` children — see App.tsx). Never touches the standalone
+ * Assessment flow; closing/cancelling out of any step here just stays on `/play`.
  */
 export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
   const t = useT();

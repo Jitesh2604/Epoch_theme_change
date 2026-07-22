@@ -36,6 +36,7 @@ model User {
   createdAssessments         Assessment[]                @relation("AssessmentCreatedBy")
   questionUploads            QuestionUpload[]            @relation("UploaderQuestions")
   createdQuestions           Question[]                  @relation("QuestionCreatedBy")
+  createdAssessmentQuestions AssessmentQuestionBank[]    @relation("AssessmentQuestionCreatedBy")
   quizAssignedStudents       QuizAssignedStudent[]
   quizAttempts               QuizAttempt[]               @relation("StudentAttempts")
   createdQuizzes             Quiz[]                      @relation("QuizCreatedBy")
@@ -217,8 +218,6 @@ model Question {
   bookExternalId      String?
   chapterExternalId   String?
   externalId          String?              @unique
-  answers             Answer[]
-  assessments         AssessmentQuestion[]
   attemptAnswers      AttemptAnswer[]
   createdBy           User                 @relation("QuestionCreatedBy", fields: [createdById], references: [id])
   quizQuestions       QuizQuestion[]
@@ -231,6 +230,57 @@ model Question {
   @@index([chapterExternalId])
   @@index([classExternalId])
   @@map("questions")
+}
+
+// Assessment's own question-content table — deliberately a full duplicate of
+// Question's shape rather than a shared table with a filter, so it is
+// structurally impossible for Practice/Olympiad (which only ever queries
+// `Question`) to surface an assessment question, or vice versa. No
+// `externalId`/sync support: assessment questions are admin-authored, never
+// synced from the external content catalog (that pipeline is Practice-only).
+model AssessmentQuestionBank {
+  id                  String               @id @default(cuid())
+  type                QuestionType
+  prompt              String               @db.Text
+  promptImageUrl      String?
+  optionA             String?              @db.Text
+  optionAImageUrl     String?
+  optionB             String?              @db.Text
+  optionBImageUrl     String?
+  optionC             String?              @db.Text
+  optionCImageUrl     String?
+  optionD             String?              @db.Text
+  optionDImageUrl     String?
+  correctAnswer       String?
+  correctOptions      String               @db.LongText
+  correctBoolean      Boolean?
+  modelAnswer         String?              @db.Text
+  matchPairs          String?              @db.LongText
+  explanation         String?              @db.Text
+  explanationImageUrl String?
+  marks               Int                  @default(1)
+  negativeMarks       Float                @default(0)
+  difficulty          Difficulty           @default(MEDIUM)
+  language            String?              @default("English")
+  educationBoard      String?
+  tags                String               @db.LongText
+  status              UserStatus           @default(ACTIVE)
+  createdById         String
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  subjectExternalId   String?
+  classExternalId     String?
+  bookExternalId      String?
+  chapterExternalId   String?
+  answers             Answer[]
+  assessmentLinks     AssessmentQuestion[]
+  createdBy           User                 @relation("AssessmentQuestionCreatedBy", fields: [createdById], references: [id])
+
+  @@index([createdById])
+  @@index([type])
+  @@index([subjectExternalId])
+  @@index([difficulty])
+  @@map("assessment_question_bank")
 }
 
 model Assessment {
@@ -251,6 +301,14 @@ model Assessment {
   negativeMarksValue Float             @default(0)
   status             AssessmentStatus  @default(DRAFT)
   publishedAt        DateTime?
+  // Shown to the student on the pre-start Assessment Overview screen
+  // (falls back to a generic instruction list client-side when null).
+  instructions       String?           @db.Text
+  // Result-visibility gating: a student's own submission/result data is
+  // withheld (server-side, not just UI) until either of these fires — see
+  // AssessmentService.isResultVisible / SubmissionService.
+  resultsPublished   Boolean           @default(false)
+  resultPublishAt    DateTime?
   createdById        String
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
@@ -269,7 +327,6 @@ model Assessment {
   shuffleQuestions Boolean         @default(false)
   showResultAfter  ShowResultAfter @default(IMMEDIATELY)
   showExplanation  Boolean         @default(true)
-  instructions     String?         @db.Text
   language         String?         @default("English")
   bannerImageUrl   String?
   startDatetime    DateTime?
@@ -298,8 +355,8 @@ model AssessmentQuestion {
   order            Int
   marksOverride    Float?
   negMarksOverride Float?
-  assessment       Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
-  question         Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  assessment       Assessment             @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  question         AssessmentQuestionBank @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@unique([assessmentId, questionId])
   @@unique([assessmentId, order])
@@ -348,30 +405,21 @@ model AssessmentAssignedStudent {
 }
 
 model Submission {
-  id                   String           @id @default(cuid())
-  assessmentId         String
-  studentId            String
-  status               SubmissionStatus @default(IN_PROGRESS)
+  id           String           @id @default(cuid())
+  assessmentId String
+  studentId    String
+  status       SubmissionStatus @default(IN_PROGRESS)
   // Float, not Int: marks can be fractional (AssessmentQuestion.marksOverride
   // is Float, and negative marking can deduct fractional values) — matches
   // QuizAttempt.score, the equivalent field on the Practice/Olympiad side.
-  score                Float            @default(0)
-  totalMarks           Float            @default(0)
-  startedAt            DateTime         @default(now())
-  submittedAt          DateTime?
-  timeTakenSec         Int              @default(0)
-  // ── Pause / resume ──────────────────────────────────────────────────
-  // Status stays IN_PROGRESS while paused — pausedAt is the sole "is this
-  // currently paused" signal, so nothing that switches on SubmissionStatus
-  // elsewhere needs to change. totalPausedSec accumulates every past pause
-  // interval and is added to the deadline math in durationLeft() so paused
-  // time never counts against the student's remaining time.
-  currentQuestionIndex Int              @default(0)
-  pausedAt             DateTime?
-  totalPausedSec       Int              @default(0)
-  answers              Answer[]
-  assessment           Assessment       @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
-  student              User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  score        Float            @default(0)
+  totalMarks   Float            @default(0)
+  startedAt    DateTime         @default(now())
+  submittedAt  DateTime?
+  timeTakenSec Int              @default(0)
+  answers      Answer[]
+  assessment   Assessment       @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student      User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([assessmentId, studentId])
   @@index([studentId])
@@ -391,9 +439,9 @@ model Answer {
   // Float: can be negative (negative marking) or fractional (marksOverride).
   marksAwarded    Float      @default(0)
   timeMs          Int?
-  selectedOptions String     @db.LongText
-  question        Question   @relation(fields: [questionId], references: [id])
-  submission      Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  selectedOptions String                 @db.LongText
+  question        AssessmentQuestionBank @relation(fields: [questionId], references: [id])
+  submission      Submission             @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@unique([submissionId, questionId])
   @@index([submissionId])

@@ -8,7 +8,7 @@ import { QuizPlayPage } from './pages/quiz/QuizPlayPage';
 import { PracticePlayPage } from './pages/quiz/PracticePlayPage';
 import { PracticeResultPage } from './pages/quiz/PracticeResultPage';
 import { OlympiadPlayPage } from './pages/quiz/OlympiadPlayPage';
-import { InstructionPage } from './pages/static/InstructionPage';
+import { FaqPage } from './pages/static/FaqPage';
 import { StaticPage } from './pages/static/StaticPage';
 import { LoginPage } from './pages/auth/LoginPage';
 import { SignupPage } from './pages/auth/SignupPage';
@@ -20,10 +20,11 @@ import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
 import { getAuth } from './dashboards/shared/auth';
 import { refreshSession, getRefreshToken } from './lib/authStore';
 import { showToast } from './components/ui/Toast';
+import { rememberPostAuthTarget } from './lib/postAuthRedirect';
 
 function PlayGate({ targetRoute }: { targetRoute: string }) {
   useEffect(() => {
-    localStorage.setItem('epoch-after-auth', '#/' + targetRoute);
+    rememberPostAuthTarget('#/' + targetRoute);
     showToast('Please sign up to play quizzes', 'success');
     const t = setTimeout(() => { window.location.hash = '#/signup'; }, 350);
     return () => clearTimeout(t);
@@ -116,16 +117,17 @@ export default function App() {
       // The whole Practice Olympiad flow — subject selection, difficulty,
       // quiz overview, quiz, and results — lives entirely under /play and
       // its child routes (play/quiz/:id, play/result/:id). None of it ever
-      // touches /student/practice or the Student Dashboard.
+      // touches the standalone Results page.
       page = <QuizPlayPage navigate={navigate} />;
     }
   } else if (top === 'olympiad') {
     if (!getAuth()) {
       page = <PlayGate targetRoute={route} />;
     } else if (parts[1] === 'history') {
-      // Quiz/Olympiad results now live in the Student Dashboard's Results
-      // page, not on the marketing site.
-      window.location.href = '/student/results';
+      // Quiz/Olympiad results now live on the standalone Results page
+      // (/results), not on the marketing site. There is no Student
+      // Dashboard.
+      window.location.href = '/results';
       page = null;
     } else if (parts[1]) {
       // #/olympiad/:attemptId — resuming a specific paused attempt from
@@ -135,8 +137,8 @@ export default function App() {
     } else {
       page = <OlympiadPlayPage navigate={navigate} />;
     }
-  } else if (top === 'instruction') {
-    page = <InstructionPage navigate={navigate} />;
+  } else if (top === 'faq') {
+    page = <FaqPage navigate={navigate} />;
   } else if (['about', 'contact', 'privacy', 'terms'].includes(top)) {
     page = <StaticPage navigate={navigate} kind={top} />;
   } else if (top === 'login') {

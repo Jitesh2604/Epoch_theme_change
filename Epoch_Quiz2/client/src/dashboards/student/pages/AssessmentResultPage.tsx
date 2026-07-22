@@ -2,10 +2,25 @@ import { useState, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, MinusCircle, Clock, Trophy, BookOpen,
-  ChevronDown, ChevronUp, ArrowLeft, AlertTriangle, Award, FileText, Percent,
+  ChevronDown, ChevronUp, ArrowLeft, AlertTriangle, Award, FileText, Percent, HourglassIcon,
 } from 'lucide-react';
 import { Card, Button, Badge, ProgressBar } from '../../shared/ui';
+import { StandaloneHeader } from '../../shared/StandaloneHeader';
 import { assessmentTakeApi, type SubmissionResult, type ResultQuestion } from '../../../hooks/useSubmissionApi';
+
+/** Result is the last page of the standalone Assessment flow — see
+ *  DashboardApp.tsx. There is no Student Dashboard to return to; the
+ *  student leaves via one of the buttons below, which go to Home. */
+function StandalonePage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-bg text-fg1 font-body">
+      <StandaloneHeader />
+      <main className="px-5 md:px-8 lg:px-10 py-6 lg:py-8 max-w-[1480px] w-full mx-auto">
+        {children}
+      </main>
+    </div>
+  );
+}
 
 // ── Helpers ───────────────────────────────────────────────────────
 
@@ -25,6 +40,19 @@ function fmtTime(sec: number) {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
+// A skipped question is graded isCorrect: false server-side — there's no
+// separate null-for-skipped state on the Assessment side, unlike Practice/
+// Olympiad — so isCorrect alone can't distinguish "answered wrong" from
+// "never answered". Every skipped/wrong distinction on this page goes
+// through this one check.
+function isUnanswered(q: ResultQuestion): boolean {
+  return !q.yourAnswer || (
+    q.yourAnswer.selectedOption === null &&
+    q.yourAnswer.selectedBoolean === null &&
+    !q.yourAnswer.textAnswer
+  );
+}
+
 // ── Question review item ──────────────────────────────────────────
 
 function ReviewItem({ q, idx }: { q: ResultQuestion; idx: number }) {
@@ -34,9 +62,12 @@ function ReviewItem({ q, idx }: { q: ResultQuestion; idx: number }) {
   const marksAwarded = q.marksAwarded ?? 0;
   const maxMarks     = q.marks;
 
+  // A skipped question is graded isCorrect: false server-side (no separate
+  // null-for-skipped state on the Assessment side), so isCorrect alone can't
+  // distinguish "answered wrong" from "never answered" — check yourAnswer too.
   const statusProps = isCorrect === true
     ? { icon: CheckCircle2, cls: 'text-emerald-400 bg-emerald-500/10', border: 'border-emerald-500/20' }
-    : isCorrect === false
+    : isCorrect === false && !isUnanswered(q)
       ? { icon: XCircle,     cls: 'text-rose-400    bg-rose-500/10',    border: 'border-rose-500/20'    }
       : { icon: MinusCircle, cls: 'text-fg3          bg-surface1',       border: 'border-line'           };
 
@@ -196,48 +227,100 @@ export function AssessmentResultPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
-      </div>
+      <StandalonePage>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="w-8 h-8 rounded-full border-2 border-brand border-t-transparent animate-spin" />
+        </div>
+      </StandalonePage>
     );
   }
 
   if (err || !result) {
     return (
-      <div className="text-center py-20 text-fg3">
-        <p>{err || 'Result not found.'}</p>
-        <Button className="mt-4" onClick={() => navigate('/student/assessments')}>
-          Back to Assessments
-        </Button>
-      </div>
+      <StandalonePage>
+        <div className="text-center py-20 text-fg3">
+          <p>{err || 'Result not found.'}</p>
+          <Button className="mt-4" onClick={() => navigate('/assessment')}>
+            Back to Assessments
+          </Button>
+        </div>
+      </StandalonePage>
     );
   }
 
-  const pct              = Math.round(result.percent);
+  if (!result.resultsVisible) {
+    return (
+      <StandalonePage>
+        <div className="max-w-lg mx-auto pb-10">
+          <button
+            onClick={() => navigate('/assessment')}
+            className="flex items-center gap-1.5 text-[12.5px] text-fg3 hover:text-fg1 transition mb-5"
+          >
+            <ArrowLeft size={13} />
+            Back to Assessments
+          </button>
+          <Card className="p-6 text-center">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-300 grid place-items-center mb-4">
+              <HourglassIcon size={22} />
+            </div>
+            <h1 className="font-display font-semibold text-xl text-fg1 mb-2">
+              Your assessment has been submitted successfully.
+            </h1>
+            <p className="text-[13.5px] text-fg3 leading-relaxed">
+              Your results will be available once they are officially published.
+            </p>
+            {result.resultPublishAt && (
+              <p className="text-[12.5px] text-fg3 mt-2">
+                Expected on <strong className="text-fg1">{new Date(result.resultPublishAt).toLocaleString()}</strong>.
+              </p>
+            )}
+            {result.submittedAt && (
+              <p className="text-[11px] text-fg4 mt-3">
+                Submitted {new Date(result.submittedAt).toLocaleString()}
+              </p>
+            )}
+          </Card>
+          <div className="flex gap-3 mt-4">
+            <Button variant="outline" icon={BookOpen} className="flex-1" onClick={() => navigate('/assessment')}>
+              All Assessments
+            </Button>
+            <Button icon={Award} variant="soft" className="flex-1" onClick={() => { window.location.href = '/#/home'; }}>
+              Home
+            </Button>
+          </div>
+        </div>
+      </StandalonePage>
+    );
+  }
+
+  // resultsVisible guarantees the backend included these — the type only
+  // marks them optional to cover the pre-publication (pending) shape above.
+  const score     = result.score ?? 0;
+  const totalMarks = result.totalMarks ?? 0;
+  const questions = result.questions ?? [];
+
+  const pct              = Math.round(result.percent ?? 0);
   const { label: gradeLabel, color: gradeColor, feedback } = grade(pct);
   const passed           = pct >= (result.assessment.passingMarks > 0
-    ? (result.assessment.passingMarks / result.totalMarks) * 100
+    ? (result.assessment.passingMarks / totalMarks) * 100
     : 60);
   const isPending        = result.status === 'SUBMITTED';
 
-  const correct   = result.questions.filter((q) => q.isCorrect === true).length;
-  const wrong     = result.questions.filter((q) => q.isCorrect === false).length;
-  const unanswered = result.questions.filter((q) => !q.yourAnswer || (
-    q.yourAnswer.selectedOption === null &&
-    q.yourAnswer.selectedBoolean === null &&
-    !q.yourAnswer.textAnswer
-  )).length;
+  const correct    = questions.filter((q) => q.isCorrect === true).length;
+  const unanswered = questions.filter(isUnanswered).length;
+  const wrong       = questions.filter((q) => q.isCorrect === false && !isUnanswered(q)).length;
 
-  const totalQuestions = result.questions.length;
+  const totalQuestions = questions.length;
   const attempted       = totalQuestions - unanswered;
   const accuracyPct     = attempted > 0 ? Math.round((correct / attempted) * 100) : 0;
 
   return (
+    <StandalonePage>
     <div className="max-w-2xl mx-auto pb-10">
 
       {/* Back button */}
       <button
-        onClick={() => navigate('/student/assessments')}
+        onClick={() => navigate('/assessment')}
         className="flex items-center gap-1.5 text-[12.5px] text-fg3 hover:text-fg1 transition mb-5"
       >
         <ArrowLeft size={13} />
@@ -284,8 +367,8 @@ export function AssessmentResultPage() {
             <>
               <p className="text-[13px] text-fg3">
                 You scored{' '}
-                <strong className="text-fg1">{result.score}</strong> out of{' '}
-                <strong className="text-fg1">{result.totalMarks}</strong> marks
+                <strong className="text-fg1">{score}</strong> out of{' '}
+                <strong className="text-fg1">{totalMarks}</strong> marks
                 {result.assessment.subject && (
                   <> · {result.assessment.subject.name}</>
                 )}
@@ -366,7 +449,7 @@ export function AssessmentResultPage() {
           variant="outline"
           icon={BookOpen}
           className="flex-1"
-          onClick={() => navigate('/student/assessments')}
+          onClick={() => navigate('/assessment')}
         >
           All Assessments
         </Button>
@@ -374,9 +457,9 @@ export function AssessmentResultPage() {
           icon={Award}
           variant="soft"
           className="flex-1"
-          onClick={() => navigate('/student')}
+          onClick={() => { window.location.href = '/#/home'; }}
         >
-          Dashboard
+          Home
         </Button>
       </div>
 
@@ -387,7 +470,7 @@ export function AssessmentResultPage() {
           Review Answers
         </h3>
         <div className="space-y-2">
-          {result.questions.map((q, i) => (
+          {questions.map((q, i) => (
             <ReviewItem key={q.questionId} q={q} idx={i} />
           ))}
         </div>
@@ -395,5 +478,6 @@ export function AssessmentResultPage() {
 
       <div className="h-8" />
     </div>
+    </StandalonePage>
   );
 }

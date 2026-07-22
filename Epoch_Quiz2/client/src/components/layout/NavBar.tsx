@@ -39,8 +39,13 @@ interface NavBarProps {
   navigate: NavigateFn;
 }
 
+// Secondary/informational pages grouped under the "More" dropdown — kept
+// off the main nav so it only shows the most frequently used items.
+const MORE_ROUTES = ['faq', 'about', 'contact'];
+
 export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
   const [profileOpen, setProfileOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const t    = useT();
   const user = useAuth();
@@ -52,6 +57,14 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
       return () => document.removeEventListener('click', onClick);
     }
   }, [profileOpen]);
+
+  useEffect(() => {
+    const onClick = () => { setMoreOpen(false); };
+    if (moreOpen) {
+      setTimeout(() => document.addEventListener('click', onClick, { once: true }));
+      return () => document.removeEventListener('click', onClick);
+    }
+  }, [moreOpen]);
 
   const stop = useCallback((e: React.MouseEvent) => e.stopPropagation(), []);
   const top  = route.split('/')[0] || 'home';
@@ -101,11 +114,43 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
         {/* CENTER — nav links (flex-centered between the two flex:1 sides so it
             can never overlap the auth cluster; hidden below lg via .nav-links) */}
         <nav className="nav-links">
-          <NavLink to="home"        current={top} navigate={navigate}>{t('nav.home')}</NavLink>
-          <NavLink to="play"        current={top} navigate={navigate}>{t('nav.quizPlay')}</NavLink>
-          <NavLink to="instruction" current={top} navigate={navigate}>{t('nav.instructions')}</NavLink>
-          <NavLink to="about"       current={top} navigate={navigate}>{t('nav.aboutUs')}</NavLink>
-          <NavLink to="contact"     current={top} navigate={navigate}>{t('nav.contactUs')}</NavLink>
+          <NavLink to="home" current={top} navigate={navigate}>{t('nav.home')}</NavLink>
+          <NavLink to="play" current={top} navigate={navigate}>{t('nav.quizPlay')}</NavLink>
+          {/* Assessment, Results, and Leaderboard all live in the separate
+              dashboard-app tree (react-router-dom, mounted at a different
+              root — see main.tsx), so these are real navigations (<a
+              href>), not the hash-router's navigate(). Shown only to
+              logged-in students — Teacher/Admin have their own,
+              differently-scoped pages elsewhere. There is no Student
+              Dashboard — these are standalone top-level routes, not nested
+              under a dashboard shell (see DashboardApp.tsx). */}
+          {user && toUIRole(user.role) === 'student' && (
+            <>
+              <a href="/assessment" className="nav-link">Assessment</a>
+              <a href="/results" className="nav-link">Results</a>
+              <a href="/leaderboard" className="nav-link">Leaderboard</a>
+            </>
+          )}
+          {/* Secondary/informational pages (FAQ, About, Contact) live behind
+              this "More" dropdown instead of cluttering the main nav — see
+              MORE_ROUTES above. */}
+          <div style={{ position: 'relative' }} onClick={stop}>
+            <button
+              className={`nav-link ${MORE_ROUTES.includes(top) ? 'active' : ''}`}
+              onClick={() => setMoreOpen((v) => !v)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+              {t('nav.more')}
+              <Icon name="chevronDown" size={12} style={{ transition: 'transform var(--dur-base) var(--ease)', transform: moreOpen ? 'rotate(180deg)' : undefined }} />
+            </button>
+            {moreOpen && (
+              <div className="dropdown">
+                <button className={`dropdown-item ${top === 'faq' ? 'active' : ''}`} onClick={() => { navigate('faq'); setMoreOpen(false); }}>{t('nav.faq')}</button>
+                <button className={`dropdown-item ${top === 'about' ? 'active' : ''}`} onClick={() => { navigate('about'); setMoreOpen(false); }}>{t('nav.aboutUs')}</button>
+                <button className={`dropdown-item ${top === 'contact' ? 'active' : ''}`} onClick={() => { navigate('contact'); setMoreOpen(false); }}>{t('nav.contactUs')}</button>
+              </div>
+            )}
+          </div>
         </nav>
 
         {/* RIGHT — auth buttons (desktop only; folded into the drawer below lg) */}
@@ -113,7 +158,11 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
           {user ? (
             <ProfileMenu
               user={user}
-              dashboardHref={`/${toUIRole(user.role)}`}
+              // There is no Student Dashboard — for students this opens
+              // their standalone Profile page instead. Admin/Teacher keep
+              // their existing Dashboard link.
+              menuLabel={toUIRole(user.role) === 'student' ? 'Profile' : 'Dashboard'}
+              menuHref={toUIRole(user.role) === 'student' ? '/profile' : `/${toUIRole(user.role)}`}
               open={profileOpen}
               setOpen={setProfileOpen}
               onLogout={handleLogout}
@@ -151,16 +200,59 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
               </button>
             </div>
           {([
-            ['home',        t('nav.home')],
-            ['play',        t('nav.quizPlay')],
-            ['instruction', t('nav.instructions')],
-            ['about',       t('nav.aboutUs')],
-            ['contact',     t('nav.contactUs')],
+            ['home', t('nav.home')],
+            ['play', t('nav.quizPlay')],
           ] as [string, string][]).map(([k, n]) => (
             <button key={k} className={`nav-link ${top === k ? 'active' : ''}`} style={{ textAlign: 'left' }} onClick={() => { navigate(k); setMobileOpen(false); }}>
               {n}
             </button>
           ))}
+          {user && toUIRole(user.role) === 'student' && (
+            <>
+              <a
+                href="/assessment"
+                className="nav-link"
+                style={{ textAlign: 'left', display: 'block', textDecoration: 'none' }}
+                onClick={() => setMobileOpen(false)}
+              >
+                Assessment
+              </a>
+              <a
+                href="/results"
+                className="nav-link"
+                style={{ textAlign: 'left', display: 'block', textDecoration: 'none' }}
+                onClick={() => setMobileOpen(false)}
+              >
+                Results
+              </a>
+              <a
+                href="/leaderboard"
+                className="nav-link"
+                style={{ textAlign: 'left', display: 'block', textDecoration: 'none' }}
+                onClick={() => setMobileOpen(false)}
+              >
+                Leaderboard
+              </a>
+            </>
+          )}
+
+          {/* Secondary/informational pages, grouped the same way as the
+              desktop "More" dropdown — see MORE_ROUTES above. */}
+          <button
+            className={`nav-link ${MORE_ROUTES.includes(top) ? 'active' : ''}`}
+            style={{ textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+            onClick={() => setMoreOpen((v) => !v)}
+          >
+            {t('nav.more')}
+            <Icon name="chevronDown" size={14} style={{ transition: 'transform var(--dur-base) var(--ease)', transform: moreOpen ? 'rotate(180deg)' : undefined }} />
+          </button>
+          {moreOpen && (
+            <div style={{ display: 'flex', flexDirection: 'column', paddingLeft: 12 }}>
+              <button className={`nav-link ${top === 'faq' ? 'active' : ''}`} style={{ textAlign: 'left' }} onClick={() => { navigate('faq'); setMobileOpen(false); }}>{t('nav.faq')}</button>
+              <button className={`nav-link ${top === 'about' ? 'active' : ''}`} style={{ textAlign: 'left' }} onClick={() => { navigate('about'); setMobileOpen(false); }}>{t('nav.aboutUs')}</button>
+              <button className={`nav-link ${top === 'contact' ? 'active' : ''}`} style={{ textAlign: 'left' }} onClick={() => { navigate('contact'); setMobileOpen(false); }}>{t('nav.contactUs')}</button>
+            </div>
+          )}
 
           <div style={{ borderTop: '1px solid var(--border-1)', marginTop: 8, paddingTop: 8 }}>
             {user ? (
@@ -180,13 +272,17 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
                   </div>
                 </div>
                 <div style={{ padding: '4px 14px 8px' }}>
+                  {/* No Student Dashboard — students get their standalone
+                      Profile page here instead; Admin/Teacher keep their
+                      existing Dashboard link. */}
                   <a
-                    href={`/${toUIRole(user.role)}`}
+                    href={toUIRole(user.role) === 'student' ? '/profile' : `/${toUIRole(user.role)}`}
                     className="btn btn-primary sm"
                     style={{ width: '100%', justifyContent: 'center', textDecoration: 'none' }}
                     onClick={() => setMobileOpen(false)}
                   >
-                    <Icon name="sparkles" size={14} /> My Dashboard
+                    <Icon name="sparkles" size={14} />
+                    {toUIRole(user.role) === 'student' ? 'My Profile' : 'My Dashboard'}
                   </a>
                 </div>
                 <button
@@ -214,14 +310,15 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
 // ── Logged-in profile menu (desktop) ─────────────────────────────
 interface ProfileMenuProps {
   user: AuthUser;
-  dashboardHref: string;
+  menuLabel: string;
+  menuHref: string;
   open: boolean;
   setOpen: (v: boolean | ((p: boolean) => boolean)) => void;
   onLogout: () => void;
   stop: (e: React.MouseEvent) => void;
 }
 
-const ProfileMenu: React.FC<ProfileMenuProps> = ({ user, dashboardHref, open, setOpen, onLogout, stop }) => (
+const ProfileMenu: React.FC<ProfileMenuProps> = ({ user, menuLabel, menuHref, open, setOpen, onLogout, stop }) => (
   <div style={{ position: 'relative' }} onClick={stop}>
     <button
       className="nav-profile-btn"
@@ -253,8 +350,8 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({ user, dashboardHref, open, se
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-1)' }}>{user.name}</div>
           <div style={{ fontSize: 11, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</div>
         </div>
-        <a className="dropdown-item" href={dashboardHref} style={{ textDecoration: 'none' }}>
-          <Icon name="sparkles" size={14} /> Dashboard
+        <a className="dropdown-item" href={menuHref} style={{ textDecoration: 'none' }}>
+          <Icon name="sparkles" size={14} /> {menuLabel}
         </a>
         <button className="dropdown-item" onClick={onLogout} style={{ color: 'var(--danger, #FF6B6B)' }}>
           <Icon name="logout" size={14} /> Log out

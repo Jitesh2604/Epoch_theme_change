@@ -180,7 +180,10 @@ async function getOlympiadPerSubject(): Promise<number> {
 // ── Build result from a completed attempt ─────────────────────────────
 
 async function buildResult(attemptId: string) {
-  const attempt = await prisma.quizAttempt.findUnique({ where: { id: attemptId } });
+  const attempt = await prisma.quizAttempt.findUnique({
+    where: { id: attemptId },
+    include: { quiz: { select: { id: true, title: true, quizType: true, subjectExternalId: true } } },
+  });
   if (!attempt) throw ApiError.notFound('Attempt not found');
 
   const answers = await prisma.attemptAnswer.findMany({
@@ -199,8 +202,25 @@ async function buildResult(attemptId: string) {
 
   const totalMarks = answers.reduce((s, a) => s + a.question.marks, 0);
 
+  // Resolve the subject so a history "view detail" page has the same
+  // title/subject/attempt-number/timing context the history list itself
+  // already shows — buildResult previously only returned score + answers,
+  // with nothing identifying which quiz/attempt this even was.
+  const subExtId    = attempt.quiz?.subjectExternalId ?? null;
+  const subjectName = subExtId ? (await ContentMeta.subjects()).get(subExtId) ?? subExtId : null;
+
   return {
     attemptId:      attempt.id,
+    attemptNumber:  attempt.attemptNumber,
+    quiz: {
+      id:       attempt.quiz?.id ?? attempt.quizId,
+      title:    attempt.quiz?.title ?? 'Quiz',
+      quizType: attempt.quiz?.quizType ?? null,
+      subject:  subExtId ? { id: subExtId, name: subjectName ?? subExtId } : null,
+    },
+    startTime:      attempt.startTime,
+    endTime:        attempt.endTime,
+    questionCount:  answers.length,
     score:          attempt.score,
     totalMarks,
     percent:        attempt.percentage,
@@ -783,6 +803,7 @@ export const QuizService = {
       startTime:      r.startTime,
       endTime:        r.endTime,
       quizTitle:      r.quiz.title,
+      quizType:       r.quiz.quizType,
       questionCount:  r._count.answers,
     }));
   },

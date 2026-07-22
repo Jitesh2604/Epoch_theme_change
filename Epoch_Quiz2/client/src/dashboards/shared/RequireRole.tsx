@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { Lock } from 'lucide-react';
 import { getRole, pathForRole, type Role } from './auth';
 import { loadUser, toUIRole } from '../../lib/authStore';
+import { rememberPostAuthTarget } from '../../lib/postAuthRedirect';
 
 export function RequireRole({ role, children }: { role: Role; children: ReactNode }) {
   const current = getRole();
@@ -12,7 +13,13 @@ export function RequireRole({ role, children }: { role: Role; children: ReactNod
 
   useEffect(() => {
     if (!current) {
-      const t = setTimeout(() => { window.location.href = '/login'; }, 1500);
+      const t = setTimeout(() => {
+        // Remember exactly the protected page they were trying to reach
+        // (e.g. /profile) so login can send them straight back instead of
+        // defaulting to Home.
+        rememberPostAuthTarget(window.location.pathname + window.location.search);
+        window.location.href = '/#/login';
+      }, 1500);
       return () => clearTimeout(t);
     }
     if (needsProfile) {

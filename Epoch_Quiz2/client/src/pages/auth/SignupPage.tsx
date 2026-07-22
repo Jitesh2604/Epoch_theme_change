@@ -3,8 +3,9 @@ import type { NavigateFn } from '../../types';
 import { Icon } from '../../components/ui/Icon';
 import { showToast } from '../../components/ui/Toast';
 import { Field, PasswordFieldInner, AuthIllustration, validateEmail, validateName } from './_shared';
-import { register, toUIRole } from '../../lib/authStore';
+import { register } from '../../lib/authStore';
 import { ApiError } from '../../lib/api';
+import { consumePostAuthRedirect } from '../../lib/postAuthRedirect';
 
 interface SignupPageProps { navigate: NavigateFn; }
 
@@ -72,19 +73,16 @@ export const SignupPage: React.FC<SignupPageProps> = ({ navigate }) => {
     setLoading(true);
     try {
       const user = await register(name, email, password, role, mobileNo);
-      const uiRole = toUIRole(user.role);
 
-      const pending = localStorage.getItem('epoch-after-auth');
-      if (pending) {
-        localStorage.removeItem('epoch-after-auth');
+      if (consumePostAuthRedirect()) {
         showToast('Account created — heading back to your quiz', 'success');
-        window.location.hash = pending.startsWith('#') ? pending : '#' + pending;
       } else if (!user.profileComplete) {
         showToast(`Account created — let's set up your profile, ${user.name}!`, 'success');
         window.location.hash = '#/complete-profile';
       } else {
+        // No specific page was requested — land on Home, not the Dashboard.
         showToast(`Account created — welcome, ${user.name}!`, 'success');
-        window.location.href = `/${uiRole}`;
+        window.location.href = '/#/home';
       }
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Registration failed. Please try again.';

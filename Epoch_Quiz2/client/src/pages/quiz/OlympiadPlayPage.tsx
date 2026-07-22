@@ -228,7 +228,7 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate, resumeAttemptId })
           )}
 
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-            <button className="btn btn-ghost"   onClick={() => { window.location.href = '/student/results'; }}>View history</button>
+            <button className="btn btn-ghost"   onClick={() => { window.location.href = '/results'; }}>View history</button>
             <button className="btn btn-primary" onClick={() => navigate('play')}>Back to categories</button>
           </div>
         </div>

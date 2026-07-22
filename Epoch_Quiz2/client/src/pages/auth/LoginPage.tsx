@@ -5,6 +5,7 @@ import { showToast } from '../../components/ui/Toast';
 import { Field, AuthIllustration, validateEmail } from './_shared';
 import { login, toUIRole } from '../../lib/authStore';
 import { ApiError } from '../../lib/api';
+import { consumePostAuthRedirect } from '../../lib/postAuthRedirect';
 
 interface LoginPageProps { navigate: NavigateFn; }
 
@@ -28,11 +29,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
       const user = await login(email, password);
       const uiRole = toUIRole(user.role);
 
-      const pending = localStorage.getItem('epoch-after-auth');
-      if (pending) {
-        localStorage.removeItem('epoch-after-auth');
+      if (consumePostAuthRedirect()) {
         showToast('Welcome back — heading to your quiz', 'success');
-        window.location.hash = pending.startsWith('#') ? pending : '#' + pending;
         return;
       }
 
@@ -43,8 +41,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
         return;
       }
 
+      // No specific page was requested — land on Home, not the Dashboard.
+      // The Dashboard is only reached by an explicit click.
       showToast(`Welcome back, ${user.name}!`, 'success');
-      window.location.href = `/${uiRole}`;
+      window.location.href = '/#/home';
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Login failed. Please try again.';
       setErrors({ password: msg });

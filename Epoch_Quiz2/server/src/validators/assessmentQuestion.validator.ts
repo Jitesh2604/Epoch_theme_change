@@ -3,6 +3,8 @@ import { Difficulty, QuestionType } from '../lib/enums';
 import { paginationSchema } from '../utils/pagination';
 
 // ── shared fragments ─────────────────────────────────────────
+// Mirrors question.validator.ts's fragments exactly — same question shape,
+// just validated for the separate Assessment Question Bank table.
 const promptSchema      = z.string().trim().min(1, 'Prompt is required').max(5000);
 const explanationSchema = z.string().trim().min(1).max(5000).optional().nullable();
 const marksSchema      = z.coerce.number().int().min(1, 'Marks must be ≥ 1').max(100);
@@ -11,8 +13,6 @@ const tagsSchema       = z.array(z.string().trim().min(1).max(40)).max(20);
 const subjectIdSchema  = z.string().min(1).optional().nullable();
 const optionsSchema    = z.array(z.string().trim().min(1).max(500)).min(2, 'At least 2 options').max(8);
 
-// Academic taxonomy shared by every question type. classExternalId/chapterExternalId/bookExternalId are
-// real FK columns on `questions`; all optional so existing callers keep working.
 const academicFields = {
   classExternalId:        z.string().min(1).optional().nullable(),
   chapterExternalId:      z.string().min(1).optional().nullable(),
@@ -20,17 +20,7 @@ const academicFields = {
   educationBoard: z.string().trim().min(1).max(120).optional().nullable(),
 };
 
-// Image fields, shared by every question type. These columns are
-// VARCHAR(191) — a URL to an already-hosted image, not an inline/base64
-// data URL (those run to thousands of characters and would be truncated).
-// Populated today only by the seed-questions import script and read back
-// on the student-facing assessment-take screen; this is what lets manual
-// question creation/editing set the same fields.
 const imgUrlSchema = z.string().trim().url('Must be a valid image URL').max(191).optional().nullable();
-// Shared by every type, alongside the image fields: explanation text (shown
-// after grading) previously had no manual create/update path at all — only
-// sync/seed ever set it. Bundled here since an explanation image with no
-// explanation text to go with it wouldn't make sense in the UI.
 const commonFields = {
   explanation:         explanationSchema,
   promptImageUrl:      imgUrlSchema,
@@ -111,7 +101,7 @@ const descCreateSchema = z.object({
   subjectExternalId:   subjectIdSchema,
 });
 
-export const createQuestionSchema = z
+export const createAssessmentQuestionSchema = z
   .discriminatedUnion('type', [
     mcqSingleCreateSchema,
     mcqMultipleCreateSchema,
@@ -123,7 +113,7 @@ export const createQuestionSchema = z
   .and(z.object({ ...academicFields, ...commonFields }));
 
 // ── UPDATE — partial; type-specific fields validated in service ─
-export const updateQuestionSchema = z
+export const updateAssessmentQuestionBankSchema = z
   .object({
     prompt:         promptSchema.optional(),
     marks:          marksSchema.optional(),
@@ -156,22 +146,59 @@ export const updateQuestionSchema = z
   .refine((v) => Object.keys(v).length > 0, { message: 'No fields to update' });
 
 // ── LIST / params ────────────────────────────────────────────
-// This is the Practice/Olympiad question bank only — Assessment's list/
-// attach/reorder schemas live in assessmentQuestion.validator.ts, operating
-// on the physically separate Assessment Question Bank table.
-export const listQuestionsQuerySchema = paginationSchema.extend({
+export const listAssessmentQuestionsQuerySchema = paginationSchema.extend({
   type:       z.nativeEnum(QuestionType).optional(),
   difficulty: difficultySchema.optional(),
   subjectExternalId:  z.string().min(1).optional(),
   search:     z.string().trim().min(1).max(200).optional(),
   mine:       z.coerce.boolean().optional(),
   tag:        z.string().trim().min(1).max(40).optional(),
+  excludeAssessmentId: z.string().min(1).optional(),
 });
 
-export const questionIdParamsSchema = z.object({
+export const assessmentQuestionBankIdParamsSchema = z.object({
   id: z.string().min(1),
 });
 
-export type CreateQuestionInput = z.infer<typeof createQuestionSchema>;
-export type UpdateQuestionInput = z.infer<typeof updateQuestionSchema>;
-export type ListQuestionsQuery  = z.infer<typeof listQuestionsQuerySchema>;
+// ── Assessment ↔ Question (attach / reorder / params) ────────
+// Per-question override of the assessment's flat negativeMarksValue — mirrors
+// how `marks` here overrides AssessmentQuestionBank.marks.
+const negMarksSchema = z.coerce.number().min(0, 'Negative marks must be ≥ 0').max(100).optional();
+
+export const attachQuestionsSchema = z.union([
+  z.object({
+    questionId: z.string().min(1),
+    marks:      z.coerce.number().int().min(1).max(100).optional(),
+    negMarks:   negMarksSchema,
+  }),
+  z.object({
+    questionIds: z.array(z.string().min(1)).min(1).max(200),
+  }),
+]);
+
+export const updateAssessmentQuestionSchema = z
+  .object({
+    marks:    z.coerce.number().int().min(1).max(100).optional().nullable(),
+    negMarks: negMarksSchema.nullable(),
+    order:    z.coerce.number().int().min(1).optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'No fields to update' });
+
+export const reorderQuestionsSchema = z.object({
+  order: z
+    .array(z.object({ questionId: z.string().min(1), order: z.coerce.number().int().min(1) }))
+    .min(1)
+    .max(500),
+});
+
+export const assessmentQuestionParamsSchema = z.object({
+  id:         z.string().min(1),
+  questionId: z.string().min(1),
+});
+
+export type CreateAssessmentQuestionInput      = z.infer<typeof createAssessmentQuestionSchema>;
+export type UpdateAssessmentQuestionBankInput  = z.infer<typeof updateAssessmentQuestionBankSchema>;
+export type ListAssessmentQuestionsQuery       = z.infer<typeof listAssessmentQuestionsQuerySchema>;
+export type AttachQuestionsInput               = z.infer<typeof attachQuestionsSchema>;
+export type UpdateAssessmentQuestionInput      = z.infer<typeof updateAssessmentQuestionSchema>;
+export type ReorderQuestionsInput              = z.infer<typeof reorderQuestionsSchema>;

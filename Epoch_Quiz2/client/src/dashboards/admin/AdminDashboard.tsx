@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, GraduationCap, ClipboardList, BookOpen,
+  LayoutDashboard, GraduationCap, ClipboardList, BookOpen, FileQuestion,
   BarChart3, Settings as SettingsIcon, Home,
 } from 'lucide-react';
 import { Route, Routes, Navigate } from 'react-router-dom';
@@ -9,12 +9,14 @@ import { DashboardOverviewPage } from './pages/DashboardOverviewPage';
 // import { TeachersPage } from './pages/TeachersPage';
 import { StudentsPage } from './pages/StudentsPage';
 import { AssessmentsPage } from './pages/AssessmentsPage';
+import { AssessmentQuestionBankPage } from './pages/AssessmentQuestionBankPage';
 import { QuestionBankPage } from './pages/QuestionBankPage';
 import { UploadQuestionsPage } from '../shared/UploadQuestionsPage';
 import { UploadHistoryPage } from '../shared/UploadHistoryPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
-import { AssessmentPreviewPage } from './pages/AssessmentPreviewPage';
+import { CreateAssessmentPage } from '../shared/CreateAssessmentPage';
+import { QuestionManagementPage } from '../shared/QuestionManagementPage';
 import { useAuth } from '../../lib/authStore';
 
 export function AdminDashboard() {
@@ -35,6 +37,7 @@ export function AdminDashboard() {
               // { to: '/admin/teachers', label: 'Teachers', icon: Users },
               { to: '/admin/students', label: 'Students', icon: GraduationCap },
               { to: '/admin/assessments', label: 'Assessments', icon: ClipboardList },
+              { to: '/admin/assessment-question-bank', label: 'Assessment Questions', icon: FileQuestion },
               { to: '/admin/question-bank', label: 'Question Bank', icon: BookOpen },
               { to: '/admin/reports', label: 'Reports & Analytics', icon: BarChart3 },
             ]}
@@ -54,7 +57,9 @@ export function AdminDashboard() {
         {/* <Route path="teachers" element={<TeachersPage />} /> */}
         <Route path="students" element={<StudentsPage />} />
         <Route path="assessments" element={<AssessmentsPage />} />
-        <Route path="assessments/:id" element={<AssessmentPreviewPage />} />
+        <Route path="create-assessment" element={<CreateAssessmentPage />} />
+        <Route path="assessments/:id/questions" element={<QuestionManagementPage />} />
+        <Route path="assessment-question-bank" element={<AssessmentQuestionBankPage />} />
         <Route path="question-bank" element={<QuestionBankPage />} />
         <Route path="upload-questions" element={<UploadQuestionsPage />} />
         <Route path="upload-questions/history" element={<UploadHistoryPage />} />
