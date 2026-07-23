@@ -76,7 +76,7 @@ export function ReportsPage() {
   const subjectMap = useMemo(() => {
     const m: Record<string, { attempts: number; totalPct: number; passed: number }> = {};
     for (const s of filteredSubs) {
-      const subj = s.assessment.subject?.name ?? 'Other';
+      const subj = s.assessment.subject?.name ?? 'Mixed Subjects';
       if (!m[subj]) m[subj] = { attempts: 0, totalPct: 0, passed: 0 };
       m[subj].attempts++;
       m[subj].totalPct += s.percent ?? 0;
@@ -245,7 +245,7 @@ export function ReportsPage() {
                 columns={[
                   { key: 'student', label: 'Student', render: s => <span className="font-medium text-fg1">{s.student?.name ?? '—'}</span> },
                   { key: 'assessment', label: 'Assessment', render: s => <span className="text-fg2 truncate max-w-[200px] block">{s.assessment.title}</span> },
-                  { key: 'subject', label: 'Subject', render: s => <span className="text-fg3">{s.assessment.subject?.name ?? '—'}</span> },
+                  { key: 'subject', label: 'Subject', render: s => <span className="text-fg3">{s.assessment.subject?.name ?? 'Mixed Subjects'}</span> },
                   { key: 'score', label: 'Score', render: s => <span className="font-mono">{s.score}/{s.totalMarks}</span> },
                   { key: 'percent', label: '%', render: s => <Badge tone={s.percent >= 50 ? 'success' : 'danger'} dot={false}>{s.percent}%</Badge> },
                   { key: 'date', label: 'Date', render: s => <span className="text-[11px] text-fg3">{s.submittedAt ? new Date(s.submittedAt).toLocaleDateString() : '—'}</span> },
@@ -270,7 +270,7 @@ export function ReportsPage() {
             <Table
               columns={[
                 { key: 'title',     label: 'Title',    render: a => <span className="font-semibold text-fg1">{a.title}</span> },
-                { key: 'subject',   label: 'Subject',  render: a => <span className="text-fg2">{a.subject?.name ?? '—'}</span> },
+                { key: 'subject',   label: 'Subject',  render: a => <span className="text-fg2">{a.subject?.name ?? 'Mixed Subjects'}</span> },
                 { key: 'status',    label: 'Status',   render: a => <Badge tone={a.status === 'PUBLISHED' ? 'success' : a.status === 'DRAFT' ? 'warning' : 'neutral'}>{a.status.toLowerCase()}</Badge> },
                 { key: 'questions', label: 'Questions', render: a => <span className="font-mono">{a.questionCount}</span> },
                 { key: 'attempts',  label: 'Attempts',  render: a => <span className="font-mono">{a.attempts}</span> },

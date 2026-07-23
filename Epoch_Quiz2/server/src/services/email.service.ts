@@ -30,6 +30,13 @@ function createTransport(): Transporter | null {
     auth:   { user: env.SMTP_USER, pass: env.SMTP_PASS },
     pool:   true,
     maxConnections: 5,
+    // Nodemailer's defaults (2 min connection timeout) leave a submitter
+    // staring at "Sending…" for ages before a misconfigured/unreachable host
+    // fails — cap it so the Contact form (and password reset) surface a real
+    // error in a reasonable time instead of hanging.
+    connectionTimeout: 10_000,
+    greetingTimeout:   10_000,
+    socketTimeout:     15_000,
   });
 }
 

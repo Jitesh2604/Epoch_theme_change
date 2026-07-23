@@ -135,13 +135,13 @@ export function EditAssessmentModal({ assessmentId, open, onClose, onSaved }: Pr
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Subject">
+              <Field label="Subject" hint="Leave blank for a mixed-subject exam.">
                 <select
                   value={form.subjectId}
                   onChange={e => setForm(f => ({ ...f, subjectId: e.target.value }))}
                   className="w-full h-10 px-2.5 rounded-xl bg-surface1 border border-line text-[13px] text-fg1"
                 >
-                  <option value="">— None —</option>
+                  <option value="">Mixed Subjects (default)</option>
                   {(subjects ?? []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </Field>

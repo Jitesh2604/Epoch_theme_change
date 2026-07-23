@@ -11,7 +11,7 @@ export function AnalyticsPage() {
 
   const subjectMap: Record<string, { attempts: number; totalPct: number }> = {};
   for (const s of submissions?.items ?? []) {
-    const subj = s.assessment.subject?.name ?? 'Other';
+    const subj = s.assessment.subject?.name ?? 'Mixed Subjects';
     if (!subjectMap[subj]) subjectMap[subj] = { attempts: 0, totalPct: 0 };
     subjectMap[subj].attempts++;
     subjectMap[subj].totalPct += s.percent ?? 0;

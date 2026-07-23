@@ -4,7 +4,7 @@ import { RoleSelectionPage } from './RoleSelectionPage';
 import { AdminDashboard } from './admin/AdminDashboard';
 // Teacher module is temporarily hidden — see DashboardApp route below.
 // import { TeacherDashboard } from './teacher/TeacherDashboard';
-import { AssessmentEntryPage } from './student/pages/AssessmentEntryPage';
+import { MyAssessmentsPage } from './student/pages/MyAssessmentsPage';
 import { AssessmentOverviewPage } from './student/pages/AssessmentOverviewPage';
 import { AssessmentTakePage } from './student/pages/AssessmentTakePage';
 import { AssessmentResultPage } from './student/pages/AssessmentResultPage';
@@ -87,9 +87,12 @@ export function DashboardApp() {
             minimal shell (StandaloneHeader, or nothing at all for the exam
             itself) instead of DashboardLayout's sidebar/topbar. Reachable
             from the main site navbar's Assessment/Results/Leaderboard
-            links and the profile menu's Profile link — see NavBar.tsx. */}
+            links and the profile menu's Profile link — see NavBar.tsx.
+            /assessment is the restored My Assessments list (Available/
+            Completed tabs) — students pick an assessment here rather than
+            being auto-redirected into the single current one. */}
         <Route element={<RequireRole role="student"><Outlet /></RequireRole>}>
-          <Route path="/assessment"                     element={<AssessmentEntryPage />} />
+          <Route path="/assessment"                     element={<MyAssessmentsPage />} />
           <Route path="/assessment/:assessmentId"        element={<AssessmentOverviewPage />} />
           <Route path="/assessment/take/:submissionId"   element={<AssessmentTakePage />} />
           <Route path="/assessment/result/:submissionId" element={<AssessmentResultPage />} />

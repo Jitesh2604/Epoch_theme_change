@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Clock, FileText, Target, ListChecks, ArrowLeft, Play, Info, AlertTriangle,
+  Clock, FileText, Target, ListChecks, ArrowLeft, Play, Info, AlertTriangle, Layers,
 } from 'lucide-react';
 import { Card, Button, Badge, Skeleton, useToasts } from '../../shared/ui';
 import { StandaloneHeader } from '../../shared/StandaloneHeader';
@@ -116,17 +116,13 @@ export function AssessmentOverviewPage() {
     <div className="max-w-2xl mx-auto pb-10">
       {node}
 
-      {/* Goes to Home, not /assessment — with a single assessment per
-          session, "back to Assessments" would just redirect straight back
-          to this same page (see AssessmentEntryPage). There is no Student
-          Dashboard to return to. */}
-      <a
-        href="/#/home"
+      <button
+        onClick={() => navigate('/assessment')}
         className="flex items-center gap-1.5 text-[12.5px] text-fg3 hover:text-fg1 transition mb-5"
       >
         <ArrowLeft size={13} />
-        Home
-      </a>
+        Back to Assessments
+      </button>
 
       {/* ── Header ─────────────────────────────────────────────── */}
       <Card className="p-6 mb-4">
@@ -134,7 +130,7 @@ export function AssessmentOverviewPage() {
           <div className="w-12 h-12 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0">
             <FileText size={20} />
           </div>
-          {assessment.subject && <Badge tone="brand">{assessment.subject.name}</Badge>}
+          <Badge tone="brand">{assessment.subject?.name ?? 'Mixed Subjects'}</Badge>
         </div>
         <h1 className="font-display font-semibold text-[20px] md:text-[22px] text-fg1 mt-3 mb-1.5">
           {assessment.title}
@@ -151,6 +147,7 @@ export function AssessmentOverviewPage() {
           Assessment details
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <InfoTile icon={Layers} label="Subjects" value={assessment.subject?.name ?? 'Mixed Subjects'} />
           <InfoTile icon={Clock} label="Duration" value={`${assessment.duration} minutes`} />
           <InfoTile icon={FileText} label="Total questions" value={String(assessment.questionCount)} />
           <InfoTile icon={Target} label="Total marks" value={String(assessment.totalMarks)} />

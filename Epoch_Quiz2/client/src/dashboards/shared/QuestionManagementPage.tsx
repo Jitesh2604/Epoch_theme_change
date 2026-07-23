@@ -368,10 +368,10 @@ export function QuestionManagementPage() {
               ))}
             </div>
 
-            {assessment?.subject && (
+            {assessment && (
               <div className="mt-3 pt-3 border-t border-line">
-                <div className="text-[11px] text-fg3 mb-1">Subject</div>
-                <Badge tone="brand" dot={false}>{assessment.subject.name}</Badge>
+                <div className="text-[11px] text-fg3 mb-1">Subjects</div>
+                <Badge tone="brand" dot={false}>{assessment.subject?.name ?? 'Mixed Subjects'}</Badge>
               </div>
             )}
 

@@ -31,7 +31,7 @@ export function Sidebar({
   const navigate = useNavigate();
 
   const content = (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col min-w-0">
       <div className="flex items-center justify-between px-4 pt-5 pb-3 border-b border-line">
         <button onClick={() => navigate('/')} className="flex items-center gap-2.5 group min-w-0">
           <div className="flex-shrink-0">
@@ -53,7 +53,7 @@ export function Sidebar({
         </button>
       </div>
 
-      <nav className="flex-1 px-2.5 mt-3 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 min-w-0 px-2.5 mt-3 space-y-0.5 overflow-y-auto overflow-x-hidden">
         {items.map(item => {
           if (item.href) {
             return (
@@ -63,7 +63,7 @@ export function Sidebar({
                 className="group flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium font-body text-fg2 hover:text-fg1 hover:bg-[rgba(53,64,36,0.04)] border border-transparent transition-all"
               >
                 <item.icon size={17} className="text-fg3 group-hover:text-fg2 flex-shrink-0" />
-                {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+                {!collapsed && <span className="flex-1 min-w-0 truncate">{item.label}</span>}
               </a>
             );
           }
@@ -94,7 +94,7 @@ export function Sidebar({
                   />
                   {!collapsed && (
                     <>
-                      <span className="flex-1 truncate">{item.label}</span>
+                      <span className="flex-1 min-w-0 truncate">{item.label}</span>
                       {item.badge && (
                         <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-brand text-brand-ink leading-none">
                           {item.badge}

@@ -1,8 +1,9 @@
-import { Trophy, Crown, Medal } from 'lucide-react';
-import { PageHeader, Card, Avatar, Badge, ProgressBar, Skeleton } from '../../shared/ui';
+import { Trophy, Crown, Medal, HourglassIcon } from 'lucide-react';
+import { PageHeader, Card, Avatar, Badge, ProgressBar, Skeleton, EmptyState } from '../../shared/ui';
 import { StandaloneHeader } from '../../shared/StandaloneHeader';
 import { useGlobalLeaderboard } from '../../../hooks/useLeaderboard';
 import { loadUser } from '../../../lib/authStore';
+import { useResultsPublished } from '../../../hooks/useResultsPublished';
 
 function StandalonePage({ children }: { children: React.ReactNode }) {
   return (
@@ -16,8 +17,38 @@ function StandalonePage({ children }: { children: React.ReactNode }) {
 }
 
 export function LeaderboardPage() {
+  // Same publish-state source of truth as the navbar's Leaderboard link
+  // (see useResultsPublished.ts) — this blocks direct/bookmarked URL access
+  // for the window between the nav link being hidden and this page's own
+  // data loading, and is the single source of truth tying Leaderboard
+  // visibility to Assessment result publication.
+  const { published, loading: publishLoading } = useResultsPublished();
   const { data: entries, loading, error } = useGlobalLeaderboard({ limit: 20 });
   const user = loadUser();
+
+  if (publishLoading) {
+    return (
+      <StandalonePage>
+        <PageHeader eyebrow="Student · Leaderboard" title="Leaderboard" subtitle="Top performers across all assessments on the platform." />
+        <Card className="p-6"><div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div></Card>
+      </StandalonePage>
+    );
+  }
+
+  if (!published) {
+    return (
+      <StandalonePage>
+        <PageHeader eyebrow="Student · Leaderboard" title="Leaderboard" subtitle="Top performers across all assessments on the platform." />
+        <Card>
+          <EmptyState
+            icon={HourglassIcon}
+            title="Leaderboard is not available yet"
+            desc="The leaderboard unlocks once your Admin officially publishes the Assessment results. Check back after results are out."
+          />
+        </Card>
+      </StandalonePage>
+    );
+  }
 
   const topThree = entries?.slice(0, 3) ?? [];
   const rest = entries?.slice(3) ?? [];

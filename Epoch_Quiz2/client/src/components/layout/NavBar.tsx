@@ -44,11 +44,11 @@ interface NavBarProps {
 // off the main nav so it only shows the most frequently used items.
 const MORE_ROUTES = ['faq', 'about', 'contact'];
 
-// Temporarily hidden from the navbar while this feature isn't ready for
-// release — the pages, routes, and backend logic are untouched. Flip to
-// `true` to bring the link back; no other code changes needed.
+// Assessment is back in the navbar now that its flow (My Assessments →
+// Details → full-screen exam → Result) is in place. Flip to `false` here
+// if it needs to come off the nav again — no other code changes needed.
 const NAV_ENABLED = {
-  assessment: false,
+  assessment: true,
 };
 
 export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
@@ -60,7 +60,7 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
   // Leaderboard isn't a static on/off flag like Assessment above — it's
   // hidden until the current assessment's results are published, then
   // appears automatically for every student (see useResultsPublished.ts).
-  const resultsPublished = useResultsPublished();
+  const { published: resultsPublished } = useResultsPublished();
 
   useEffect(() => {
     const onClick = () => { setProfileOpen(false); };

@@ -107,8 +107,7 @@ export function AssessmentsPage() {
               <h3 className="font-display font-semibold text-[16px] text-fg1 leading-snug group-hover:text-brand transition mb-1">{a.title}</h3>
               <p className="text-[12.5px] text-fg3 leading-relaxed line-clamp-2 mb-3">{a.description ?? 'No description'}</p>
               <div className="text-[11px] text-fg3 mb-4">
-                By <span className="text-fg2">{a.createdBy.name}</span>
-                {a.subject && <> · {a.subject.name}</>}
+                By <span className="text-fg2">{a.createdBy.name}</span> · {a.subject?.name ?? 'Mixed Subjects'}
               </div>
               <div className="grid grid-cols-3 gap-2 text-center pt-3 border-t border-line mb-4">
                 <div>

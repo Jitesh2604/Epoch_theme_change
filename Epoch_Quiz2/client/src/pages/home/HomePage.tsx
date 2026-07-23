@@ -4,6 +4,9 @@ import { Icon } from '../../components/ui/Icon';
 import { Footer } from '../../components/layout/Footer';
 import { HERO_SLIDES } from '../../lib/data';
 import { useT } from '../../lib/i18n';
+import { useAuth, toUIRole } from '../../lib/authStore';
+import { useAsync } from '../../hooks/useApi';
+import { api } from '../../lib/api';
 
 interface HomePageProps {
   navigate: NavigateFn;
@@ -13,6 +16,29 @@ interface HomePageProps {
 export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
   const [slide, setSlide] = useState(0);
   const t = useT();
+  const user = useAuth();
+  const isStudent = !!user && toUIRole(user.role) === 'student';
+
+  // Resolve which assessment the "Assessment" quick-start card should open —
+  // an in-progress attempt resumes straight into the exam, otherwise it goes
+  // to the current published assessment's Details page. Falls back to the
+  // My Assessments list ('/assessment') for non-students, logged-out
+  // visitors, or once there's more than one assessment to choose from.
+  const { data: assessmentTarget } = useAsync<{ href: string } | null>(
+    () => isStudent
+      ? Promise.all([
+          api.getWithQuery<{ items: { id: string }[] }>('/assessments', { status: 'PUBLISHED', limit: 1 }),
+          api.getWithQuery<{ items: { id: string }[] }>('/submissions/me', { status: 'IN_PROGRESS', limit: 1 }),
+        ]).then(([available, inProgress]) => {
+          const resuming = inProgress.items[0];
+          if (resuming) return { href: `/assessment/take/${resuming.id}` };
+          const next = available.items[0];
+          return { href: next ? `/assessment/${next.id}` : '/assessment' };
+        })
+      : Promise.resolve(null),
+    [isStudent],
+  );
+  const assessmentHref = assessmentTarget?.href ?? '/assessment';
 
   useEffect(() => {
     const timer = setInterval(() => setSlide(s => (s + 1) % HERO_SLIDES.length), 6000);
@@ -69,10 +95,10 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
               <p>Pick a subject and difficulty, and practice at your own pace — instant results every time.</p>
               <span className="cat-arrow"><Icon name="arrowUpRight" size={18} /></span>
             </button>
-            <button className="cat-card" onClick={() => navigate('olympiad')}>
-              <div className="cat-ico"><Icon name="target" size={20} /></div>
-              <h3>Attempt Olympiad</h3>
-              <p>A mixed, timed set across all your subjects — graded the moment you finish.</p>
+            <button className="cat-card" onClick={() => { window.location.href = assessmentHref; }}>
+              <div className="cat-ico"><Icon name="fileText" size={20} /></div>
+              <h3>Assessment</h3>
+              <p>A timed, official Assessment set by your school — reviewed and results published by your Admin.</p>
               <span className="cat-arrow"><Icon name="arrowUpRight" size={18} /></span>
             </button>
           </div>

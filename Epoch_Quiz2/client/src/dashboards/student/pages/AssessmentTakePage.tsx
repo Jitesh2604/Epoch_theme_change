@@ -568,9 +568,7 @@ export function AssessmentTakePage() {
             <div className="text-[13px] font-semibold text-fg1 truncate">
               {submission.assessment.title}
             </div>
-            {submission.assessment.subject && (
-              <div className="text-[11px] text-fg3">{submission.assessment.subject.name}</div>
-            )}
+            <div className="text-[11px] text-fg3">{submission.assessment.subject?.name ?? 'Mixed Subjects'}</div>
           </div>
         </div>
 

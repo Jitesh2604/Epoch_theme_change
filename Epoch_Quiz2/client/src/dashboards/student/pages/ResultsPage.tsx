@@ -201,7 +201,7 @@ export function ResultsPage() {
                     <div className="flex-1 min-w-0">
                       <div className="text-[13.5px] font-semibold text-fg1 truncate">{s.assessment.title}</div>
                       <div className="text-[11.5px] text-fg3 mt-0.5">
-                        {s.assessment.subject?.name ?? 'No subject'} · {new Date(s.startedAt).toLocaleDateString()}
+                        {s.assessment.subject?.name ?? 'Mixed Subjects'} · {new Date(s.startedAt).toLocaleDateString()}
                         {s.timeTakenSec ? ` · ${Math.round(s.timeTakenSec / 60)} min` : ''}
                       </div>
                     </div>

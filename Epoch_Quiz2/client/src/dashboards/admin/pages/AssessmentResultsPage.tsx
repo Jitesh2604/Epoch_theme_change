@@ -117,7 +117,7 @@ export function AssessmentResultsPage() {
                   <div>
                     <h3 className="font-display font-semibold text-[16px] text-fg1 leading-snug">{a.title}</h3>
                     <div className="text-[11px] text-fg3 mt-0.5">
-                      {a.subject && <>{a.subject.name} · </>}
+                      {a.subject?.name ?? 'Mixed Subjects'} ·
                       <Badge tone={a.status === 'PUBLISHED' ? 'success' : a.status === 'DRAFT' ? 'warning' : 'neutral'}>
                         {a.status.toLowerCase()}
                       </Badge>

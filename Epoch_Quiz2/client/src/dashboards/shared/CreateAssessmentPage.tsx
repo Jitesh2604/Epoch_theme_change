@@ -93,12 +93,12 @@ export function CreateAssessmentPage() {
             </Field>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Subject" required>
+              <Field label="Subject" hint="Leave blank for a mixed-subject exam — most assessments cover multiple subjects.">
                 <select
-                  {...register('subjectId', { required: true })}
+                  {...register('subjectId')}
                   className="w-full h-11 px-3 rounded-xl bg-surface1 border border-line text-[13px] text-fg1"
                 >
-                  <option value="">— Select subject —</option>
+                  <option value="">Mixed Subjects (default)</option>
                   {(subjects ?? []).map(s => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
@@ -173,13 +173,14 @@ export function CreateAssessmentPage() {
   );
 }
 
-function Field({ label, required, error, children }: { label: string; required?: boolean; error?: string; children: React.ReactNode }) {
+function Field({ label, required, error, hint, children }: { label: string; required?: boolean; error?: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
       <label className="text-[12px] font-semibold text-fg2 block mb-1.5">
         {label}{required && <span className="text-brand ml-0.5">*</span>}
       </label>
       {children}
+      {hint && !error && <div className="text-[11px] text-fg3 mt-1">{hint}</div>}
       {error && <div className="text-[11.5px] text-danger mt-1">{error}</div>}
     </div>
   );

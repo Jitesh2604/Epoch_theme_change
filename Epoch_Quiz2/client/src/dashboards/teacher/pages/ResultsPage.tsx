@@ -24,7 +24,7 @@ export function ResultsPage() {
     if (rows.length === 0) { push({ kind: 'info', title: 'Nothing to export' }); return; }
     exportCsv(
       'results.csv',
-      rows.map(s => [s.student?.name ?? '', s.assessment.title, s.assessment.subject?.name ?? '', String(s.score), String(s.totalMarks), String(s.percent), s.status]),
+      rows.map(s => [s.student?.name ?? '', s.assessment.title, s.assessment.subject?.name ?? 'Mixed Subjects', String(s.score), String(s.totalMarks), String(s.percent), s.status]),
       ['Student', 'Assessment', 'Subject', 'Score', 'Total', 'Percent (%)', 'Status'],
     );
   };
@@ -61,7 +61,7 @@ export function ResultsPage() {
             columns={[
               { key: 'student',    label: 'Student',    render: s => <span className="font-semibold text-fg1">{s.student?.name ?? '—'}</span> },
               { key: 'assessment', label: 'Assessment', render: s => <span className="text-fg2 truncate max-w-[180px] block">{s.assessment.title}</span> },
-              { key: 'subject',    label: 'Subject',    render: s => <span className="text-fg3">{s.assessment.subject?.name ?? '—'}</span> },
+              { key: 'subject',    label: 'Subject',    render: s => <span className="text-fg3">{s.assessment.subject?.name ?? 'Mixed Subjects'}</span> },
               {
                 key: 'score', label: 'Score',
                 render: s => (

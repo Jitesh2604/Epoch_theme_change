@@ -25,7 +25,7 @@ import { PrismaClient, Role, QuestionType, AssessmentStatus } from '@prisma/clie
 
 const prisma = new PrismaClient();
 
-const ASSESSMENT_TITLE = 'General Knowledge Assessment';
+const ASSESSMENT_TITLE = 'Final Olympiad Assessment';
 const DURATION_MINUTES = 180;
 const SEED_TAG = 'assessment-seed';
 
@@ -177,11 +177,6 @@ async function main(): Promise<void> {
     throw new Error('No admin/teacher user found to own the seed assessment — run `npm run seed` (and optionally `npm run seed:e2e`) first.');
   }
 
-  // A real, resolvable subject purely for display (Subject badge on the
-  // overview/result pages) — irrelevant to isolation, which comes from the
-  // physically separate assessment_question_bank table (see file header).
-  const DISPLAY_SUBJECT_EXTERNAL_ID = '1';
-
   const dummyQuestions = buildQuestionSet();
 
   const questions = await prisma.$transaction(
@@ -229,13 +224,16 @@ async function main(): Promise<void> {
   const assessment = await prisma.assessment.create({
     data: {
       title: ASSESSMENT_TITLE,
-      description: 'Seeded test assessment — dummy content for exercising the Assessment flow end to end. Not real coursework.',
+      description: 'A mixed-subject Olympiad assessment covering multiple subjects in one session — seeded test content for exercising the Assessment flow end to end. Not real coursework.',
       duration: DURATION_MINUTES,
       totalMarks,
       passingMarks,
       status: AssessmentStatus.PUBLISHED,
       publishedAt: new Date(),
-      subjectExternalId: DISPLAY_SUBJECT_EXTERNAL_ID,
+      // No subjectExternalId — this Assessment module is deliberately
+      // mixed-subject (one exam covering multiple subjects), not scoped to
+      // a single one. UI falls back to a "Mixed Subjects" label wherever
+      // a subject badge would otherwise render — see AssessmentService.
       createdById: creator.id,
     },
   });

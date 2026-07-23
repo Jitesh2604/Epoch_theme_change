@@ -68,7 +68,7 @@ export function DashboardOverviewPage() {
                   <div className="flex-1 min-w-0">
                     <div className="text-[13.5px] font-semibold text-fg1 truncate">{a.title}</div>
                     <div className="text-[11.5px] text-fg3 truncate">
-                      {a.subject?.name ?? 'No subject'} · {a.questionCount} questions
+                      {a.subject?.name ?? 'Mixed Subjects'} · {a.questionCount} questions
                     </div>
                   </div>
                   <Badge tone={a.status === 'PUBLISHED' ? 'success' : a.status === 'DRAFT' ? 'warning' : 'neutral'}>

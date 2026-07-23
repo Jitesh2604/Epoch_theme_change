@@ -377,9 +377,7 @@ export function AssessmentResultPage() {
                 You scored{' '}
                 <strong className="text-fg1">{score}</strong> out of{' '}
                 <strong className="text-fg1">{totalMarks}</strong> marks
-                {result.assessment.subject && (
-                  <> · {result.assessment.subject.name}</>
-                )}
+                {' '}· {result.assessment.subject?.name ?? 'Mixed Subjects'}
               </p>
               <p className="text-[12.5px] text-fg3 mt-1.5">{feedback}</p>
             </>
