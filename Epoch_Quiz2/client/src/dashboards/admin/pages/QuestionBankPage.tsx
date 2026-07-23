@@ -57,8 +57,8 @@ export function QuestionBankPage() {
       {node}
       <PageHeader
         eyebrow="Content"
-        title="Question Bank"
-        subtitle="Central repository of questions across subjects and types."
+        title="Practice Olympiad Question Bank"
+        subtitle="Question bank for Subject Practice and Practice Olympiad — completely separate from the Assessment question bank."
         actions={<>
           <Button variant="outline" icon={Upload} onClick={() => navigate(uploadPath)}>Bulk upload</Button>
           <Button icon={Plus} onClick={() => setCreateOpen(true)}>New question</Button>

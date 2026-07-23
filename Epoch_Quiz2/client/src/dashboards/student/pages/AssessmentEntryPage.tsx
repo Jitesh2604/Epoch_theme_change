@@ -19,6 +19,11 @@ function StandalonePage({ children }: { children: React.ReactNode }) {
   );
 }
 
+// e.g. "25 Dec 2026" — matches the "DD MMM YYYY" format used on the Result page.
+function fmtPublishDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 function CenteredSpinner() {
   return (
     <div className="flex items-center justify-center min-h-[50vh]">
@@ -146,12 +151,13 @@ export function AssessmentEntryPage() {
             {!resultsVisible ? (
               <>
                 <p className="text-[13px] text-fg2">
-                  Your assessment has been submitted successfully. Your results will be available
-                  once they are officially published.
+                  Thank you for completing the assessment. Your responses have been submitted
+                  successfully. The results will be published on the official result declaration date.
                 </p>
                 {submission.resultPublishAt && (
-                  <p className="text-[12px] text-fg3 mt-1.5">
-                    Expected on <strong className="text-fg1">{new Date(submission.resultPublishAt).toLocaleString()}</strong>.
+                  <p className="text-[12.5px] text-fg2 mt-2">
+                    Results will be published on:{' '}
+                    <strong className="text-fg1">{fmtPublishDate(submission.resultPublishAt)}</strong>
                   </p>
                 )}
               </>

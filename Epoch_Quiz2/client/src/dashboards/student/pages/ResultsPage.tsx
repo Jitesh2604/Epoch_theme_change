@@ -122,7 +122,7 @@ function OlympiadAttemptsSection({
 
 export function ResultsPage() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<Tab>('assessment');
+  const [tab, setTab] = useState<Tab>('practice');
 
   const { data: submissions, loading: sLoading } = useMySubmissions({ limit: 30 });
   const { data: statsData, loading: stLoading }  = useMyStats();
@@ -137,9 +137,14 @@ export function ResultsPage() {
   const olympiadAttempts = (attempts ?? []).filter(a => a.quizType === 'OLYMPIAD');
   const practiceAttempts = (attempts ?? []).filter(a => a.quizType !== 'OLYMPIAD');
 
+  // Assessment results aren't available until an admin publishes them — a
+  // tab full of "Result Pending" rows is misleading, so the whole section
+  // stays hidden until at least one result has actually been published.
+  const hasPublishedAssessmentResults = (submissions?.items ?? []).some(s => s.resultsVisible);
+
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'assessment', label: 'Assessment Results' },
-    { key: 'practice',   label: 'Practice Olympiad Results' },
+    ...(hasPublishedAssessmentResults ? [{ key: 'assessment' as Tab, label: 'Assessment Results' }] : []),
+    { key: 'practice', label: 'Practice Olympiad Results' },
     ...(olympiadAttempts.length > 0 ? [{ key: 'olympiad' as Tab, label: 'Attempt Olympiad Results' }] : []),
   ];
 
@@ -165,7 +170,7 @@ export function ResultsPage() {
         ))}
       </div>
 
-      {tab === 'assessment' && (
+      {tab === 'assessment' && hasPublishedAssessmentResults && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             {loading ? (
@@ -224,9 +229,6 @@ export function ResultsPage() {
                   </div>
                   );
                 })}
-                {!sLoading && !submissions?.items?.length && (
-                  <div className="text-center py-12 text-fg3 text-[13px]">No assessment results yet</div>
-                )}
               </div>
             )}
           </Card>

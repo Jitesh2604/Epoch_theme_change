@@ -58,7 +58,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
       <div className="auth-card">
 
         <button className="auth-brand" onClick={() => navigate('home')}>
-          <img src="assets/logo-mark.svg" alt="" className="auth-logo-img" />
+          <img src="/assets/logo-mark.svg" alt="" className="auth-logo-img" />
           <div>
             <div className="auth-brand-name">Olympiad <em>Quiz</em></div>
             <div className="auth-brand-sub">STUDENT PRACTICE PLATFORM</div>

@@ -12,6 +12,19 @@ import type {
 /** Submissions that count towards scoring/leaderboards. */
 const COUNTABLE = { in: [SubmissionStatus.SUBMITTED, SubmissionStatus.GRADED] };
 
+/**
+ * A submission only counts toward the leaderboard/stats once its
+ * assessment's results are actually visible to students — same semantics
+ * as AssessmentService.isResultVisible(), expressed as a Prisma filter
+ * since that function runs against an already-loaded object, not a query.
+ * Keep the two in sync by hand if the publish-gating rule ever changes.
+ * A function, not a constant — resultPublishAt must be compared against
+ * "now" at query time, not whenever this module first loaded.
+ */
+function resultsVisibleFilter(): Prisma.AssessmentWhereInput {
+  return { OR: [{ resultsPublished: true }, { resultPublishAt: { lte: new Date() } }] };
+}
+
 function pct(score: number, total: number): number {
   if (total <= 0) return 0;
   return Math.round((score / total) * 10000) / 100;
@@ -43,12 +56,12 @@ export const LeaderboardService = {
 
     const [rows, total] = await Promise.all([
       prisma.submission.findMany({
-        where: { assessmentId, status: COUNTABLE },
+        where: { assessmentId, status: COUNTABLE, assessment: resultsVisibleFilter() },
         orderBy: [{ score: 'desc' }, { timeTakenSec: 'asc' }, { submittedAt: 'asc' }],
         skip, take,
         select: { studentId: true, score: true, totalMarks: true, timeTakenSec: true, submittedAt: true, status: true, student: { select: { name: true, avatarHue: true } } },
       }),
-      prisma.submission.count({ where: { assessmentId, status: COUNTABLE } }),
+      prisma.submission.count({ where: { assessmentId, status: COUNTABLE, assessment: resultsVisibleFilter() } }),
     ]);
 
     const items = rows.map((s, i) => ({
@@ -79,9 +92,12 @@ export const LeaderboardService = {
     const { page, limit } = query;
     const subjectExternalId = (query as Record<string, unknown>).subjectExternalId as string | undefined;
 
+    const assessmentFilter: Prisma.AssessmentWhereInput = resultsVisibleFilter();
+    if (subjectExternalId) assessmentFilter.subjectExternalId = subjectExternalId;
+
     const grouped = await prisma.submission.groupBy({
       by: ['studentId'],
-      where: { status: COUNTABLE, ...(subjectExternalId && { assessment: { subjectExternalId } }) },
+      where: { status: COUNTABLE, assessment: assessmentFilter },
       _sum: { score: true, totalMarks: true },
       _count: { _all: true },
     });
@@ -139,11 +155,11 @@ export const LeaderboardService = {
     if (actor.role === Role.STUDENT) {
       const [agg, inProgress, allTotals] = await Promise.all([
         prisma.submission.aggregate({
-          where: { studentId: actor.id, status: COUNTABLE },
+          where: { studentId: actor.id, status: COUNTABLE, assessment: resultsVisibleFilter() },
           _sum: { score: true, totalMarks: true, timeTakenSec: true }, _count: { _all: true },
         }),
         prisma.submission.count({ where: { studentId: actor.id, status: SubmissionStatus.IN_PROGRESS } }),
-        prisma.submission.groupBy({ by: ['studentId'], where: { status: COUNTABLE }, _sum: { score: true } }),
+        prisma.submission.groupBy({ by: ['studentId'], where: { status: COUNTABLE, assessment: resultsVisibleFilter() }, _sum: { score: true } }),
       ]);
 
       const totalScore    = agg._sum.score ?? 0;

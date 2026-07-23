@@ -3,6 +3,10 @@ export interface HeroSlide {
   title: string;
   body: string;
   cta: string;
+  /** Hash-router target for the CTA button (passed to navigate()). Defaults to 'play'. */
+  ctaRoute?: string;
+  /** Real top-level path for the CTA button (hard navigation) — takes priority over ctaRoute. */
+  ctaHref?: string;
 }
 
 export interface Tweaks {

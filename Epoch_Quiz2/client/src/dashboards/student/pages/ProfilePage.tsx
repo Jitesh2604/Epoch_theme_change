@@ -7,7 +7,7 @@ import { PageHeader, Card, Button, Badge, StatCard, Avatar, Skeleton, Select } f
 import { StandaloneHeader } from '../../shared/StandaloneHeader';
 import { loadUser } from '../../../lib/authStore';
 import { userApi, useMyProfile } from '../../../hooks/useUsers';
-import { useMyStats } from '../../../hooks/useLeaderboard';
+import { useOlympiadAttempts } from '../../../hooks/usePracticeQuiz';
 import { useClasses } from '../../../hooks/useCatalog';
 import { useToasts } from '../../shared/ui';
 
@@ -36,8 +36,20 @@ function capitalize(s?: string) {
 export function ProfilePage() {
   const cachedUser = loadUser();
   const { data: profile, loading, error, refetch } = useMyProfile();
-  const { data: statsData } = useMyStats();
-  const stats = statsData as any;
+  // Practice Olympiad only — Assessment and the Leaderboard aren't part of
+  // this page while those features are hidden (see NavBar.tsx's NAV_ENABLED).
+  // "Practice Olympiad" here means non-graded practice attempts, matching
+  // the "Practice Olympiad Results" tab on the Results page (quizType !==
+  // 'OLYMPIAD') — Attempt Olympiad's graded attempts are a separate bucket.
+  const { data: attempts } = useOlympiadAttempts();
+  const practiceAttempts = (attempts ?? []).filter(a => a.quizType !== 'OLYMPIAD');
+  const completedPractice = practiceAttempts.filter(a => a.status === 'SUBMITTED');
+  const avgPracticePercent = completedPractice.length
+    ? Math.round(completedPractice.reduce((sum, a) => sum + a.percentage, 0) / completedPractice.length)
+    : 0;
+  const bestPracticePercent = completedPractice.length
+    ? Math.round(Math.max(...completedPractice.map(a => a.percentage)))
+    : 0;
   const { push, node } = useToasts();
   const classes = useClasses();
   const classOptions = (classes.data ?? []).map(c => ({ value: c.id, label: c.name }));
@@ -185,9 +197,9 @@ export function ProfilePage() {
         {/* ── Right: Stats + account details ──────────────────────── */}
         <div className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <StatCard label="Assessments taken" value={stats?.attempted    ?? 0}                    icon={FileText} tone="brand"   />
-            <StatCard label="Avg score"          value={`${Math.round(stats?.avgPercent ?? 0)}%`}  icon={Award} tone="emerald" />
-            <StatCard label="Current rank"       value={stats?.rank ? `#${stats.rank}` : '—'}       icon={Trophy} tone="amber"   />
+            <StatCard label="Practice Olympiads Attempted" value={completedPractice.length}       icon={FileText} tone="brand"   />
+            <StatCard label="Average Score"                value={`${avgPracticePercent}%`}       icon={Award}    tone="emerald" />
+            <StatCard label="Best Score"                   value={`${bestPracticePercent}%`}      icon={Trophy}   tone="amber"   />
           </div>
 
           <Card className="p-6">

@@ -14,7 +14,7 @@ export const Footer: React.FC<FooterProps> = ({ navigate }) => {
       <div className="foot-grid">
         <div className="foot-col">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <img src="assets/logo-mark.svg" alt="" style={{ width: 28, height: 28 }} />
+            <img src="/assets/logo-mark.svg" alt="" style={{ width: 28, height: 28 }} />
             <div>
               <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 16 }}>
                 Olympiad <em style={{ color: 'var(--brand)', fontStyle: 'italic' }}>Quiz</em>

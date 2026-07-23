@@ -83,7 +83,7 @@ const T: Record<Lang, Record<string, string>> = {
     'common.startAQuiz': 'Start a quiz',
     'common.noResult': 'No result to show.',
 
-    'footer.description': 'A practice platform for students and teachers — subject practice, mixed Practice Olympiad quizzes, and teacher-assigned assessments, with instant results after every question.',
+    'footer.description': 'An Olympiad practice platform for students — subject-wise practice with instant results, mixed Practice Olympiad quizzes, and official school assessments published by your admin.',
     'footer.product': 'Product',
     'footer.company': 'Company',
     'footer.legal': 'Legal',
@@ -95,7 +95,7 @@ const T: Record<Lang, Record<string, string>> = {
     'footer.privacyPolicy': 'Privacy policy',
     'footer.termsConditions': 'Terms & conditions',
     'footer.copyright': '© 2026 Epoch Inc.',
-    'footer.tagline': 'Made for students and teachers.',
+    'footer.tagline': 'Made for students.',
   },
 
   HI: {
@@ -173,7 +173,7 @@ const T: Record<Lang, Record<string, string>> = {
     'common.startAQuiz': 'क्विज़ शुरू करें',
     'common.noResult': 'कोई परिणाम नहीं।',
 
-    'footer.description': 'छात्रों और शिक्षकों के लिए एक अभ्यास मंच — विषय अभ्यास, मिश्रित Practice Olympiad क्विज़, और शिक्षकों द्वारा सौंपे गए Assessments, हर प्रश्न के बाद तुरंत परिणाम के साथ।',
+    'footer.description': 'छात्रों के लिए एक Olympiad अभ्यास मंच — तुरंत परिणाम के साथ विषय-वार अभ्यास, मिश्रित Practice Olympiad क्विज़, और आपके एडमिन द्वारा प्रकाशित आधिकारिक स्कूल Assessments।',
     'footer.product': 'उत्पाद',
     'footer.company': 'कंपनी',
     'footer.legal': 'कानूनी',
@@ -185,7 +185,7 @@ const T: Record<Lang, Record<string, string>> = {
     'footer.privacyPolicy': 'गोपनीयता नीति',
     'footer.termsConditions': 'नियम और शर्तें',
     'footer.copyright': '© 2026 Epoch Inc.',
-    'footer.tagline': 'छात्रों और शिक्षकों के लिए बनाया गया।',
+    'footer.tagline': 'छात्रों के लिए बनाया गया।',
   },
 };
 

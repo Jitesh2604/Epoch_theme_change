@@ -40,6 +40,12 @@ function fmtTime(sec: number) {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
+// e.g. "25 Dec 2026" — matches the "DD MMM YYYY" format results-publish
+// dates are shown in throughout the Assessment module.
+function fmtPublishDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 // A skipped question is graded isCorrect: false server-side — there's no
 // separate null-for-skipped state on the Assessment side, unlike Practice/
 // Olympiad — so isCorrect alone can't distinguish "answered wrong" from
@@ -264,14 +270,16 @@ export function AssessmentResultPage() {
               <HourglassIcon size={22} />
             </div>
             <h1 className="font-display font-semibold text-xl text-fg1 mb-2">
-              Your assessment has been submitted successfully.
+              Assessment Submitted Successfully
             </h1>
             <p className="text-[13.5px] text-fg3 leading-relaxed">
-              Your results will be available once they are officially published.
+              Thank you for completing the assessment. Your responses have been submitted
+              successfully. The results will be published on the official result declaration date.
             </p>
             {result.resultPublishAt && (
-              <p className="text-[12.5px] text-fg3 mt-2">
-                Expected on <strong className="text-fg1">{new Date(result.resultPublishAt).toLocaleString()}</strong>.
+              <p className="text-[13px] text-fg2 mt-3">
+                Results will be published on:{' '}
+                <strong className="text-fg1">{fmtPublishDate(result.resultPublishAt)}</strong>
               </p>
             )}
             {result.submittedAt && (

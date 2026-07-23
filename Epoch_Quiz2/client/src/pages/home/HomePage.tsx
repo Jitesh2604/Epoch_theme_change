@@ -33,7 +33,10 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
                 <h1 dangerouslySetInnerHTML={{ __html: cur.title }} />
                 <p>{cur.body}</p>
                 <div className="hero-actions">
-                  <button className="btn btn-primary lg" onClick={() => navigate('play')}>
+                  <button
+                    className="btn btn-primary lg"
+                    onClick={() => { if (cur.ctaHref) window.location.href = cur.ctaHref; else navigate(cur.ctaRoute ?? 'play'); }}
+                  >
                     {cur.cta} <Icon name="arrowRight" size={16} />
                   </button>
                   <button className="btn btn-ghost lg" onClick={() => navigate('faq')}>{t('home.howItWorks')}</button>
@@ -63,13 +66,13 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
             <button className="cat-card" onClick={() => navigate('play')}>
               <div className="cat-ico"><Icon name="trophy" size={20} /></div>
               <h3>Practice Olympiad</h3>
-              <p>Pick a subject, pick a difficulty, and start practicing — no teacher required.</p>
+              <p>Pick a subject and difficulty, and practice at your own pace — instant results every time.</p>
               <span className="cat-arrow"><Icon name="arrowUpRight" size={18} /></span>
             </button>
-            <button className="cat-card" onClick={() => { window.location.href = '/assessment'; }}>
-              <div className="cat-ico"><Icon name="fileText" size={20} /></div>
+            <button className="cat-card" onClick={() => navigate('olympiad')}>
+              <div className="cat-ico"><Icon name="target" size={20} /></div>
               <h3>Attempt Olympiad</h3>
-              <p>Attempt assessments assigned to your class.</p>
+              <p>A mixed, timed set across all your subjects — graded the moment you finish.</p>
               <span className="cat-arrow"><Icon name="arrowUpRight" size={18} /></span>
             </button>
           </div>
@@ -86,12 +89,12 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
           </div>
           <div className="grid-3">
             {[
-              { ic: 'bolt',       t: 'Instant results',      d: 'Your score, correct answers, and full explanations the moment you submit — no waiting.' },
-              { ic: 'shield',     t: 'Scoped to your class & board', d: 'Every question is tagged to your class and education board, so you never practice content that isn’t on your syllabus.' },
-              { ic: 'trophy',     t: 'Real leaderboards',     d: 'Graded assessments feed a live leaderboard. Updates the instant results are in.' },
-              { ic: 'chart',      t: 'Clear results',         d: 'Score, accuracy, and a full per-question breakdown after every attempt — the numbers that actually help.' },
-              { ic: 'layers',     t: 'Practice, Olympiad, and Assessments', d: 'Subject Practice for focused study, Practice Olympiad for a mixed challenge, and school-assigned Assessments — all in one place.' },
-              { ic: 'graduation', t: 'Curriculum-aligned',    d: 'Tagged to CBSE, IB, Cambridge, and major state boards out of the box.' },
+              { ic: 'layers',     t: 'Subject-wise Practice', d: 'Pick one subject and difficulty for focused, timed practice, or take on a self-paced mixed Practice Olympiad set across all your subjects.' },
+              { ic: 'pause',      t: 'Pause & Resume',        d: 'Step away mid-practice and pick up right where you left off — your answers and timer are saved automatically.' },
+              { ic: 'bolt',       t: 'Instant Practice Results', d: 'Score, correct answers, and worked explanations the moment you submit a Practice or Olympiad attempt.' },
+              { ic: 'fileText',   t: 'Official Assessment Mode', d: 'One timed assessment per session, taken in a distraction-free, full-screen exam experience.' },
+              { ic: 'clock',      t: 'Results Published by Your School', d: 'Assessment results aren’t instant — they’re reviewed and officially published by your admin once grading is complete.' },
+              { ic: 'graduation', t: 'Curriculum-based Question Bank', d: 'Every question is tagged to a subject, difficulty, class, and education board, so what you practice always matches your syllabus.' },
             ].map((f, i) => (
               <div key={i} className="feature">
                 <div className="f-ico"><Icon name={f.ic} size={20} /></div>
@@ -113,9 +116,9 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
           </div>
           <div className="grid-3">
             {[
-              { ic: 'rocket',  t: 'Know before you start',  d: 'Every Assessment and Practice Olympiad opens with a clear overview — subject, marks, duration, and instructions — before you begin.' },
-              { ic: 'brain',   t: 'Explanations included',  d: 'Many questions come with a worked explanation, so a wrong answer still teaches you something.' },
-              { ic: 'refresh', t: 'Full result breakdown',  d: 'See exactly what you got right, wrong, or skipped — with accuracy, timing, and a question-by-question review.' },
+              { ic: 'rocket',  t: 'Know before you start',       d: 'Every Assessment and Practice Olympiad opens with a clear overview — subject, marks, duration, and instructions — before you begin.' },
+              { ic: 'clock',   t: 'Timed Practice Sessions',      d: 'Subject Practice runs on a difficulty-based timer, so you build real exam pace. Practice Olympiad stays untimed, for pressure-free review.' },
+              { ic: 'chart',   t: 'Detailed Practice Analytics',  d: 'Every Practice and Olympiad attempt gives you a full per-question breakdown — accuracy, time taken, and what you got right, wrong, or skipped.' },
             ].map((f, i) => (
               <div key={i} className="feature animated">
                 <div className="f-ico"><Icon name={f.ic} size={20} /></div>
@@ -137,8 +140,8 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
               <div className="checks">
                 {[
                   { t: 'Three difficulty levels',      d: 'Tune to your morning brain or your sharpest hour — easy, medium, hard.' },
-                  { t: 'Two quiz modes',                  d: 'Practice Olympiad for self-paced learning, Attempt Olympiad for graded results.' },
-                  { t: 'Timer modes that respect you', d: 'Linear bar, digital clock, or radial ring. Or turn it off entirely for practice runs.' },
+                  { t: 'Two ways to prepare',           d: 'Practice Olympiad for self-paced learning, Attempt Olympiad for a graded, timed set.' },
+                  { t: 'Exam integrity, built in',      d: 'No answer feedback during an Assessment, and no way to leave once you’ve started — official results stay fair.' },
                   { t: 'Built-in dark & light themes', d: 'OLED-tuned dark mode for late nights. Warm off-white for daylight.' },
                 ].map((c, i) => (
                   <div key={i} className="check">
@@ -154,10 +157,10 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
             </div>
             <div className="stat-grid">
               {[
-                { n: '3',  l: 'Ways to practice — Subject, Olympiad, Assessments' },
+                { n: '3',  l: 'Ways to prepare — Subject Practice, Olympiad, Assessment' },
                 { n: '3',  l: 'Difficulty levels'         },
-                { n: '0',  l: 'Time pressure in Practice modes' },
-                { n: '1',  l: 'Live leaderboard, updated instantly' },
+                { n: '0',  l: 'Time pressure in Practice Olympiad' },
+                { n: '1',  l: 'Official assessment per session' },
               ].map((s, i) => (
                 <div key={i} className="stat">
                   <div className="s-num">{s.n}</div>
