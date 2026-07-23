@@ -141,6 +141,47 @@ export const EmailService = {
   },
 
   /**
+   * Send the signup email-verification code. Like sendContactMessage (and
+   * unlike the fail-silent reset/welcome mails below) this is NOT
+   * fail-silent: a PENDING account is useless without its code ever
+   * arriving, so the caller surfaces a real error and rolls the signup back
+   * rather than stranding the user with an unverifiable account.
+   */
+  async sendVerificationCode(to: string, code: string, name: string): Promise<SendResult> {
+    const transport = getTransport();
+    if (!transport) {
+      logger.error('[email] Verification code not sent — SMTP is not configured.');
+      return { ok: false, error: 'Email service is not configured. Please try again later.' };
+    }
+
+    const platformName = await getPlatformName();
+    const html = baseTemplate(
+      `Your ${platformName} verification code`,
+      `<h1>Verify your email</h1>
+       <p>Hi ${escapeHtml(name)},</p>
+       <p>Use the code below to verify your email and activate your ${escapeHtml(platformName)} account.</p>
+       <p style="font-size:32px;font-weight:700;letter-spacing:0.3em;color:#F5F0FF;background:rgba(212,20,138,0.12);border-radius:10px;padding:16px 20px;text-align:center;margin:0 0 24px;">${escapeHtml(code)}</p>
+       <p class="note">This code expires in <strong>10 minutes</strong>. If you did not create this account, you can safely ignore this email.</p>`,
+      platformName,
+    );
+
+    try {
+      await transport.sendMail({
+        from:    env.EMAIL_FROM,
+        to,
+        subject: `Your ${platformName} verification code`,
+        html,
+        text:    `Your ${platformName} verification code is ${code}. It expires in 10 minutes.`,
+      });
+      logger.info(`[email] Verification code sent to ${to}`);
+      return { ok: true };
+    } catch (err: any) {
+      logger.error(`[email] Failed to send verification code to ${to}: ${err.message}`);
+      return { ok: false, error: 'Could not send the verification email. Please try again later.' };
+    }
+  },
+
+  /**
    * Send password-reset email.
    * Returns { ok: true } whether or not SMTP is configured (fail-silent so
    * that the caller can still return a user-facing "email sent" message).

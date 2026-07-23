@@ -3,12 +3,24 @@ import { AuthService } from '../services/auth.service';
 import { ApiResponse } from '../utils/ApiResponse';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ApiError } from '../utils/ApiError';
-import type { RegisterInput, LoginInput, RefreshInput, LogoutInput, ForgotPasswordInput, ResetPasswordInput } from '../validators/auth.validator';
+import type { RegisterInput, LoginInput, RefreshInput, LogoutInput, ForgotPasswordInput, ResetPasswordInput, VerifyEmailInput, ResendVerificationInput } from '../validators/auth.validator';
 
 export const AuthController = {
   register: asyncHandler(async (req: Request, res: Response) => {
     const result = await AuthService.register(req.body as RegisterInput);
-    ApiResponse.created(res, result, 'Account created');
+    ApiResponse.created(res, result, 'Verification code sent — check your email.');
+  }),
+
+  verifyEmail: asyncHandler(async (req: Request, res: Response) => {
+    const { email, code } = req.body as VerifyEmailInput;
+    const result = await AuthService.verifyEmail(email, code);
+    ApiResponse.ok(res, result, 'Email verified');
+  }),
+
+  resendVerification: asyncHandler(async (req: Request, res: Response) => {
+    const { email } = req.body as ResendVerificationInput;
+    const result = await AuthService.resendVerification(email);
+    ApiResponse.ok(res, result, 'If that email needs verification, a new code has been sent.');
   }),
 
   login: asyncHandler(async (req: Request, res: Response) => {

@@ -17,6 +17,7 @@ import { CompleteProfileStudentPage } from './pages/auth/CompleteProfileStudentP
 import { CompleteProfileTeacherPage } from './pages/auth/CompleteProfileTeacherPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
+import { VerifyEmailPage } from './pages/auth/VerifyEmailPage';
 import { getAuth } from './dashboards/shared/auth';
 import { refreshSession, getRefreshToken } from './lib/authStore';
 import { showToast } from './components/ui/Toast';
@@ -153,6 +154,8 @@ export default function App() {
     page = <ForgotPasswordPage navigate={navigate} />;
   } else if (top === 'reset-password') {
     page = <ResetPasswordPage navigate={navigate} token={parts[1] ?? ''} />;
+  } else if (top === 'verify-email') {
+    page = <VerifyEmailPage navigate={navigate} email={decodeURIComponent(parts[1] ?? '')} />;
   } else {
     page = <HomePage navigate={navigate} tweaks={tweaks} />;
   }

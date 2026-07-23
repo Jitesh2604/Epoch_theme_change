@@ -788,12 +788,13 @@ enum AttemptStatus {
   ABANDONED
 }
 
-// Only PASSWORD_RESET exists as a real flow — registration and login are
-// plain email+password (no OTP step), and there is no phone-verification
-// feature. Kept as an enum (rather than dropped in favor of a plain
-// string) so a genuinely new OTP-gated flow can add a value here later.
+// PASSWORD_RESET gates the forgot-password flow; EMAIL_VERIFY gates the
+// signup flow (new users are created with UserStatus.PENDING and can't log
+// in until this code is verified — see AuthService.verifyEmail). There is
+// no phone-verification feature.
 enum OtpType {
   PASSWORD_RESET
+  EMAIL_VERIFY
 }
 
 enum UploadStatus {

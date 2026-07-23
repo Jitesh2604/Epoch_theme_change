@@ -91,8 +91,12 @@ async function generateTeacherCode(): Promise<string> {
   throw ApiError.internal('Could not generate a unique teacher code. Please try again.');
 }
 
+function generateVerificationCode(): string {
+  return String(crypto.randomInt(100_000, 1_000_000));
+}
+
 export const AuthService = {
-  async register(input: RegisterInput): Promise<AuthResponse> {
+  async register(input: RegisterInput): Promise<{ email: string; expiresInMinutes: number; devCode?: string }> {
     // Registration is always for Role.STUDENT while the Teacher module is
     // disabled (see auth.validator.ts), so this is effectively the master
     // switch for public self-signup.
@@ -121,6 +125,8 @@ export const AuthService = {
     let teacherCode: string | undefined;
     if (role === Role.TEACHER) teacherCode = await generateTeacherCode();
 
+    // Created PENDING, not ACTIVE — login is blocked (see login() below)
+    // until the code emailed below is confirmed via verifyEmail().
     const user = await prisma.user.create({
       data: {
         email:           input.email,
@@ -128,7 +134,7 @@ export const AuthService = {
         passwordHash,
         name:            input.name,
         role,
-        status:          UserStatus.ACTIVE,
+        status:          UserStatus.PENDING,
         avatarHue,
         profileComplete: false,
         ...(role === Role.TEACHER
@@ -139,15 +145,31 @@ export const AuthService = {
       },
     });
 
-    const tokens = await issueTokens(user);
-    EmailService.sendWelcome(user.email, user.name).catch(() => {});
-    return { user: toPublicUser(user), ...tokens };
+    const code      = generateVerificationCode();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await prisma.otp.create({
+      data: { mobileOrEmail: user.email, otpCode: code, otpType: OtpType.EMAIL_VERIFY, expiresAt, isVerified: false },
+    });
+
+    // Unlike sendWelcome/sendPasswordReset this is NOT fail-silent — a
+    // PENDING account with no way to receive its code is useless, so a real
+    // send failure rolls the signup back rather than stranding the user.
+    const emailResult = await EmailService.sendVerificationCode(user.email, code, user.name);
+    if (!emailResult.ok) {
+      await prisma.user.delete({ where: { id: user.id } });
+      throw new ApiError(502, emailResult.error ?? 'Could not send the verification email. Please try again.');
+    }
+
+    return { email: user.email, expiresInMinutes: 10, ...(isDev ? { devCode: code } : {}) };
   },
 
   async login(input: LoginInput): Promise<AuthResponse> {
     const user = await prisma.user.findUnique({ where: { email: input.email } });
     if (!user) throw ApiError.unauthorized('Invalid email or password');
 
+    if (user.status === UserStatus.PENDING) {
+      throw new ApiError(403, 'Please verify your email before signing in.', { code: 'EMAIL_NOT_VERIFIED' });
+    }
     if (user.status === UserStatus.INACTIVE) throw ApiError.forbidden('Account is inactive');
     // The Teacher module is temporarily hidden. Remove this check to re-enable
     // teacher sign-in for existing accounts.
@@ -158,6 +180,49 @@ export const AuthService = {
 
     const tokens = await issueTokens(user);
     return { user: toPublicUser(user), ...tokens };
+  },
+
+  async verifyEmail(email: string, code: string): Promise<AuthResponse> {
+    const otp = await prisma.otp.findFirst({
+      where: { mobileOrEmail: email, otpType: OtpType.EMAIL_VERIFY, otpCode: code, isVerified: false, expiresAt: { gt: new Date() } },
+    });
+    if (!otp) throw ApiError.badRequest('Invalid or expired verification code.');
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) throw ApiError.notFound('User not found');
+
+    await prisma.$transaction([
+      prisma.otp.update({ where: { id: otp.id }, data: { isVerified: true } }),
+      prisma.user.update({ where: { id: user.id }, data: { status: UserStatus.ACTIVE } }),
+    ]);
+
+    EmailService.sendWelcome(user.email, user.name).catch(() => {});
+
+    const tokens = await issueTokens(user);
+    return { user: toPublicUser({ ...user, status: UserStatus.ACTIVE }), ...tokens };
+  },
+
+  async resendVerification(email: string): Promise<{ ok: true; devCode?: string }> {
+    const user = await prisma.user.findUnique({ where: { email } });
+    // Don't leak account existence, and there's nothing to resend once the
+    // account is already active (or never existed) — same generic response.
+    if (!user || user.status !== UserStatus.PENDING) return { ok: true };
+
+    const code      = generateVerificationCode();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await prisma.otp.updateMany({
+      where: { mobileOrEmail: email, otpType: OtpType.EMAIL_VERIFY, isVerified: false },
+      data:  { isVerified: true },
+    });
+    await prisma.otp.create({
+      data: { mobileOrEmail: email, otpCode: code, otpType: OtpType.EMAIL_VERIFY, expiresAt, isVerified: false },
+    });
+
+    const emailResult = await EmailService.sendVerificationCode(user.email, code, user.name);
+    if (!emailResult.ok) throw new ApiError(502, emailResult.error ?? 'Could not send the verification email. Please try again.');
+
+    return { ok: true, ...(isDev ? { devCode: code } : {}) };
   },
 
   async refresh(refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {

@@ -11,6 +11,8 @@ import {
   logoutSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  verifyEmailSchema,
+  resendVerificationSchema,
 } from '../validators/auth.validator';
 
 const router = new Router();
@@ -32,5 +34,7 @@ router.post('/logout',   validate(logoutSchema),                AuthController.l
 router.get('/me',        authenticate,                                     AuthController.me);
 router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), AuthController.forgotPassword);
 router.post('/reset-password',  authLimiter, validate(resetPasswordSchema),  AuthController.resetPassword);
+router.post('/verify-email',        authLimiter, validate(verifyEmailSchema),        AuthController.verifyEmail);
+router.post('/resend-verification', authLimiter, validate(resendVerificationSchema), AuthController.resendVerification);
 
 export default router;

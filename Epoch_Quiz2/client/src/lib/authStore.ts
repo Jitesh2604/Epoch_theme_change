@@ -140,18 +140,29 @@ export async function login(email: string, password: string): Promise<AuthUser> 
   return data.user;
 }
 
+// Registration no longer auto-logs in — the account is created PENDING and
+// needs its emailed code confirmed via verifyEmail() first (see
+// VerifyEmailPage.tsx).
 export async function register(
   name: string,
   email: string,
   password: string,
   role: 'TEACHER' | 'STUDENT',
   mobileNo: string,
-): Promise<AuthUser> {
-  const data = await api.post<AuthResponse>('/auth/register', { name, email, password, role, mobileNo }, { skipAuth: true });
+): Promise<{ email: string; expiresInMinutes: number; devCode?: string }> {
+  return api.post('/auth/register', { name, email, password, role, mobileNo }, { skipAuth: true });
+}
+
+export async function verifyEmail(email: string, code: string): Promise<AuthUser> {
+  const data = await api.post<AuthResponse>('/auth/verify-email', { email, code }, { skipAuth: true });
   setAccessToken(data.accessToken);
   setRefreshToken(data.refreshToken);
   saveUser(data.user);
   return data.user;
+}
+
+export async function resendVerificationCode(email: string): Promise<{ ok: boolean; devCode?: string }> {
+  return api.post('/auth/resend-verification', { email }, { skipAuth: true });
 }
 
 export async function logout(): Promise<void> {

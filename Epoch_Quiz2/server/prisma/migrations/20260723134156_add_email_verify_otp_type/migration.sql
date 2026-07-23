@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `otps` MODIFY `otpType` ENUM('PASSWORD_RESET', 'EMAIL_VERIFY') NOT NULL;

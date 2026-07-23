@@ -46,6 +46,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
       showToast(`Welcome back, ${user.name}!`, 'success');
       window.location.href = '/#/home';
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'EMAIL_NOT_VERIFIED') {
+        showToast('Please verify your email to continue.', 'success');
+        navigate(`verify-email/${encodeURIComponent(email)}`);
+        return;
+      }
       const msg = err instanceof ApiError ? err.message : 'Login failed. Please try again.';
       setErrors({ password: msg });
     } finally {
