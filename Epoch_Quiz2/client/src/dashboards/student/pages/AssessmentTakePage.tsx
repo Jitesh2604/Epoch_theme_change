@@ -285,85 +285,15 @@ export function AssessmentTakePage() {
   const autoSubmitRef                   = useRef(false);
   const saveTimers                      = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  // ── Load on refresh (no location.state) ─────────────────────────
+  // ── No router state (refresh, reopened tab, direct/bookmarked link) ──
+  // Assessment has no pause/resume: a mount without location.state.submission
+  // means the JS session driving this attempt is gone, which per the exam
+  // rules means the attempt itself is over. There is nothing to reconstruct
+  // — send the student back to start a genuinely new attempt.
   useEffect(() => {
     if (submission) return;
-    if (!submissionId) {
-      setLoadErr('No assessment session found. Please start again from the Assessment page.');
-      return;
-    }
-    (async () => {
-      try {
-        const result = await assessmentTakeApi.getById(submissionId);
-        if (result.status !== 'IN_PROGRESS') {
-          navigate(`/assessment/result/${submissionId}`, {
-            replace: true,
-            state: { result },
-          });
-          return;
-        }
-        // Normalise to TakeSubmission shape for the timer / question display
-        const expires = new Date(result.startedAt).getTime() + result.assessment.duration * 60_000;
-        const fake: TakeSubmission = {
-          id:          result.id,
-          status:      result.status,
-          startedAt:   result.startedAt,
-          expiresAt:   new Date(expires).toISOString(),
-          remainingSec: Math.max(0, Math.floor((expires - Date.now()) / 1000)),
-          totalMarks:  result.totalMarks ?? 0,
-          assessment:  result.assessment,
-          // Still IN_PROGRESS, which the backend never gates — questions is
-          // always present here; the type is optional only for the
-          // pre-publication pending shape returned for completed submissions.
-          questions:   (result.questions ?? []).map((q) => ({
-            order:           q.order,
-            questionId:      q.questionId,
-            type:            q.type,
-            prompt:          q.prompt,
-            promptImageUrl:  q.promptImageUrl,
-            options:         q.options,
-            matchPairs:      q.matchPairs ?? null,
-            marks:           q.marks,
-          })),
-          savedAnswers: [],
-        };
-        // Seed drafts from yourAnswer per question
-        const init: Record<string, DraftAnswer> = {};
-        for (const q of result.questions ?? []) {
-          if (q.yourAnswer) {
-            init[q.questionId] = {
-              selectedOption:  q.yourAnswer.selectedOption,
-              selectedOptions: q.yourAnswer.selectedOptions ?? [],
-              selectedBoolean: q.yourAnswer.selectedBoolean,
-              textAnswer:      q.yourAnswer.textAnswer ?? undefined,
-            };
-          }
-        }
-        setDrafts(init);
-        setSubmission(fake);
-      } catch {
-        setLoadErr('Could not load this assessment. It may have already been submitted.');
-      }
-    })();
-  }, [submissionId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Seed drafts from savedAnswers (fresh start / resume) ─────────
-  useEffect(() => {
-    if (!submission?.savedAnswers.length) return;
-    setDrafts((prev) => {
-      const next = { ...prev };
-      for (const s of submission.savedAnswers) {
-        if (!next[s.questionId]) {
-          next[s.questionId] = {
-            selectedOption:  s.selectedOption,
-            selectedBoolean: s.selectedBoolean,
-            textAnswer:      s.textAnswer ?? undefined,
-          };
-        }
-      }
-      return next;
-    });
-  }, [submission?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    setLoadErr('Your assessment attempt ended because the session was interrupted. Go back and start a new attempt.');
+  }, [submission]);
 
   // ── Timer ────────────────────────────────────────────────────────
   const expiresAtMs = useMemo(() => {

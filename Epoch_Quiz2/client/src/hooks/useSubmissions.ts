@@ -24,7 +24,7 @@ export interface SubmissionsPage {
   meta: { page: number; limit: number; total: number; totalPages: number };
 }
 
-export function useMySubmissions(params: { page?: number; limit?: number; status?: string } = {}) {
+export function useMySubmissions(params: { page?: number; limit?: number; status?: string; assessmentId?: string } = {}) {
   return useAsync<SubmissionsPage>(
     () => api.getWithQuery('/submissions/me', { page: 1, limit: 20, ...params }),
     [JSON.stringify(params)],

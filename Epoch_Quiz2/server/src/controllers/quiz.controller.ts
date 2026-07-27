@@ -7,6 +7,8 @@ import type {
   StartPracticeInput,
   PreviewPracticeInput,
   StartOlympiadInput,
+  PreviewMixedPracticeInput,
+  StartMixedPracticeInput,
   SaveAttemptAnswerInput,
   SubmitAttemptInput,
   SaveProgressInput,
@@ -37,6 +39,18 @@ export const QuizController = {
     if (!req.user) throw ApiError.unauthorized();
     const result = await QuizService.startOlympiad(req.user.id, req.body as StartOlympiadInput);
     ApiResponse.created(res, result, 'Olympiad started');
+  }),
+
+  previewMixedPractice: asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user) throw ApiError.unauthorized();
+    const result = await QuizService.previewMixedPractice(req.user.id, req.body as PreviewMixedPracticeInput);
+    ApiResponse.ok(res, result);
+  }),
+
+  startMixedPractice: asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user) throw ApiError.unauthorized();
+    const result = await QuizService.startMixedPractice(req.user.id, req.body as StartMixedPracticeInput);
+    ApiResponse.created(res, result, 'Mixed practice session started');
   }),
 
   olympiadAttempts: asyncHandler(async (req: Request, res: Response) => {

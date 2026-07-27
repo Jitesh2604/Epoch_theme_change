@@ -3,7 +3,7 @@ import type { NavigateFn } from '../../types';
 import {
   BookOpen, ChevronRight, Target, Clock,
   PlayCircle, AlertTriangle, ArrowLeft, Trophy,
-  Hash, Award, MinusCircle, Globe, Info, ListChecks, ShieldAlert,
+  Hash, Award, MinusCircle, Globe, Info, ListChecks, ShieldAlert, Shuffle,
 } from 'lucide-react';
 import {
   Card, Button, Badge, Modal, Skeleton, EmptyState, useToasts,
@@ -24,13 +24,19 @@ function fmtMarks(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
+// Sentinel id for the synthetic "Mixed Subjects Practice" tile — never a
+// real Content API subject id, so it's safe to branch on everywhere below.
+const MIXED_SUBJECT_ID = '__mixed__';
+
 // ── Subject card ──────────────────────────────────────────────────
 
 function SubjectCard({
   subject,
+  mixed,
   onPlay,
 }: {
   subject: PracticeSubject;
+  mixed?: boolean;
   onPlay: (s: PracticeSubject) => void;
 }) {
   const total = subject.questionCount;
@@ -39,13 +45,16 @@ function SubjectCard({
   const hardPct   = total ? Math.round((subject.hardCount   / total) * 100) : 0;
 
   return (
-    <Card className="p-5 flex flex-col gap-4 hover:border-brand/30 transition group cursor-pointer" onClick={() => onPlay(subject)}>
+    <Card
+      className={`p-5 flex flex-col gap-4 transition group cursor-pointer ${mixed ? 'border-brand/40 hover:border-brand/60' : 'hover:border-brand/30'}`}
+      onClick={() => onPlay(subject)}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="w-11 h-11 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0 group-hover:scale-105 transition">
-          <BookOpen size={20} />
+          {mixed ? <Shuffle size={20} /> : <BookOpen size={20} />}
         </div>
-        <Badge tone="neutral" dot={false} className="text-[10px]">
-          {total} Qs
+        <Badge tone={mixed ? 'brand' : 'neutral'} dot={false} className="text-[10px]">
+          {mixed ? 'Recommended' : `${total} Qs`}
         </Badge>
       </div>
 
@@ -53,6 +62,9 @@ function SubjectCard({
         <h3 className="font-display font-semibold text-[15px] text-fg1 group-hover:text-brand transition leading-tight">
           {subject.name}
         </h3>
+        {mixed && (
+          <p className="text-[11.5px] text-fg3 mt-1">A balanced mix of questions from every subject</p>
+        )}
 
         {/* Difficulty breakdown bar */}
         <div className="flex gap-1 mt-3 h-1.5 rounded-full overflow-hidden">
@@ -107,6 +119,19 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
   const { push, node: toastNode } = useToasts();
   const { data: subjects, loading, error: subjectsError, refetch: refetchSubjects } = usePracticeSubjects();
 
+  // Mixed Subjects Practice — a synthetic tile derived client-side from the
+  // real subject list (no separate endpoint needed just to render a card).
+  // Only worth offering once there are at least two subjects to mix.
+  const mixedSubject: PracticeSubject | null = subjects && subjects.length >= 2 ? {
+    id: MIXED_SUBJECT_ID,
+    name: 'Mixed Subjects Practice',
+    slug: 'mixed-subjects-practice',
+    questionCount: subjects.reduce((s, x) => s + x.questionCount, 0),
+    easyCount:     subjects.reduce((s, x) => s + x.easyCount, 0),
+    mediumCount:   subjects.reduce((s, x) => s + x.mediumCount, 0),
+    hardCount:     subjects.reduce((s, x) => s + x.hardCount, 0),
+  } : null;
+
   // "Resume Paused Quizzes" — kept deliberately separate from the subject
   // grid below: picking a subject there always starts a brand-new attempt,
   // this is the only explicit path back into one already paused (Practice
@@ -156,7 +181,9 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
     if (!selected || !difficulty) return;
     setPreviewLoading(true);
     try {
-      const preview = await practiceApi.previewPractice({ subjectExternalId: selected.id, difficulty });
+      const preview = selected.id === MIXED_SUBJECT_ID
+        ? await practiceApi.previewMixedPractice({ difficulty })
+        : await practiceApi.previewPractice({ subjectExternalId: selected.id, difficulty });
       setOverview(preview);
       setPhase('overview');
     } catch (err: any) {
@@ -175,10 +202,9 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
     startingRef.current = true;
     setStarting(true);
     try {
-      const attempt = await practiceApi.start({
-        subjectExternalId: selected.id,
-        difficulty,
-      });
+      const attempt = selected.id === MIXED_SUBJECT_ID
+        ? await practiceApi.startMixedPractice({ difficulty })
+        : await practiceApi.start({ subjectExternalId: selected.id, difficulty });
       navigate(`play/quiz/${attempt.attemptId}`);
     } catch (err: any) {
       push({ kind: 'danger', title: 'Could not start quiz', sub: err?.message ?? 'Please try again' });
@@ -367,6 +393,9 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
             </Card>
           ) : subjects?.length ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {mixedSubject && (
+                <SubjectCard subject={mixedSubject} mixed onPlay={openModal} />
+              )}
               {subjects.map(s => (
                 <SubjectCard key={s.id} subject={s} onPlay={openModal} />
               ))}
@@ -388,7 +417,7 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
       <Modal
         open={phase === 'subjects' && !!selected}
         onClose={() => !previewLoading && setSelected(null)}
-        title={`Practice · ${selected?.name}`}
+        title={selected?.id === MIXED_SUBJECT_ID ? selected.name : `Practice · ${selected?.name}`}
         size="sm"
         footer={
           <>

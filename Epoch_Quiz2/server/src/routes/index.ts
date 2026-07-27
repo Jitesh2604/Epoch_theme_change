@@ -15,6 +15,7 @@ import dashboardRoutes    from './dashboard.routes';
 import quizRoutes         from './quiz.routes';
 import settingsRoutes     from './settings.routes';
 import contactRoutes      from './contact.routes';
+import analyticsRoutes    from './analytics.routes';
 
 const router = new Router();
 
@@ -43,5 +44,6 @@ router.use('/dashboard',     dashboardRoutes);
 router.use('/quizzes',       quizRoutes);
 router.use('/settings',      settingsRoutes);
 router.use('/contact',       contactRoutes);
+router.use('/analytics',     analyticsRoutes);
 
 export default router;

@@ -388,6 +388,21 @@ export const SubmissionService = {
         data: { assessmentId, studentId: actor.id, status: SubmissionStatus.IN_PROGRESS, score: 0, totalMarks, timeTakenSec: 0 },
         select: { id: true, status: true, startedAt: true, totalMarks: true },
       });
+    } else {
+      // Assessment has no pause/resume: an IN_PROGRESS row surviving to a new
+      // Start call means the previous attempt was interrupted (refresh, tab
+      // close, network loss, etc.), not that it's being continued. Reset it
+      // in place — wipe prior answers and restart the clock — rather than
+      // reusing it, so every Start is a genuinely fresh attempt.
+      const [, updated] = await prisma.$transaction([
+        prisma.answer.deleteMany({ where: { submissionId: submission.id } }),
+        prisma.submission.update({
+          where: { id: submission.id },
+          data: { startedAt: new Date() },
+          select: { id: true, status: true, startedAt: true, totalMarks: true },
+        }),
+      ]);
+      submission = updated;
     }
 
     const { expiresAt, remainingSec } = durationLeft(submission.startedAt, assessment.duration);

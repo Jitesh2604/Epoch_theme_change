@@ -140,6 +140,7 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
             <>
               {NAV_ENABLED.assessment && <a href="/assessment" className="nav-link">Assessment</a>}
               <a href="/results" className="nav-link">Results</a>
+              <a href="/analytics" className="nav-link">Analytics</a>
               {resultsPublished && <a href="/leaderboard" className="nav-link">Leaderboard</a>}
             </>
           )}
@@ -238,6 +239,14 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
                 onClick={() => setMobileOpen(false)}
               >
                 Results
+              </a>
+              <a
+                href="/analytics"
+                className="nav-link"
+                style={{ textAlign: 'left', display: 'block', textDecoration: 'none' }}
+                onClick={() => setMobileOpen(false)}
+              >
+                Analytics
               </a>
               {resultsPublished && (
                 <a

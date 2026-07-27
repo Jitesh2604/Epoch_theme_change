@@ -20,21 +20,17 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
   const isStudent = !!user && toUIRole(user.role) === 'student';
 
   // Resolve which assessment the "Assessment" quick-start card should open —
-  // an in-progress attempt resumes straight into the exam, otherwise it goes
-  // to the current published assessment's Details page. Falls back to the
-  // My Assessments list ('/assessment') for non-students, logged-out
-  // visitors, or once there's more than one assessment to choose from.
+  // always the current published assessment's Details page, where the
+  // student starts a fresh attempt (Assessment has no pause/resume). Falls
+  // back to the My Assessments list ('/assessment') for non-students,
+  // logged-out visitors, or once there's more than one assessment to choose from.
   const { data: assessmentTarget } = useAsync<{ href: string } | null>(
     () => isStudent
-      ? Promise.all([
-          api.getWithQuery<{ items: { id: string }[] }>('/assessments', { status: 'PUBLISHED', limit: 1 }),
-          api.getWithQuery<{ items: { id: string }[] }>('/submissions/me', { status: 'IN_PROGRESS', limit: 1 }),
-        ]).then(([available, inProgress]) => {
-          const resuming = inProgress.items[0];
-          if (resuming) return { href: `/assessment/take/${resuming.id}` };
-          const next = available.items[0];
-          return { href: next ? `/assessment/${next.id}` : '/assessment' };
-        })
+      ? api.getWithQuery<{ items: { id: string }[] }>('/assessments', { status: 'PUBLISHED', limit: 1 })
+          .then((available) => {
+            const next = available.items[0];
+            return { href: next ? `/assessment/${next.id}` : '/assessment' };
+          })
       : Promise.resolve(null),
     [isStudent],
   );

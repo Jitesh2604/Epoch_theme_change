@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Award, Trophy, Medal, FileText, TrendingUp, Zap, Clock, CheckCircle2, XCircle, MinusCircle, ChevronRight } from 'lucide-react';
-import { PageHeader, Card, Button, StatCard, ProgressBar, Badge, Skeleton } from '../../shared/ui';
+import { Award, Trophy, Medal, FileText, TrendingUp, Zap, Clock, CheckCircle2, XCircle, MinusCircle, ChevronRight, SearchX } from 'lucide-react';
+import { PageHeader, Card, Button, StatCard, ProgressBar, Badge, Skeleton, Select, EmptyState } from '../../shared/ui';
 import { StandaloneHeader } from '../../shared/StandaloneHeader';
 import { useMySubmissions } from '../../../hooks/useSubmissions';
 import { useMyStats } from '../../../hooks/useLeaderboard';
 import { useOlympiadAttempts, type OlympiadAttemptSummary } from '../../../hooks/usePracticeQuiz';
+import { sortResults, RESULTS_SORT_OPTIONS, type ResultsSortKey } from '../../../lib/resultsSort';
 
 function StandalonePage({ children }: { children: React.ReactNode }) {
   return (
@@ -18,7 +19,7 @@ function StandalonePage({ children }: { children: React.ReactNode }) {
   );
 }
 
-type Tab = 'assessment' | 'practice' | 'olympiad';
+type Tab = 'assessment' | 'practice';
 
 function fmtDuration(seconds: number | null | undefined) {
   if (!seconds) return '—';
@@ -27,22 +28,49 @@ function fmtDuration(seconds: number | null | undefined) {
   return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 }
 
-// ── Practice / Attempt Olympiad history — shared by both tabs, since both
-//    draw from the same attempts list, split by quizType. ─────────────────
+// ── Practice Olympiad history — the underlying attempts list (see
+//    useOlympiadAttempts) also contains OLYMPIAD-mode attempts, filtered out
+//    before reaching this component (see ResultsPage's practiceAttempts).
+//    The config-driven filter/sort shape here (subjectOptions +
+//    RESULTS_SORT_OPTIONS) means adding another filter (Date, Quiz Type,
+//    Status) later is just another Select in the bar, not a rewrite. ───────
 function OlympiadAttemptsSection({
-  attempts, loading, error, heading, emptyText,
+  attempts, loading, error, heading, emptyText, filterable,
 }: {
   attempts: OlympiadAttemptSummary[];
   loading: boolean;
   error: string;
   heading: string;
   emptyText: string;
+  filterable?: boolean;
 }) {
+  const [subjectId, setSubjectId] = useState('');
+  const [sortKey, setSortKey]     = useState<ResultsSortKey>('newest');
+
   const completed = attempts.filter(a => a.status === 'SUBMITTED');
   const bestScore = completed.reduce((best, a) => Math.max(best, a.score), 0);
   const averagePercent = completed.length
     ? Math.round(completed.reduce((sum, a) => sum + a.percentage, 0) / completed.length)
     : 0;
+
+  const subjectOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const a of attempts) if (a.subject) byId.set(a.subject.id, a.subject.name);
+    return [...byId.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([value, label]) => ({ value, label }));
+  }, [attempts]);
+
+  const visibleAttempts = useMemo(() => {
+    const filtered = filterable && subjectId
+      ? attempts.filter(a => a.subject?.id === subjectId)
+      : attempts;
+    return sortResults(filtered, sortKey, {
+      date:    a => a.startTime,
+      score:   a => a.score,
+      percent: a => a.percentage,
+    });
+  }, [attempts, filterable, subjectId, sortKey]);
 
   return (
     <>
@@ -59,15 +87,40 @@ function OlympiadAttemptsSection({
         )}
       </div>
 
+      {filterable && !loading && !error && (
+        <Card className="p-4 mb-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Select
+              value={subjectId}
+              onChange={setSubjectId}
+              options={[{ value: '', label: 'All Subjects' }, ...subjectOptions]}
+            />
+            <Select
+              value={sortKey}
+              onChange={v => setSortKey(v as ResultsSortKey)}
+              options={RESULTS_SORT_OPTIONS}
+            />
+          </div>
+        </Card>
+      )}
+
       <Card className="p-6">
         <h3 className="font-display font-semibold text-[16px] text-fg1 mb-4">{heading}</h3>
         {loading ? (
           <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
         ) : error ? (
           <div className="text-center py-12 text-danger text-[13px]">{error}</div>
+        ) : !attempts.length ? (
+          <div className="text-center py-12 text-fg3 text-[13px]">{emptyText}</div>
+        ) : !visibleAttempts.length ? (
+          <EmptyState
+            icon={SearchX}
+            title="No results found"
+            desc="No results match the selected filter. Try a different subject."
+          />
         ) : (
           <div className="space-y-3">
-            {attempts.map(a => {
+            {visibleAttempts.map(a => {
               const reviewable = a.status === 'SUBMITTED';
               return (
                 <div
@@ -110,9 +163,6 @@ function OlympiadAttemptsSection({
                 </div>
               );
             })}
-            {!attempts.length && (
-              <div className="text-center py-12 text-fg3 text-[13px]">{emptyText}</div>
-            )}
           </div>
         )}
       </Card>
@@ -131,10 +181,9 @@ export function ResultsPage() {
   const stats = statsData as any;
   const loading = sLoading || stLoading;
 
-  // Practice Olympiad Results vs Attempt Olympiad Results — same underlying
-  // attempts list, split by quizType (see usePracticeQuiz.ts). The Olympiad
-  // tab only appears when there's at least one real Olympiad-mode attempt.
-  const olympiadAttempts = (attempts ?? []).filter(a => a.quizType === 'OLYMPIAD');
+  // Practice Olympiad Results — the underlying attempts list also contains
+  // OLYMPIAD-mode attempts (see usePracticeQuiz.ts); those are filtered out
+  // here rather than shown in their own tab.
   const practiceAttempts = (attempts ?? []).filter(a => a.quizType !== 'OLYMPIAD');
 
   // Assessment results aren't available until an admin publishes them — a
@@ -145,7 +194,6 @@ export function ResultsPage() {
   const tabs: { key: Tab; label: string }[] = [
     ...(hasPublishedAssessmentResults ? [{ key: 'assessment' as Tab, label: 'Assessment Results' }] : []),
     { key: 'practice', label: 'Practice Olympiad Results' },
-    ...(olympiadAttempts.length > 0 ? [{ key: 'olympiad' as Tab, label: 'Attempt Olympiad Results' }] : []),
   ];
 
   return (
@@ -153,7 +201,7 @@ export function ResultsPage() {
       <PageHeader
         eyebrow="Results"
         title="My Results"
-        subtitle="Your assessment and practice olympiad history."
+        subtitle={hasPublishedAssessmentResults ? 'Your Assessment and Practice Olympiad history.' : 'Your Practice Olympiad history.'}
       />
 
       <div className="flex gap-1 mb-6 p-1 bg-surface1/50 rounded-xl w-fit max-w-full overflow-x-auto border border-line no-scrollbar">
@@ -242,16 +290,7 @@ export function ResultsPage() {
           error={aError ?? ''}
           heading="Practice Olympiad history"
           emptyText="No practice olympiad results yet"
-        />
-      )}
-
-      {tab === 'olympiad' && (
-        <OlympiadAttemptsSection
-          attempts={olympiadAttempts}
-          loading={aLoading}
-          error={aError ?? ''}
-          heading="Attempt Olympiad history"
-          emptyText="No attempt olympiad results yet"
+          filterable
         />
       )}
     </StandalonePage>

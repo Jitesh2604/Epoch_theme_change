@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Clock, FileText, Target, ListChecks, ArrowLeft, Play, Info, AlertTriangle, Layers,
+  CheckCircle2, HourglassIcon,
 } from 'lucide-react';
 import { Card, Button, Badge, Skeleton, useToasts } from '../../shared/ui';
 import { StandaloneHeader } from '../../shared/StandaloneHeader';
 import { SessionOverScreen } from '../../shared/SessionOverScreen';
 import { SESSION_END_DATE } from '../../../config/assessmentSession';
 import { useAssessment } from '../../../hooks/useAssessments';
+import { useMySubmissions } from '../../../hooks/useSubmissions';
 import { assessmentTakeApi, type TakeSubmission, type SubmissionResult } from '../../../hooks/useSubmissionApi';
 
 /** This page is deliberately a dedicated exam-landing page, not a dashboard
@@ -28,7 +30,7 @@ function StandalonePage({ children }: { children: React.ReactNode }) {
 
 const GENERIC_INSTRUCTIONS = [
   'Read each question carefully before answering.',
-  'Avoid refreshing or navigating away once the test has started — the timer keeps running in the background even if you do.',
+  'Do not refresh, close the tab, or navigate away once the test has started — doing so ends the attempt immediately. Restarting begins a brand-new attempt from Question 1 with the timer reset.',
   'Make sure you have a stable internet connection.',
   'Submit your answers before the timer runs out — the test auto-submits at zero.',
 ];
@@ -53,6 +55,19 @@ export function AssessmentOverviewPage() {
   const { push, node } = useToasts();
   const { data: assessment, loading, error } = useAssessment(assessmentId ?? '');
   const [starting, setStarting] = useState(false);
+
+  // A student gets exactly one attempt: once a submission for THIS assessment
+  // exists and is no longer IN_PROGRESS, the Details page must show a status
+  // screen instead of the Start button — regardless of how they got here
+  // (Home quick-start card, My Assessments, a direct/bookmarked URL). The
+  // backend already rejects a re-Start with a 409 (see SubmissionService.start),
+  // so this is belt-and-suspenders: it stops the button from ever being shown
+  // in the first place, rather than only catching the error after a click.
+  const { data: mySubmissions, loading: subLoading } = useMySubmissions({
+    assessmentId: assessmentId ?? '__none__', limit: 1,
+  });
+  const mySubmission = mySubmissions?.items.find(s => s.assessment.id === assessmentId);
+  const alreadySubmitted = !!mySubmission && mySubmission.status !== 'IN_PROGRESS';
 
   // Blocks direct/bookmarked links into the assessment flow once the
   // session is over — the listing page already stops linking here, but a
@@ -82,7 +97,7 @@ export function AssessmentOverviewPage() {
     }
   };
 
-  if (loading) {
+  if (loading || subLoading) {
     return (
       <StandalonePage>
         <div className="max-w-2xl mx-auto space-y-4">
@@ -104,6 +119,61 @@ export function AssessmentOverviewPage() {
           <h2 className="font-display font-semibold text-[18px] text-fg1 mb-1.5">Assessment not found</h2>
           <p className="text-[13px] text-fg3 mb-5">{error || "This assessment isn't available or isn't assigned to you."}</p>
           <Button onClick={() => navigate('/assessment')}>Back to Assessments</Button>
+        </div>
+      </StandalonePage>
+    );
+  }
+
+  // One attempt only: a submitted/graded row for this assessment already
+  // exists, so the Details page must show status instead of Start — see the
+  // alreadySubmitted computation above for why this is checked here rather
+  // than only at the moment Start is clicked.
+  if (alreadySubmitted && mySubmission) {
+    const visible = mySubmission.resultsVisible ?? (mySubmission.percent !== null);
+    return (
+      <StandalonePage>
+        <div className="max-w-md mx-auto text-center py-16">
+          {node}
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-brand-soft border border-line grid place-items-center text-brand mb-4">
+            <CheckCircle2 size={24} />
+          </div>
+          <h2 className="font-display font-semibold text-[19px] text-fg1 mb-1.5">Assessment Already Submitted</h2>
+          <p className="text-[13.5px] text-fg3 leading-relaxed mb-5">
+            You have already completed this assessment. Your assessment has been submitted successfully.
+            {!visible && ' Results are not available yet and will be published by the Admin on the official result date.'}
+          </p>
+
+          <Card className="p-4 mb-6 text-left">
+            <div className="flex items-center justify-between py-1.5 text-[13px]">
+              <span className="text-fg3">Submitted on</span>
+              <span className="font-semibold text-fg1">
+                {mySubmission.submittedAt ? new Date(mySubmission.submittedAt).toLocaleString() : '—'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-1.5 text-[13px] border-t border-line">
+              <span className="text-fg3">Assessment status</span>
+              <Badge tone="success">Submitted</Badge>
+            </div>
+            <div className="flex items-center justify-between py-1.5 text-[13px] border-t border-line">
+              <span className="text-fg3">Result status</span>
+              <Badge tone={visible ? 'info' : 'neutral'}>{visible ? 'Published' : 'Pending Publication'}</Badge>
+            </div>
+          </Card>
+
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => navigate('/assessment')}>
+              Back to Assessments
+            </Button>
+            {visible ? (
+              <Button className="flex-1" icon={CheckCircle2} onClick={() => navigate(`/assessment/result/${mySubmission.id}`)}>
+                View Results
+              </Button>
+            ) : (
+              <Button className="flex-1" icon={HourglassIcon} disabled>
+                Result Pending
+              </Button>
+            )}
+          </div>
         </div>
       </StandalonePage>
     );

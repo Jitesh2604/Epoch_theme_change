@@ -224,7 +224,7 @@ export function PracticeResultPage({ navigate, attemptId }: PracticeResultPagePr
             <DetailRow icon={PlayCircle} label="Start Time"      value={fmtDateTime(result.startTime)} />
             <DetailRow icon={FlagOff}    label="End Time"        value={fmtDateTime(result.endTime)} />
             <DetailRow icon={Hash}       label="Total Questions" value={String(result.questionCount)} />
-            <DetailRow icon={ListChecks} label="Question Type"   value={result.quiz.quizType === 'OLYMPIAD' ? 'Practice Olympiad' : 'Subject Practice'} />
+            <DetailRow icon={ListChecks} label="Question Type"   value={result.quiz.quizType === 'OLYMPIAD' ? 'Practice Olympiad' : !result.quiz.subject ? 'Mixed Subjects Practice' : 'Subject Practice'} />
             <DetailRow icon={Clock}      label="Time Taken"      value={fmtTime(result.timeTakenSec)} />
           </div>
         </Card>

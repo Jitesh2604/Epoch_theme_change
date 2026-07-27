@@ -8,6 +8,8 @@ import {
   startPracticeSchema,
   previewPracticeSchema,
   startOlympiadSchema,
+  previewMixedPracticeSchema,
+  startMixedPracticeSchema,
   saveAttemptAnswerSchema,
   submitAttemptSchema,
   attemptIdParamsSchema,
@@ -33,6 +35,22 @@ router.post(
   authenticate,
   validate(startPracticeSchema),
   QuizController.startPractice,
+);
+
+// ── Mixed Subjects Practice (a Practice attempt drawn from multiple
+//    subjects, not a single one — see QuizService.startMixedPractice) ─────
+router.post(
+  '/mixed-practice/preview',
+  authenticate,
+  validate(previewMixedPracticeSchema),
+  QuizController.previewMixedPractice,
+);
+
+router.post(
+  '/mixed-practice/start',
+  authenticate,
+  validate(startMixedPracticeSchema),
+  QuizController.startMixedPractice,
 );
 
 // ── Olympiad flow (mixed quiz + attempt history) ──────────────────

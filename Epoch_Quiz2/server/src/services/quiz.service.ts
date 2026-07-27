@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { QuestionType, AttemptStatus, QuizType, QuizStatus } from '../lib/enums';
+import { QuestionType, AttemptStatus, QuizType, QuizStatus, Difficulty } from '../lib/enums';
 import { PracticeConfig } from '../config/practiceConfig';
 import { parseStrArr, toJson } from '../utils/json';
 import { ApiError } from '../utils/ApiError';
@@ -10,6 +10,8 @@ import type {
   StartPracticeInput,
   PreviewPracticeInput,
   StartOlympiadInput,
+  PreviewMixedPracticeInput,
+  StartMixedPracticeInput,
   SaveAttemptAnswerInput,
   SubmitAttemptInput,
   SaveProgressInput,
@@ -148,6 +150,33 @@ async function getOrCreateOlympiadQuiz(classExternalId: string | null, className
   return quiz.id;
 }
 
+/**
+ * Gets or lazy-creates the shared Mixed Subjects Practice quiz record — one
+ * global row (not per-subject, not per-class), discriminated by having no
+ * subject at all. Safe: getOrCreatePracticeQuiz/getOrCreateOlympiadQuiz above
+ * are the only other writers of Quiz rows anywhere in the server.
+ */
+async function getOrCreateMixedPracticeQuiz(fallbackUserId: string): Promise<string> {
+  const existing = await prisma.quiz.findFirst({
+    where: { subjectExternalId: null, quizType: QuizType.PRACTICE, questionSelection: 'AUTO_RANDOM' }, select: { id: true },
+  });
+  if (existing) return existing.id;
+
+  const admin = await prisma.user.findFirst({
+    where: { role: { in: ['SUPER_ADMIN', 'PUBLICATION_ADMIN'] } }, orderBy: { createdAt: 'asc' }, select: { id: true },
+  });
+
+  const quiz = await prisma.quiz.create({
+    data: {
+      title: 'Mixed Subjects Practice',
+      quizType: QuizType.PRACTICE, questionSelection: 'AUTO_RANDOM', subjectExternalId: null,
+      status: QuizStatus.PUBLISHED, createdById: admin?.id ?? fallbackUserId, leaderboardEnabled: true, duration: 0,
+    },
+    select: { id: true },
+  });
+  return quiz.id;
+}
+
 interface StudentAcademic { profileId: string | null; classExternalId: string | null; educationBoard: string | null }
 
 /** The academic context used to scope a student's quizzes. */
@@ -175,6 +204,43 @@ async function getOlympiadPerSubject(): Promise<number> {
   const row = await prisma.setting.findUnique({ where: { key: 'olympiad.questionsPerSubject' }, select: { value: true } });
   const n = row ? parseInt(row.value, 10) : NaN;
   return Number.isFinite(n) && n > 0 ? n : 5;
+}
+
+/**
+ * Balanced pull across every Practice subject for Mixed Subjects Practice:
+ * find every subject with a gradable, scoped question at this difficulty,
+ * pull up to an even share from each, flatten, reshuffle, and trim to the
+ * same total PracticeConfig[difficulty] gives a single-subject Practice
+ * attempt — so a mixed attempt costs the same time/question budget, just
+ * sourced from multiple subjects instead of one.
+ */
+async function pickMixedQuestions(
+  classExternalId: string | null, board: string | null, difficulty: Difficulty,
+): Promise<QuizQuestion[]> {
+  const scopeAnd = classBoardAnd(classExternalId, board);
+  const baseWhere = {
+    status: 'ACTIVE' as const, type: { in: GRADABLE_TYPES }, difficulty,
+    ...(scopeAnd.length && { AND: scopeAnd }),
+  };
+
+  const subjectRows = await prisma.question.findMany({
+    where: { ...baseWhere, subjectExternalId: { not: null } },
+    select: { subjectExternalId: true },
+    distinct: ['subjectExternalId'],
+  });
+  const subjectIds = subjectRows.map(r => r.subjectExternalId!);
+  if (!subjectIds.length) return [];
+
+  const target     = PracticeConfig[difficulty].questionCount;
+  const perSubject = Math.max(1, Math.ceil(target / subjectIds.length));
+
+  const picked: QuizQuestion[] = [];
+  for (const subjectExternalId of subjectIds) {
+    const rows = await prisma.question.findMany({ where: { ...baseWhere, subjectExternalId } });
+    picked.push(...shuffleArray(rows).slice(0, perSubject));
+  }
+
+  return shuffleArray(picked).slice(0, target);
 }
 
 // ── Build result from a completed attempt ─────────────────────────────
@@ -468,6 +534,62 @@ export const QuizService = {
     };
   },
 
+  // ── Mixed Subjects Practice: a single-difficulty Practice attempt drawn
+  //    from a balanced pull across every eligible Practice subject, instead
+  //    of one — otherwise identical to Practice (own attempt, own timer,
+  //    pause/resume, history). See pickMixedQuestions/getOrCreateMixedPracticeQuiz. ──
+
+  /** Read-only overview for the confirm screen — same contract as previewPractice. */
+  async previewMixedPractice(studentId: string, input: PreviewMixedPracticeInput) {
+    const profile = await readStudentProfile(studentId);
+    const matching = await pickMixedQuestions(profile.classExternalId, profile.educationBoard, input.difficulty);
+    if (!matching.length) throw ApiError.badRequest('No practice questions available for your class/board at this difficulty yet.');
+
+    const config        = PracticeConfig[input.difficulty];
+    const questionCount = Math.min(config.questionCount, matching.length);
+    const avgMarks       = matching.reduce((s, q) => s + q.marks, 0) / matching.length;
+
+    return {
+      subject:          { id: 'mixed', name: 'Mixed Subjects Practice' },
+      difficulty:        input.difficulty,
+      questionCount,
+      timeLimitSec:      config.timeLimitMinutes * 60,
+      totalMarks:        Math.round(questionCount * avgMarks * 100) / 100,
+      marksPerQuestion:  Math.round(avgMarks * 100) / 100,
+      negativeMarking:   false,
+    };
+  },
+
+  async startMixedPractice(studentId: string, input: StartMixedPracticeInput) {
+    const quizId  = await getOrCreateMixedPracticeQuiz(studentId);
+    const profile = await readStudentProfile(studentId);
+    const selected = await pickMixedQuestions(profile.classExternalId, profile.educationBoard, input.difficulty);
+    if (!selected.length) throw ApiError.badRequest('No practice questions available for your class/board at this difficulty yet.');
+
+    const config       = PracticeConfig[input.difficulty];
+    const timeLimitSec = config.timeLimitMinutes * 60;
+    const subject      = { id: 'mixed', name: 'Mixed Subjects Practice', slug: 'mixed-subjects-practice' };
+
+    const { attemptId, attemptNumber } = await createQuizAttempt(quizId, studentId, timeLimitSec);
+
+    await prisma.attemptAnswer.createMany({
+      data: selected.map(sq => ({ attemptId, questionId: sq.id, selectedOptions: '[]', isSkipped: true, isMarkedReview: false, marksAwarded: 0 })),
+    });
+
+    return {
+      attemptId,
+      attemptNumber,
+      quizId,
+      subject,
+      difficulty:    input.difficulty,
+      questionCount: selected.length,
+      timeLimitSec,
+      totalMarks:    selected.reduce((s, sq) => s + sq.marks, 0),
+      startTime:     new Date(),
+      questions:     selected.map((sq, i) => sanitizeQuestion(sq, i + 1)),
+    };
+  },
+
   async saveAnswer(attemptId: string, studentId: string, input: SaveAttemptAnswerInput) {
     const attempt = await prisma.quizAttempt.findUnique({ where: { id: attemptId }, select: { studentId: true, status: true } });
     if (!attempt) throw ApiError.notFound('Attempt not found');
@@ -622,7 +744,7 @@ export const QuizService = {
       select: {
         id: true, studentId: true, status: true, startTime: true, attemptNumber: true, quizId: true, timeLimitSec: true,
         pausedAt: true, totalPausedSec: true, currentQuestionIndex: true,
-        quiz: { select: { subjectExternalId: true } },
+        quiz: { select: { subjectExternalId: true, quizType: true } },
       },
     });
     if (!attempt) throw ApiError.notFound('Attempt not found');
@@ -660,8 +782,12 @@ export const QuizService = {
     // Resolve the subject so the client renders identically whether the attempt
     // arrives via router state (from /start) or is re-fetched here on refresh /
     // direct navigation. Missing this `subject` was crashing the play page.
+    // A null subjectExternalId means either Attempt Olympiad's mixed set or
+    // Mixed Subjects Practice — quizType is what tells the two apart.
     const subExtId    = attempt.quiz?.subjectExternalId ?? null;
-    const subjectName = subExtId ? (await ContentMeta.subjects()).get(subExtId) ?? subExtId : 'Practice';
+    const subjectName = subExtId
+      ? (await ContentMeta.subjects()).get(subExtId) ?? subExtId
+      : attempt.quiz?.quizType === QuizType.OLYMPIAD ? 'Practice Olympiad' : 'Mixed Subjects Practice';
     const questions   = answers.map((a, i) => sanitizeQuestion(a.question, i + 1));
 
     return {
@@ -780,7 +906,7 @@ export const QuizService = {
       where: { studentId },
       orderBy: { startTime: 'desc' },
       include: {
-        quiz: { select: { title: true, quizType: true } },
+        quiz: { select: { title: true, quizType: true, subjectExternalId: true } },
         _count: { select: { answers: true } },
       },
     });
@@ -790,7 +916,13 @@ export const QuizService = {
       return r.quiz.quizType === QuizType.OLYMPIAD || r.quiz.quizType === QuizType.PRACTICE || title.includes('olympiad') || title.includes('practice');
     });
 
-    return (relevantRows.length ? relevantRows : rows).map(r => ({
+    const finalRows = relevantRows.length ? relevantRows : rows;
+    // Practice quizzes are single-subject (see getOrCreatePracticeQuiz); the
+    // mixed Olympiad set has no one subject, so subjectExternalId is null
+    // there — the client's Subject filter only applies where this is set.
+    const subjectNames = await ContentMeta.subjects();
+
+    return finalRows.map(r => ({
       attemptId:      r.id,
       attemptNumber:  r.attemptNumber,
       status:         r.status,
@@ -805,6 +937,9 @@ export const QuizService = {
       quizTitle:      r.quiz.title,
       quizType:       r.quiz.quizType,
       questionCount:  r._count.answers,
+      subject:        r.quiz.subjectExternalId
+        ? { id: r.quiz.subjectExternalId, name: subjectNames.get(r.quiz.subjectExternalId) ?? r.quiz.subjectExternalId }
+        : null,
     }));
   },
 

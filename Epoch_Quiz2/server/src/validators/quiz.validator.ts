@@ -22,6 +22,15 @@ export const startOlympiadSchema = z.object({
   perSubject: z.number().int().min(1).max(20).optional(),
 });
 
+// Mixed Subjects Practice — same shape as Practice, but never takes a subject:
+// it always draws a balanced pull from every eligible Practice subject (see
+// QuizService.pickMixedQuestions).
+export const previewMixedPracticeSchema = z.object({
+  difficulty: z.nativeEnum(Difficulty, { required_error: 'Difficulty is required' }),
+});
+
+export const startMixedPracticeSchema = previewMixedPracticeSchema;
+
 export const saveAttemptAnswerSchema = z.object({
   questionId:      z.string().min(1, 'questionId is required'),
   selectedOption:  z.string().optional(),      // "A"|"B"|"C"|"D" or "TRUE"|"FALSE"
@@ -68,9 +77,11 @@ export const listQuizAttemptsQuerySchema = paginationSchema.extend({
   sortBy:            z.enum(['latest', 'score_desc', 'score_asc', 'time_desc', 'time_asc']).default('latest'),
 });
 
-export type StartPracticeInput      = z.infer<typeof startPracticeSchema>;
-export type PreviewPracticeInput    = z.infer<typeof previewPracticeSchema>;
-export type StartOlympiadInput      = z.infer<typeof startOlympiadSchema>;
+export type StartPracticeInput        = z.infer<typeof startPracticeSchema>;
+export type PreviewPracticeInput      = z.infer<typeof previewPracticeSchema>;
+export type StartOlympiadInput        = z.infer<typeof startOlympiadSchema>;
+export type PreviewMixedPracticeInput = z.infer<typeof previewMixedPracticeSchema>;
+export type StartMixedPracticeInput   = z.infer<typeof startMixedPracticeSchema>;
 export type SaveAttemptAnswerInput  = z.infer<typeof saveAttemptAnswerSchema>;
 export type SubmitAttemptInput      = z.infer<typeof submitAttemptSchema>;
 export type SaveProgressInput       = z.infer<typeof saveProgressSchema>;

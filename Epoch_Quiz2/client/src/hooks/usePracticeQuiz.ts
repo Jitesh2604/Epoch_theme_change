@@ -163,6 +163,9 @@ export interface OlympiadAttemptSummary {
   quizTitle:      string;
   quizType:       'PRACTICE' | 'OLYMPIAD' | 'CHAPTER_TEST' | 'MOCK_TEST' | 'LIVE_QUIZ' | 'ASSIGNMENT' | null;
   questionCount:  number;
+  // Practice quizzes are single-subject; the mixed Olympiad set has no one
+  // subject, so this is null there.
+  subject:        { id: string; name: string } | null;
 }
 
 export function useOlympiadAttempts() {
@@ -205,6 +208,15 @@ export const practiceApi = {
 
   startOlympiad: (data: { perSubject?: number } = {}) =>
     api.post<OlympiadAttemptData>('/quizzes/olympiad/start', data),
+
+  /** Mixed Subjects Practice — same contract as previewPractice/start, but
+   *  never takes a subject: the server balances a pull across every
+   *  eligible Practice subject instead. */
+  previewMixedPractice: (data: { difficulty: 'EASY' | 'MEDIUM' | 'HARD' }) =>
+    api.post<PracticePreview>('/quizzes/mixed-practice/preview', data),
+
+  startMixedPractice: (data: { difficulty: 'EASY' | 'MEDIUM' | 'HARD' }) =>
+    api.post<PracticeAttemptData>('/quizzes/mixed-practice/start', data),
 
   saveAnswer: (
     attemptId: string,

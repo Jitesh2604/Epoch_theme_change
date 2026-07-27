@@ -167,6 +167,27 @@ export const ContentMeta = {
   async classExists(externalId: string): Promise<boolean> {
     return (await refMap('class')).has(String(externalId));
   },
+
+  /**
+   * Resolve chapterExternalId -> chapter name for a set of book external ids
+   * (only the books actually referenced, not the whole catalog). Mirrors
+   * questionSync.service.ts's buildChapterFallbackMap: one book's failure
+   * (e.g. transient API error) is logged and skipped, not fatal to the rest.
+   */
+  async chapterNames(bookExternalIds: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    if (!isContentConfigured()) return map;
+    const distinctBookIds = [...new Set(bookExternalIds.map(String))];
+    for (const bookId of distinctBookIds) {
+      try {
+        const chapters = await ContentService.getChapters(bookId);
+        for (const ch of chapters) map.set(String(ch.id), ch.name);
+      } catch (err) {
+        logger.warn(`[content] could not load chapters for book ${bookId}: ${(err as Error).message}`);
+      }
+    }
+    return map;
+  },
 };
 
 export type { Board, Standard, Subject, Series, Book, Chapter, Question };
