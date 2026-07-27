@@ -15,6 +15,7 @@ import {
   attemptIdParamsSchema,
   saveProgressSchema,
   listQuizAttemptsQuerySchema,
+  retryAttemptSchema,
 } from '../validators/quiz.validator';
 
 const router = new Router();
@@ -114,6 +115,17 @@ router.post(
   validate(attemptIdParamsSchema, 'params'),
   validate(submitAttemptSchema),
   QuizController.submitAttempt,
+);
+
+// Feature 12 (Practice Review & Mistake Analysis) — "Practice Incorrect
+// Questions Again", a brand-new attempt built from a past attempt's own
+// wrong/skipped questions (see QuizService.startRetry).
+router.post(
+  '/attempts/:id/retry',
+  authenticate,
+  validate(attemptIdParamsSchema, 'params'),
+  validate(retryAttemptSchema),
+  QuizController.retryAttempt,
 );
 
 export default router;

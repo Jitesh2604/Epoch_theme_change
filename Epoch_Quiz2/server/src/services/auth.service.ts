@@ -178,6 +178,11 @@ export const AuthService = {
     const ok = await comparePassword(input.password, user.passwordHash);
     if (!ok) throw ApiError.unauthorized('Invalid email or password');
 
+    // Feature A1 (Admin Dashboard) — "Students Logged In Today" needs a real
+    // login signal. Written only here, never in refresh()/issueTokens, so a
+    // silent background session restore never counts as a fresh login.
+    await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+
     const tokens = await issueTokens(user);
     return { user: toPublicUser(user), ...tokens };
   },

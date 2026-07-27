@@ -20,3 +20,43 @@ export interface DashboardStats {
 export function useDashboardStats() {
   return useAsync<DashboardStats>(() => api.get('/dashboard/stats'), []);
 }
+
+// ── Feature A1: Admin Dashboard ──────────────────────────────────────────
+// Everything NOT already covered by DashboardStats above (recent
+// assessments/submissions come from there; recent practice activity comes
+// from useQuizAttempts; recent student registrations come from useStudents
+// — all reused directly, not duplicated here).
+
+export interface AdminOverview {
+  contentCatalog: { totalSubjects: number; totalBoards: number; totalClasses: number };
+  questionBank: {
+    total: number; active: number; draft: number;
+    subjectsCovered: number; chaptersCovered: number;
+    byType: Record<string, number>;
+    gradableActiveCount: number;
+  };
+  todaysActivity: {
+    studentsLoggedIn: number; practiceStarted: number; practiceCompleted: number;
+    assessmentsStarted: number; assessmentsCompleted: number;
+  };
+  activeStudentsToday: number;
+  charts: {
+    studentGrowth: { date: string; count: number }[];
+    practiceActivity: { date: string; count: number }[];
+    subjectPopularity: { subjectId: string; subjectName: string; count: number }[];
+    accuracyDistribution: { band: string; count: number; percentage: number }[];
+    dailyActiveStudents: { date: string; count: number }[];
+  };
+  performanceIndicators: {
+    avgAccuracy: number;
+    /** Simplified platform-wide proxy, not the exact per-student Feature 8
+     *  confidence formula — see adminDashboard.service.ts for why. */
+    avgConfidenceScoreApprox: number;
+    avgPracticeTimeSec: number;
+    avgQuestionsPerSession: number;
+  };
+}
+
+export function useAdminOverview() {
+  return useAsync<AdminOverview>(() => api.get('/dashboard/admin-overview'), []);
+}

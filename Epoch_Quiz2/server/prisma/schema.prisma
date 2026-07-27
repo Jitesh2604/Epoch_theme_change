@@ -32,6 +32,10 @@ model User {
   profileComplete            Boolean                     @default(false)
   createdAt                  DateTime                    @default(now())
   updatedAt                  DateTime                    @updatedAt
+  // Feature A1 (Admin Dashboard) — written only on a real password login
+  // (AuthService.login), never on silent token refresh, so "logged in
+  // today" stays a clean signal distinct from background session restore.
+  lastLoginAt                DateTime?
   assessmentAssignedStudents AssessmentAssignedStudent[]
   createdAssessments         Assessment[]                @relation("AssessmentCreatedBy")
   questionUploads            QuestionUpload[]            @relation("UploaderQuestions")
@@ -44,6 +48,9 @@ model User {
   studentProfile             StudentProfile?
   submissions                Submission[]
   teacherProfile             TeacherProfile?
+  bookmarks                  Bookmark[]                  @relation("StudentBookmarks")
+  revisionItems              RevisionItem[]              @relation("StudentRevisionItems")
+  revisionStreak             RevisionStreakState?        @relation("StudentRevisionStreak")
 
   @@index([role])
   @@index([status])
@@ -184,43 +191,45 @@ model StudentSubject {
 }
 
 model Question {
-  id                  String               @id @default(cuid())
+  id                  String          @id @default(cuid())
   type                QuestionType
-  prompt              String               @db.Text
+  prompt              String          @db.Text
   promptImageUrl      String?
-  optionA             String?              @db.Text
+  optionA             String?         @db.Text
   optionAImageUrl     String?
-  optionB             String?              @db.Text
+  optionB             String?         @db.Text
   optionBImageUrl     String?
-  optionC             String?              @db.Text
+  optionC             String?         @db.Text
   optionCImageUrl     String?
-  optionD             String?              @db.Text
+  optionD             String?         @db.Text
   optionDImageUrl     String?
   correctAnswer       String?
-  correctOptions      String               @db.LongText
+  correctOptions      String          @db.LongText
   correctBoolean      Boolean?
-  modelAnswer         String?              @db.Text
-  matchPairs          String?              @db.LongText
-  explanation         String?              @db.Text
+  modelAnswer         String?         @db.Text
+  matchPairs          String?         @db.LongText
+  explanation         String?         @db.Text
   explanationImageUrl String?
-  marks               Int                  @default(1)
-  negativeMarks       Float                @default(0)
-  difficulty          Difficulty           @default(MEDIUM)
-  language            String?              @default("English")
+  marks               Int             @default(1)
+  negativeMarks       Float           @default(0)
+  difficulty          Difficulty      @default(MEDIUM)
+  language            String?         @default("English")
   educationBoard      String?
-  tags                String               @db.LongText
-  status              UserStatus           @default(ACTIVE)
+  tags                String          @db.LongText
+  status              UserStatus      @default(ACTIVE)
   createdById         String
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
   subjectExternalId   String?
   classExternalId     String?
   bookExternalId      String?
   chapterExternalId   String?
-  externalId          String?              @unique
+  externalId          String?         @unique
   attemptAnswers      AttemptAnswer[]
-  createdBy           User                 @relation("QuestionCreatedBy", fields: [createdById], references: [id])
+  createdBy           User            @relation("QuestionCreatedBy", fields: [createdById], references: [id])
   quizQuestions       QuizQuestion[]
+  bookmarks           Bookmark[]      @relation("QuestionBookmarks")
+  revisionItems       RevisionItem[]  @relation("QuestionRevisionItems")
 
   @@index([createdById])
   @@index([type])
@@ -230,6 +239,86 @@ model Question {
   @@index([chapterExternalId])
   @@index([classExternalId])
   @@map("questions")
+}
+
+/**
+ * Feature 12 (Practice Review & Mistake Analysis) — a student bookmarking a
+ * Question they found difficult while reviewing a past Practice Olympiad
+ * attempt. Bookmarks are on the Question itself (not on one specific
+ * attempt/AttemptAnswer): the same question can recur across several
+ * attempts (Practice re-selects randomly), and a student bookmarking it
+ * means "flag this question," not "flag this one attempt's instance of it."
+ * `@@unique([studentId, questionId])` makes bookmarking idempotent — the API
+ * is a toggle, not an append-only log.
+ */
+model Bookmark {
+  id         String   @id @default(cuid())
+  studentId  String
+  questionId String
+  createdAt  DateTime @default(now())
+  student    User     @relation("StudentBookmarks", fields: [studentId], references: [id], onDelete: Cascade)
+  question   Question @relation("QuestionBookmarks", fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, questionId])
+  @@index([studentId])
+  @@map("bookmarks")
+}
+
+/**
+ * Feature 13 (Revision Center & Spaced Revision) — one row per (student,
+ * question) the student is actively revising, tracking its spaced-repetition
+ * schedule. A question enters the queue (a row is created) when it's wrong,
+ * skipped, bookmarked, or belongs to a topic below the accuracy threshold —
+ * see RevisionService.syncQueue, which upserts idempotently so a question
+ * already being tracked is never duplicated or has its schedule reset just
+ * because it resurfaces as a candidate again.
+ * `intervalIndex` indexes into the configurable REVISION_INTERVALS_DAYS
+ * schedule (server/src/config/revisionConfig.ts) — 0 = Day 1, advancing by
+ * one step on a correct revision answer, resetting to 0 on a wrong or
+ * skipped one. `reasons` is a JSON-stringified array (parseStrArr/toJson,
+ * same convention as Question.correctOptions) since a question can carry
+ * more than one reason at once (e.g. both wrong AND bookmarked).
+ */
+model RevisionItem {
+  id            String    @id @default(cuid())
+  studentId     String
+  questionId    String
+  intervalIndex Int       @default(0)
+  timesRevised  Int       @default(0)
+  wrongCount    Int       @default(0)
+  skipCount     Int       @default(0)
+  lastResult    String? // 'CORRECT' | 'WRONG' | 'SKIPPED' — null until first revised
+  lastSeenAt    DateTime?
+  nextDueAt     DateTime
+  reasons       String    @db.LongText
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  student       User      @relation("StudentRevisionItems", fields: [studentId], references: [id], onDelete: Cascade)
+  question      Question  @relation("QuestionRevisionItems", fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, questionId])
+  @@index([studentId, nextDueAt])
+  @@map("revision_items")
+}
+
+/**
+ * Feature 13 — revision-specific streak, deliberately separate from the
+ * general practice streak (Feature 9's studyPlanEngine.ts, which is
+ * localStorage + real practice dates, not persisted server-side). One row
+ * per student, updated whenever a Revision Session attempt is submitted —
+ * see RevisionService.recordSessionCompletion.
+ */
+model RevisionStreakState {
+  id              String    @id @default(cuid())
+  studentId       String    @unique
+  currentStreak   Int       @default(0)
+  bestStreak      Int       @default(0)
+  totalSessions   Int       @default(0)
+  lastSessionDate DateTime?
+  updatedAt       DateTime  @updatedAt
+  student         User      @relation("StudentRevisionStreak", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@map("revision_streak_states")
 }
 
 // Assessment's own question-content table — deliberately a full duplicate of
@@ -349,7 +438,7 @@ model Assessment {
 }
 
 model AssessmentQuestion {
-  id               String     @id @default(cuid())
+  id               String                 @id @default(cuid())
   assessmentId     String
   questionId       String
   order            Int
@@ -429,15 +518,15 @@ model Submission {
 }
 
 model Answer {
-  id              String     @id @default(cuid())
+  id              String                 @id @default(cuid())
   submissionId    String
   questionId      String
   selectedOption  Int?
   selectedBoolean Boolean?
-  textAnswer      String?    @db.Text
+  textAnswer      String?                @db.Text
   isCorrect       Boolean?
   // Float: can be negative (negative marking) or fractional (marksOverride).
-  marksAwarded    Float      @default(0)
+  marksAwarded    Float                  @default(0)
   timeMs          Int?
   selectedOptions String                 @db.LongText
   question        AssessmentQuestionBank @relation(fields: [questionId], references: [id])

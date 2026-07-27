@@ -6,6 +6,8 @@ import { parseStrArr, toJson } from '../utils/json';
 import { ApiError } from '../utils/ApiError';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
 import { ContentMeta } from './content.service';
+import { RevisionService } from './revision.service';
+import { REVISION_SECONDS_PER_QUESTION } from '../config/revisionConfig';
 import type {
   StartPracticeInput,
   PreviewPracticeInput,
@@ -32,7 +34,10 @@ type GradableQuestion = Pick<QuizQuestion, 'type' | 'correctAnswer' | 'correctOp
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-const GRADABLE_TYPES: QuestionType[] = [
+// Exported for Feature A1 (Admin Dashboard) — reused as-is to check whether
+// Practice/Olympiad has any question it could actually draw from, the same
+// definition every start*/preview* method here already scopes against.
+export const GRADABLE_TYPES: QuestionType[] = [
   QuestionType.MCQ_SINGLE, QuestionType.MCQ_MULTIPLE,
   QuestionType.TRUE_FALSE, QuestionType.FILL_IN_BLANK,
 ];
@@ -177,6 +182,75 @@ async function getOrCreateMixedPracticeQuiz(fallbackUserId: string): Promise<str
   return quiz.id;
 }
 
+/**
+ * Gets or lazy-creates the shared "Retry Practice" quiz record — one global
+ * row (like getOrCreateMixedPracticeQuiz), used for every Feature 12 retry
+ * session regardless of which subject(s) the source attempt's wrong/skipped
+ * questions came from. A retry set can legitimately span several subjects
+ * (e.g. retrying a Mixed Subjects Practice attempt's mistakes), so — same
+ * reasoning as Mixed Subjects Practice — there's no single subjectExternalId
+ * to hang a quiz off of.
+ */
+async function getOrCreateRetryPracticeQuiz(fallbackUserId: string): Promise<string> {
+  const existing = await prisma.quiz.findFirst({
+    where: { subjectExternalId: null, quizType: QuizType.PRACTICE, questionSelection: 'AUTO_RANDOM', title: 'Retry Practice' },
+    select: { id: true },
+  });
+  if (existing) return existing.id;
+
+  const admin = await prisma.user.findFirst({
+    where: { role: { in: ['SUPER_ADMIN', 'PUBLICATION_ADMIN'] } }, orderBy: { createdAt: 'asc' }, select: { id: true },
+  });
+
+  const quiz = await prisma.quiz.create({
+    data: {
+      title: 'Retry Practice',
+      quizType: QuizType.PRACTICE, questionSelection: 'AUTO_RANDOM', subjectExternalId: null,
+      status: QuizStatus.PUBLISHED, createdById: admin?.id ?? fallbackUserId, leaderboardEnabled: false, duration: 0,
+    },
+    select: { id: true },
+  });
+  return quiz.id;
+}
+
+/**
+ * Time budget for a Feature 12 retry session — there's no PracticeConfig
+ * entry for "retry" (that table is keyed by Difficulty, and a retry set can
+ * mix difficulties), so this is its own documented per-question allowance
+ * instead. Tune here only.
+ */
+const RETRY_SECONDS_PER_QUESTION = 90;
+
+/**
+ * Gets or lazy-creates the shared "Revision Session" quiz record — one
+ * global row, same reasoning as getOrCreateRetryPracticeQuiz (a revision set
+ * can span several subjects/difficulties). Its title is also the marker
+ * submitAttempt() checks to know a just-submitted attempt is a Revision
+ * Session, so RevisionService.recordSessionCompletion runs for it and not
+ * for ordinary Practice/Mixed/Retry attempts.
+ */
+async function getOrCreateRevisionQuiz(fallbackUserId: string): Promise<string> {
+  const existing = await prisma.quiz.findFirst({
+    where: { subjectExternalId: null, quizType: QuizType.PRACTICE, questionSelection: 'AUTO_RANDOM', title: 'Revision Session' },
+    select: { id: true },
+  });
+  if (existing) return existing.id;
+
+  const admin = await prisma.user.findFirst({
+    where: { role: { in: ['SUPER_ADMIN', 'PUBLICATION_ADMIN'] } }, orderBy: { createdAt: 'asc' }, select: { id: true },
+  });
+
+  const quiz = await prisma.quiz.create({
+    data: {
+      title: 'Revision Session',
+      quizType: QuizType.PRACTICE, questionSelection: 'AUTO_RANDOM', subjectExternalId: null,
+      status: QuizStatus.PUBLISHED, createdById: admin?.id ?? fallbackUserId, leaderboardEnabled: false, duration: 0,
+    },
+    select: { id: true },
+  });
+  return quiz.id;
+}
+
 interface StudentAcademic { profileId: string | null; classExternalId: string | null; educationBoard: string | null }
 
 /** The academic context used to scope a student's quizzes. */
@@ -261,6 +335,11 @@ async function buildResult(attemptId: string) {
           type: true, prompt: true, marks: true, difficulty: true, explanation: true,
           optionA: true, optionB: true, optionC: true, optionD: true,
           correctAnswer: true, correctOptions: true, correctBoolean: true,
+          // Feature 12 (Practice Review & Mistake Analysis) — per-question
+          // subject, needed for the Review screen's Subject filter on Mixed/
+          // Retry attempts, which span more than one subject. Everything
+          // else here was already selected; this is the one addition.
+          subjectExternalId: true,
         },
       },
     },
@@ -272,8 +351,9 @@ async function buildResult(attemptId: string) {
   // title/subject/attempt-number/timing context the history list itself
   // already shows — buildResult previously only returned score + answers,
   // with nothing identifying which quiz/attempt this even was.
+  const subjectNames = await ContentMeta.subjects();
   const subExtId    = attempt.quiz?.subjectExternalId ?? null;
-  const subjectName = subExtId ? (await ContentMeta.subjects()).get(subExtId) ?? subExtId : null;
+  const subjectName = subExtId ? subjectNames.get(subExtId) ?? subExtId : null;
 
   return {
     attemptId:      attempt.id,
@@ -294,11 +374,23 @@ async function buildResult(attemptId: string) {
     wrongAnswers:   attempt.wrongAnswers,
     skipped:        attempt.skipped,
     timeTakenSec:   attempt.timeTakenSec,
+    // Feature 12 (Practice Review & Mistake Analysis) — the attempt's original
+    // time budget, needed by the client's mistake-classification engine (a
+    // "Time Pressure" read compares timeTakenSec against this). Already on
+    // the same `attempt` row fetched above; not a new query.
+    timeLimitSec:   attempt.timeLimitSec,
     answers: answers.map((a, i) => ({
       order:        i + 1,
       questionId:   a.questionId,
       isCorrect:    a.isCorrect,
       marksAwarded: a.marksAwarded,
+      // Feature 12 (Practice Review & Mistake Analysis) — shown "if
+      // available" per the spec: AttemptAnswer.timeSpentSec is optional and
+      // frequently null (rarely sent by the client — see the note on
+      // fetchPracticeAnswerRows in analytics.service.ts), so this is
+      // deliberately not relied on for the mistake-classification engine's
+      // "Time Pressure" rule, only surfaced here as an optional display value.
+      timeSpentSec: a.timeSpentSec,
       yourAnswer: {
         selectedOption:  a.selectedOption,
         selectedOptions: parseStrArr(a.selectedOptions),
@@ -317,6 +409,9 @@ async function buildResult(attemptId: string) {
         marks:       a.question.marks,
         difficulty:  a.question.difficulty,
         explanation: a.question.explanation,
+        subject:     a.question.subjectExternalId
+          ? { id: a.question.subjectExternalId, name: subjectNames.get(a.question.subjectExternalId) ?? a.question.subjectExternalId }
+          : null,
       },
     })),
   };
@@ -681,7 +776,8 @@ export const QuizService = {
 
   async submitAttempt(attemptId: string, studentId: string, input: SubmitAttemptInput) {
     const attempt = await prisma.quizAttempt.findUnique({
-      where: { id: attemptId }, select: { id: true, studentId: true, status: true, quizId: true, startTime: true },
+      where: { id: attemptId },
+      select: { id: true, studentId: true, status: true, quizId: true, startTime: true, quiz: { select: { title: true } } },
     });
     if (!attempt) throw ApiError.notFound('Attempt not found');
     if (attempt.studentId !== studentId) throw ApiError.forbidden('Not your attempt');
@@ -696,6 +792,10 @@ export const QuizService = {
     });
 
     let score = 0, correct = 0, wrong = 0, skipped = 0;
+    // Feature 13 (Revision Center) — collected alongside grading below, no
+    // second pass over the answers: only consumed if this turns out to be a
+    // Revision Session attempt (checked after the transaction commits).
+    const revisionResults: { questionId: string; isCorrect: boolean | null; isSkipped: boolean }[] = [];
 
     await prisma.$transaction(async (txc) => {
       for (const ans of answers) {
@@ -704,6 +804,7 @@ export const QuizService = {
 
         if (noAnswer) {
           skipped++;
+          revisionResults.push({ questionId: ans.questionId, isCorrect: null, isSkipped: true });
           await txc.attemptAnswer.update({ where: { id: ans.id }, data: { isSkipped: true, isCorrect: null, marksAwarded: 0 } });
           continue;
         }
@@ -718,6 +819,7 @@ export const QuizService = {
         score += marksAwarded;
         if (isCorrect === true) correct++;
         else if (isCorrect === false) wrong++;
+        revisionResults.push({ questionId: ans.questionId, isCorrect, isSkipped: false });
 
         await txc.attemptAnswer.update({ where: { id: ans.id }, data: { isCorrect, marksAwarded, isSkipped: false } });
       }
@@ -734,6 +836,16 @@ export const QuizService = {
         },
       });
     });
+
+    // Feature 13 — a Revision Session attempt (identified the same way
+    // Retry is, by its lazy-singleton quiz's title) advances/resets each
+    // revised question's spaced-repetition schedule and updates the
+    // revision streak. Runs after the attempt's own transaction commits, so
+    // a revision-bookkeeping issue never blocks the attempt submission
+    // itself; reuses the grading results just computed, no re-fetch.
+    if (attempt.quiz?.title === 'Revision Session') {
+      await RevisionService.recordSessionCompletion(studentId, revisionResults);
+    }
 
     return buildResult(attemptId);
   },
@@ -830,6 +942,122 @@ export const QuizService = {
     };
   },
 
+  /**
+   * Feature 12 (Practice Review & Mistake Analysis) — "Practice Incorrect
+   * Questions Again". Builds a brand-new attempt from a past attempt's own
+   * wrong/skipped questions, reusing the exact same Question rows (no
+   * duplication) and never touching the source attempt itself.
+   *
+   * The scope (`wrong`/`skipped`/`both`) is applied server-side against the
+   * source attempt's real AttemptAnswer rows — the client only ever sends
+   * `attemptId` + `scope`, never a question-id list, so there is nothing to
+   * validate/trust from client input beyond "this attempt belongs to this
+   * student and is submitted." This is simpler and safer than accepting an
+   * arbitrary question-id list from the client.
+   */
+  async startRetry(studentId: string, sourceAttemptId: string, scope: 'wrong' | 'skipped' | 'both') {
+    const source = await prisma.quizAttempt.findUnique({
+      where: { id: sourceAttemptId },
+      select: { id: true, studentId: true, status: true },
+    });
+    if (!source) throw ApiError.notFound('Attempt not found');
+    if (source.studentId !== studentId) throw ApiError.forbidden('Not your attempt');
+    if (source.status !== AttemptStatus.SUBMITTED) throw ApiError.badRequest('Attempt is not yet submitted');
+
+    const sourceAnswers = await prisma.attemptAnswer.findMany({
+      where: { attemptId: sourceAttemptId },
+      select: { questionId: true, isCorrect: true, isSkipped: true },
+    });
+
+    const matches = (a: (typeof sourceAnswers)[number]) => {
+      if (scope === 'wrong')   return a.isCorrect === false;
+      if (scope === 'skipped') return Boolean(a.isSkipped);
+      return a.isCorrect === false || Boolean(a.isSkipped);
+    };
+    const questionIds = [...new Set(sourceAnswers.filter(matches).map(a => a.questionId))];
+    if (!questionIds.length) {
+      throw ApiError.badRequest('No wrong or skipped questions to retry for this attempt.');
+    }
+
+    // Re-fetch the actual Question rows fresh (not the source attempt's old
+    // snapshot) — same status:'ACTIVE' guard every other start* path applies,
+    // so a question retired since the original attempt is simply dropped
+    // rather than resurfaced.
+    const questions = await prisma.question.findMany({
+      where: { id: { in: questionIds }, status: 'ACTIVE' },
+    });
+    if (!questions.length) {
+      throw ApiError.badRequest('None of this attempt\'s wrong/skipped questions are still available to retry.');
+    }
+
+    const quizId = await getOrCreateRetryPracticeQuiz(studentId);
+    const timeLimitSec = questions.length * RETRY_SECONDS_PER_QUESTION;
+    const selected = shuffleArray(questions);
+
+    const { attemptId, attemptNumber } = await createQuizAttempt(quizId, studentId, timeLimitSec);
+    await prisma.attemptAnswer.createMany({
+      data: selected.map(sq => ({ attemptId, questionId: sq.id, selectedOptions: '[]', isSkipped: true, isMarkedReview: false, marksAwarded: 0 })),
+    });
+
+    return {
+      attemptId,
+      attemptNumber,
+      quizId,
+      subject:       { id: 'retry', name: 'Retry: Wrong & Skipped Questions', slug: 'retry-practice' },
+      difficulty:    null,
+      scope,
+      sourceAttemptId,
+      questionCount: selected.length,
+      timeLimitSec,
+      totalMarks:    selected.reduce((s, sq) => s + sq.marks, 0),
+      startTime:     new Date(),
+      questions:     selected.map((sq, i) => sanitizeQuestion(sq, i + 1)),
+    };
+  },
+
+  /**
+   * Feature 13 (Revision Center & Spaced Revision) — "Start Today's
+   * Revision". Reuses the exact same Question rows the Revision Center
+   * dashboard already surfaced as due, via RevisionService.getDueQuestionIds
+   * (which itself syncs the queue first) — no duplicate discovery logic
+   * here, and no new Question records created.
+   */
+  async startRevisionSession(studentId: string) {
+    const questionIds = await RevisionService.getDueQuestionIds(studentId);
+    if (!questionIds.length) {
+      throw ApiError.badRequest('No revision questions are due right now.');
+    }
+
+    const questions = await prisma.question.findMany({
+      where: { id: { in: questionIds }, status: 'ACTIVE' },
+    });
+    if (!questions.length) {
+      throw ApiError.badRequest('None of your due revision questions are still available.');
+    }
+
+    const quizId = await getOrCreateRevisionQuiz(studentId);
+    const timeLimitSec = questions.length * REVISION_SECONDS_PER_QUESTION;
+    const selected = shuffleArray(questions);
+
+    const { attemptId, attemptNumber } = await createQuizAttempt(quizId, studentId, timeLimitSec);
+    await prisma.attemptAnswer.createMany({
+      data: selected.map(sq => ({ attemptId, questionId: sq.id, selectedOptions: '[]', isSkipped: true, isMarkedReview: false, marksAwarded: 0 })),
+    });
+
+    return {
+      attemptId,
+      attemptNumber,
+      quizId,
+      subject:       { id: 'revision', name: "Today's Revision", slug: 'revision-session' },
+      difficulty:    null,
+      questionCount: selected.length,
+      timeLimitSec,
+      totalMarks:    selected.reduce((s, sq) => s + sq.marks, 0),
+      startTime:     new Date(),
+      questions:     selected.map((sq, i) => sanitizeQuestion(sq, i + 1)),
+    };
+  },
+
   // ── Olympiad: mixed quiz across the student's selected subjects ──────────
   async startOlympiad(studentId: string, input: StartOlympiadInput) {
     const profile = await readStudentProfile(studentId);
@@ -908,6 +1136,15 @@ export const QuizService = {
       include: {
         quiz: { select: { title: true, quizType: true, subjectExternalId: true } },
         _count: { select: { answers: true } },
+        // Feature 12 (Practice Review & Mistake Analysis) — Attempt History
+        // needs each attempt's difficulty. Not persisted on QuizAttempt/Quiz
+        // (only Question carries difficulty), and every non-retry Practice/
+        // Mixed/Olympiad attempt is built from one difficulty tier by
+        // construction (startPractice/startMixedPractice/startOlympiad all
+        // select a single Difficulty per attempt) — one representative row
+        // is enough, not a full scan. Retry attempts (which can mix
+        // difficulties) are identified by quiz title below instead.
+        answers: { select: { question: { select: { difficulty: true } } }, take: 1 },
       },
     });
 
@@ -940,6 +1177,7 @@ export const QuizService = {
       subject:        r.quiz.subjectExternalId
         ? { id: r.quiz.subjectExternalId, name: subjectNames.get(r.quiz.subjectExternalId) ?? r.quiz.subjectExternalId }
         : null,
+      difficulty:     r.quiz.title === 'Retry Practice' ? 'MIXED' : (r.answers[0]?.question.difficulty ?? null),
     }));
   },
 

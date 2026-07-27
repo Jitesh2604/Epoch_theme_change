@@ -91,6 +91,10 @@ export interface PracticeResultAnswer {
   questionId:   string;
   isCorrect:    boolean | null;
   marksAwarded: number;
+  /** Feature 12 — shown "if available" per the spec. Optional and often
+   *  null: AttemptAnswer.timeSpentSec is rarely sent by the client, so this
+   *  is a display-only value, never relied on for mistake classification. */
+  timeSpentSec: number | null;
   yourAnswer: {
     selectedOption:  string | null;
     selectedOptions: string[];
@@ -109,6 +113,11 @@ export interface PracticeResultAnswer {
     marks:       number;
     difficulty:  string;
     explanation: string | null;
+    /** Feature 12 (Practice Review & Mistake Analysis) — per-question
+     *  subject, needed for the Review screen's Subject filter on Mixed/Retry
+     *  attempts, which span more than one subject. Single-subject Practice
+     *  attempts have the same subject on every question. */
+    subject:     { id: string; name: string } | null;
   };
 }
 
@@ -131,6 +140,10 @@ export interface PracticeResult {
   wrongAnswers:   number;
   skipped:        number;
   timeTakenSec:   number;
+  /** Feature 12 (Practice Review & Mistake Analysis) — the attempt's original
+   *  time budget; feeds the mistake-classification engine's "Time Pressure"
+   *  read. Null for attempt types with no time cap. */
+  timeLimitSec:   number | null;
   answers:        PracticeResultAnswer[];
 }
 
@@ -166,6 +179,10 @@ export interface OlympiadAttemptSummary {
   // Practice quizzes are single-subject; the mixed Olympiad set has no one
   // subject, so this is null there.
   subject:        { id: string; name: string } | null;
+  /** Feature 12 (Practice Review & Mistake Analysis) — Attempt History's
+   *  Difficulty column. 'MIXED' for retry sessions (which can span several
+   *  difficulties); null only if the attempt somehow has no questions. */
+  difficulty:     'EASY' | 'MEDIUM' | 'HARD' | 'MIXED' | null;
 }
 
 export function useOlympiadAttempts() {
@@ -256,4 +273,12 @@ export const practiceApi = {
   /** Explicitly abandon a paused attempt — the "Discard" action. */
   discardAttempt: (attemptId: string) =>
     api.post<{ ok: true }>(`/quizzes/attempts/${attemptId}/discard`),
+
+  /** Feature 12 (Practice Review & Mistake Analysis) — "Practice Incorrect
+   *  Questions Again". Builds a new attempt from `attemptId`'s own
+   *  wrong/skipped questions (scope applied server-side); returns the same
+   *  shape startPractice/startMixedPractice do, so it plays through the
+   *  existing PracticePlayPage with no changes there. */
+  retryAttempt: (attemptId: string, scope: 'wrong' | 'skipped' | 'both' = 'both') =>
+    api.post<PracticeAttemptData>(`/quizzes/attempts/${attemptId}/retry`, { scope }),
 };

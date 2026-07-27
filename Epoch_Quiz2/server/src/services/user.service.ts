@@ -527,12 +527,19 @@ export const UserService = {
         skip,
         take,
         include: {
-          studentProfile: { select: { schoolName: true, teacherCode: true } },
+          // classExternalId/educationBoard added for Feature A1 (Admin
+          // Dashboard)'s "Recent Student Registrations" widget — schoolName/
+          // teacherCode were already selected for existing consumers.
+          studentProfile: { select: { schoolName: true, teacherCode: true, classExternalId: true, educationBoard: true } },
           _count: { select: { submissions: true } },
         },
       }),
       prisma.user.count({ where }),
     ]);
+
+    // Resolve class external ids to display names from the cached Content
+    // API — same resolver every other feature already uses.
+    const classNames = await ContentMeta.classes();
 
     const ids = rows.map((r) => r.id);
     const graded: Prisma.SubmissionWhereInput = {
@@ -563,12 +570,15 @@ export const UserService = {
       const total = agg?._sum?.totalMarks ?? 0;
       const avgScore =
         total > 0 ? Math.round((score / total) * 10000) / 100 : 0;
+      const classExternalId = u.studentProfile?.classExternalId ?? null;
       return {
         id: u.id,
         name: u.name,
         email: u.email,
         schoolName: u.studentProfile?.schoolName ?? null,
         teacherCode: u.studentProfile?.teacherCode ?? null,
+        className: classExternalId ? classNames.get(classExternalId) ?? classExternalId : null,
+        educationBoard: u.studentProfile?.educationBoard ?? null,
         attempted: u._count.submissions,
         avgScore,
         rank: rankById.get(u.id) ?? 0,

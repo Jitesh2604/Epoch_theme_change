@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Zap, Hash, CheckCircle2, XCircle, MinusCircle, Target, Award, Trophy,
   TrendingDown, TrendingUp, Clock, Timer, CalendarPlus, CalendarCheck,
@@ -6,9 +7,10 @@ import {
   Inbox, ShieldAlert, Sparkles, Gauge, Rabbit, Turtle, TimerReset, Hourglass,
   ListChecks, Activity, History, Lightbulb, Waves, Brain, Compass, ListTodo,
   ThumbsUp, AlertOctagon, Rocket, CheckSquare, Square, CalendarDays, Medal, Lock,
-  GraduationCap, FileBadge, Minus, Stamp,
+  GraduationCap, FileBadge, Minus, Stamp, ClipboardList, Eye,
+  Repeat, RotateCcw, Bookmark, BookmarkCheck,
 } from 'lucide-react';
-import { PageHeader, Card, Button, StatCard, Skeleton, EmptyState, Select } from '../../shared/ui';
+import { PageHeader, Card, Button, StatCard, Skeleton, EmptyState, Select, useToasts, Modal } from '../../shared/ui';
 import { StandaloneHeader } from '../../shared/StandaloneHeader';
 import {
   usePracticeOverview, useSubjectBreakdown, useQuestionTypeBreakdown, useTopicBreakdown,
@@ -31,7 +33,7 @@ import {
   type LearningInsights,
 } from '../../../lib/learningInsightsEngine';
 import {
-  buildStudyPlan,
+  buildStudyPlan, computeStreak, practiceDatesFromOverview,
   type StudyTask, type WeeklyPlanDay, type Badge as StudyBadge,
 } from '../../../lib/studyPlanEngine';
 import { useStudyPlanProgress } from '../../../hooks/useStudyPlanProgress';
@@ -41,6 +43,33 @@ import {
 } from '../../../lib/reportCardEngine';
 import type { ConfidenceBreakdownEntry } from '../../../lib/confidenceScore';
 import { useAuth } from '../../../lib/authStore';
+import {
+  buildPracticeRecommendation,
+  type PracticeRecommendation, type PrimaryRecommendation, type AlternativeRecommendation,
+} from '../../../lib/practiceRecommendationEngine';
+import { useOlympiadAttempts, type OlympiadAttemptSummary } from '../../../hooks/usePracticeQuiz';
+import { buildReviewLearningSummary } from '../../../lib/practiceReviewInsights';
+import {
+  useRevisionDashboard, revisionApi,
+  type RevisionDashboard, type RevisionQueueItem, type RevisionPriority, type RevisionDueStatus,
+} from '../../../hooks/useRevision';
+import { useBookmarks } from '../../../hooks/useBookmarks';
+import { buildRevisionReminders } from '../../../lib/revisionReminders';
+import {
+  filterRevisionItems, DEFAULT_REVISION_FILTERS, hasActiveRevisionFilters,
+  distinctRevisionSubjects, distinctRevisionTopics, type RevisionFilterState,
+} from '../../../lib/revisionFilters';
+import {
+  evaluateAchievements, evaluateMilestones, evaluatePersonalBests,
+  recentlyUnlocked, nextAchievements, BADGE_LEVEL_META, ACHIEVEMENT_CATEGORY_LABEL,
+  type AchievementContext, type AchievementCategory, type EvaluatedAchievement,
+} from '../../../lib/achievementEngine';
+import { useAchievementCelebrations } from '../../../hooks/useAchievementCelebrations';
+import {
+  buildPracticeCalendar, computeMonthlyConsistency, buildWeeklyActivity, computePracticeFrequency,
+  buildStreakMilestones, nextStreakMilestone, computeConsistencyScore, buildConsistencyInsights,
+  buildConsistencyAdvice, buildMotivationMessage, type PracticeCalendar,
+} from '../../../lib/consistencyEngine';
 
 function StandalonePage({ children }: { children: React.ReactNode }) {
   return (
@@ -1858,6 +1887,1230 @@ function PersonalizedReportCard({ overview, subjects, questionTypes, topics, loa
   );
 }
 
+// ── Recommended Next Practice (Feature 11) ───────────────────────────────
+// Builds on Feature 8's LearningInsights (`buildLearningInsights`) exactly
+// like Features 9/10 — no new fetch, no recomputed analytics. See
+// practiceRecommendationEngine.ts for the full rule set. Placed at the very
+// top of the page (see AnalyticsPage below), immediately below PageHeader.
+
+interface RecommendedNextPracticeProps {
+  overview: PracticeOverview | null;
+  subjects: SubjectStat[] | null;
+  questionTypes: QuestionTypeStat[] | null;
+  topics: TopicStat[] | null;
+  loading: boolean;
+  error: string | null;
+}
+
+type Launchable = Pick<PrimaryRecommendation, 'kind' | 'subjectId' | 'difficulty'>;
+
+// Cross-app hard navigation — AnalyticsPage lives in the DashboardApp React
+// root, while /play lives in the separate marketing-site App.tsx root (same
+// reason every other "Start Practicing" CTA on this page already uses
+// window.location.href instead of an in-tree navigate()). The query string
+// is read by App.tsx's route parsing to preselect subject/difficulty (or
+// Mixed) on QuizPlayPage — see App.tsx and QuizPlayPage.tsx.
+function startRecommendedPractice(rec: Launchable) {
+  const params = new URLSearchParams();
+  params.set('difficulty', rec.difficulty);
+  if (rec.kind === 'mixed') params.set('mixed', '1');
+  else if (rec.subjectId) params.set('subject', rec.subjectId);
+  window.location.href = `/#/play?${params.toString()}`;
+}
+
+const READINESS_BAND_TONE: Record<string, string> = {
+  Ready: 'text-emerald-600 dark:text-emerald-400',
+  'Almost Ready': 'text-amber-600 dark:text-amber-400',
+  'Needs Revision': 'text-rose-600 dark:text-rose-400',
+};
+
+function ReadinessMeter({ readiness }: { readiness: PracticeRecommendation['readiness'] }) {
+  return (
+    <Card className="p-5 h-full">
+      <div className="flex items-center gap-2.5 mb-4">
+        <div className="w-10 h-10 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0">
+          <Gauge size={17} />
+        </div>
+        <h4 className="font-display font-semibold text-[14.5px] text-fg1">Practice Readiness</h4>
+      </div>
+
+      <div className="flex items-end gap-3 mb-2">
+        <span className="font-display font-semibold text-[36px] text-fg1 tabular-nums leading-none">{readiness.score}%</span>
+        <span className={`text-[13px] font-semibold mb-1.5 ${READINESS_BAND_TONE[readiness.band]}`}>{readiness.band}</span>
+      </div>
+      <div className="h-2 rounded-full bg-surface2 overflow-hidden mb-4">
+        <div className="h-full rounded-full bg-brand" style={{ width: `${Math.min(100, Math.max(0, readiness.score))}%` }} />
+      </div>
+
+      <div className="space-y-2 pt-3 border-t border-line">
+        {readiness.breakdown.map(b => (
+          <div key={b.label} className="flex items-center justify-between gap-3">
+            <span className="text-[12px] text-fg3">{b.label} <span className="text-fg4">· {Math.round(b.weight * 100)}%</span></span>
+            <span className="text-[12.5px] font-semibold text-fg1 tabular-nums">{b.score}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function PrimaryRecommendationCard({ primary }: { primary: PrimaryRecommendation }) {
+  return (
+    <Card className="p-6 h-full border-2 border-[rgba(53,64,36,0.18)] relative overflow-hidden">
+      <div className="absolute top-0 left-0 right-0 h-1.5 bg-brand" />
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-11 h-11 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0">
+            {primary.kind === 'mixed' ? <Shuffle size={19} /> : <Zap size={19} />}
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold tracking-[0.1em] uppercase text-fg3">Today's Best Practice</p>
+            <h3 className="font-display font-semibold text-[19px] text-fg1">{primary.subjectName}</h3>
+          </div>
+        </div>
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[12px] font-semibold bg-brand-soft text-brand border-[rgba(53,64,36,0.18)] shrink-0">
+          <Target size={12} />{primary.difficulty[0] + primary.difficulty.slice(1).toLowerCase()}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="rounded-xl bg-surface1 border border-line p-3">
+          <p className="font-display font-semibold text-[18px] text-fg1 tabular-nums">{primary.estimatedQuestions}</p>
+          <p className="text-[11px] text-fg3 mt-0.5">Questions</p>
+        </div>
+        <div className="rounded-xl bg-surface1 border border-line p-3">
+          <p className="font-display font-semibold text-[18px] text-fg1 tabular-nums">{primary.estimatedMinutes}m</p>
+          <p className="text-[11px] text-fg3 mt-0.5">Est. Duration</p>
+        </div>
+        <div className="rounded-xl bg-surface1 border border-line p-3">
+          <p className="font-display font-semibold text-[18px] text-fg1 tabular-nums">{primary.targetAccuracyPercent}%</p>
+          <p className="text-[11px] text-fg3 mt-0.5">Target Accuracy</p>
+        </div>
+      </div>
+
+      <p className="text-[12.5px] text-fg2 leading-relaxed mb-4">
+        <span className="font-semibold text-fg1">Reason: </span>{primary.reason}
+      </p>
+
+      <Button icon={PlayCircle} className="w-full mt-auto" onClick={() => startRecommendedPractice(primary)}>
+        Start Practice
+      </Button>
+    </Card>
+  );
+}
+
+function AlternativeCard({ alt }: { alt: AlternativeRecommendation }) {
+  return (
+    <Card className="p-5 flex flex-col">
+      <div className="flex items-center gap-2.5 mb-2.5">
+        <div className="w-9 h-9 rounded-lg bg-brand-soft text-brand grid place-items-center shrink-0">
+          {alt.kind === 'mixed' ? <Shuffle size={15} /> : <BookOpen size={15} />}
+        </div>
+        <h4 className="font-display font-semibold text-[14px] text-fg1">{alt.title}</h4>
+      </div>
+      <p className="text-[11.5px] text-fg3 mb-2">{alt.subjectName} · {alt.difficulty[0] + alt.difficulty.slice(1).toLowerCase()}</p>
+      <p className="text-[12.5px] text-fg2 leading-relaxed mb-3 flex-1">
+        <span className="font-semibold text-fg1">Reason: </span>{alt.reason}
+      </p>
+      <Button variant="soft" size="sm" icon={PlayCircle} className="w-full mt-auto" onClick={() => startRecommendedPractice(alt)}>
+        Start Practice
+      </Button>
+    </Card>
+  );
+}
+
+function RecommendedNextPractice({ overview, subjects, questionTypes, topics, loading, error }: RecommendedNextPracticeProps) {
+  const insights = useMemo(() => (
+    overview?.hasData && subjects && questionTypes && topics
+      ? buildLearningInsights(overview, subjects, questionTypes, topics)
+      : null
+  ), [overview, subjects, questionTypes, topics]);
+
+  const recommendation = useMemo(() => (insights ? buildPracticeRecommendation(insights) : null), [insights]);
+
+  return (
+    <>
+      <div className="mb-4">
+        <h3 className="font-display font-semibold text-[16px] text-fg1 flex items-center gap-2">
+          <Compass size={18} className="text-brand" /> Recommended Next Practice
+        </h3>
+        <p className="text-[12px] text-fg3 mt-1">
+          Your next Practice Olympiad session, chosen automatically from your own analytics — no Assessment or leaderboard data involved.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="p-5"><Skeleton className="h-52" /></Card>
+          ))}
+        </div>
+      ) : error ? (
+        <Card className="p-0 overflow-hidden">
+          <EmptyState icon={XCircle} title="Couldn't load your recommendation" desc={error} />
+        </Card>
+      ) : !recommendation ? (
+        <Card className="p-0 overflow-hidden">
+          <EmptyState
+            icon={Compass}
+            title="Not enough data yet"
+            desc="Complete more Practice Olympiad quizzes to receive personalized practice recommendations."
+            action={
+              <Button icon={PlayCircle} onClick={() => { window.location.href = '/#/play'; }}>
+                Start Practicing
+              </Button>
+            }
+          />
+        </Card>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+            <div className="lg:col-span-2">
+              <PrimaryRecommendationCard primary={recommendation.primary} />
+            </div>
+            <ReadinessMeter readiness={recommendation.readiness} />
+          </div>
+
+          {recommendation.dynamicAction && (
+            <div className={`flex items-center gap-2.5 rounded-xl border p-4 mb-4 ${
+              recommendation.dynamicAction.tone === 'challenge'
+                ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/25'
+                : 'bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/25'
+            }`}>
+              {recommendation.dynamicAction.tone === 'challenge'
+                ? <Flame size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                : <ShieldAlert size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />}
+              <p className="text-[13px] font-semibold text-fg1">{recommendation.dynamicAction.message}</p>
+            </div>
+          )}
+
+          <h4 className="font-display font-semibold text-[14.5px] text-fg1 mb-3">Alternative Recommendations</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            {recommendation.alternatives.map(alt => <AlternativeCard key={alt.id} alt={alt} />)}
+          </div>
+
+          <Card className="p-5">
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0">
+                <ListChecks size={17} />
+              </div>
+              <h4 className="font-display font-semibold text-[14.5px] text-fg1">Practice Goals</h4>
+            </div>
+            <ul className="space-y-1.5">
+              {recommendation.goals.map((g, i) => (
+                <li key={i} className="flex items-start gap-2 text-[13px] text-fg2 leading-relaxed">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand mt-1.5 shrink-0" />
+                  {g}
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </>
+      )}
+    </>
+  );
+}
+
+// ── Practice Review & Mistake Analysis (Feature 12) ──────────────────────
+// Attempt History reuses the exact same attempt-history endpoint the
+// Results page already calls (useOlympiadAttempts), filtered to submitted,
+// non-Olympiad (Practice + Mixed) attempts — the same rule ResultsPage.tsx
+// already applies, so no new endpoint. Learning Summary reuses Features
+// 2/5/7's already-fetched SubjectStat[]/QuestionTypeStat[]/TopicStat[] — no
+// new query either. The Review Screen itself (per-question mistake
+// analysis, retry, bookmarks, filters/search, print) is its own page — see
+// PracticeReviewPage.tsx — reached via each card's "Review Attempt" button.
+
+function AttemptHistoryCard({ attempt, onReview }: { attempt: OlympiadAttemptSummary; onReview: () => void }) {
+  return (
+    <Card className="p-5 flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h4 className="font-display font-semibold text-[14.5px] text-fg1 truncate">
+            {attempt.subject?.name ?? 'Mixed Subjects Practice'}
+          </h4>
+          <p className="text-[11.5px] text-fg3 mt-0.5">{fmtDate(attempt.startTime)}</p>
+        </div>
+        {attempt.difficulty && (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-semibold bg-brand-soft text-brand border-[rgba(53,64,36,0.18)] shrink-0">
+            {attempt.difficulty[0]}{attempt.difficulty.slice(1).toLowerCase()}
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2 pt-3 border-t border-line">
+        <SubjectMetric label="Score"       value={attempt.score} />
+        <SubjectMetric label="Accuracy"    value={`${Math.round(attempt.percentage)}%`} />
+        <SubjectMetric label="Time Taken"  value={fmtDurationHMS(attempt.timeTakenSec)} />
+        <SubjectMetric label="Questions"   value={attempt.questionCount} />
+      </div>
+
+      <Button variant="soft" size="sm" icon={Eye} className="w-full mt-auto" onClick={onReview}>
+        Review Attempt
+      </Button>
+    </Card>
+  );
+}
+
+interface PracticeReviewSectionProps {
+  subjects: SubjectStat[] | null;
+  questionTypes: QuestionTypeStat[] | null;
+  topics: TopicStat[] | null;
+  // Lifted to AnalyticsPage (Feature 14 also needs this same attempt
+  // history for Personal Bests/Milestones) so it's fetched once, not once
+  // per section — see AnalyticsPage's own useOlympiadAttempts() call below.
+  allAttempts: OlympiadAttemptSummary[] | null;
+  loading: boolean;
+  error: string | null;
+}
+
+function PracticeReviewAndMistakeAnalysis({ subjects, questionTypes, topics, allAttempts, loading, error }: PracticeReviewSectionProps) {
+  const navigate = useNavigate();
+
+  const attempts = useMemo(() => (
+    (allAttempts ?? []).filter(a => a.status === 'SUBMITTED' && a.quizType !== 'OLYMPIAD')
+  ), [allAttempts]);
+
+  const learningSummary = useMemo(() => (
+    subjects && questionTypes && topics ? buildReviewLearningSummary(subjects, questionTypes, topics) : []
+  ), [subjects, questionTypes, topics]);
+
+  return (
+    <>
+      <div className="mb-4">
+        <h3 className="font-display font-semibold text-[16px] text-fg1 flex items-center gap-2">
+          <ClipboardList size={18} className="text-brand" /> Practice Review &amp; Mistake Analysis
+        </h3>
+        <p className="text-[12px] text-fg3 mt-1">
+          Review any past Practice Olympiad attempt question-by-question and see exactly where marks were lost.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="p-5"><Skeleton className="h-40" /></Card>
+          ))}
+        </div>
+      ) : error ? (
+        <Card className="p-0 overflow-hidden">
+          <EmptyState icon={XCircle} title="Couldn't load your attempt history" desc={error} />
+        </Card>
+      ) : !attempts.length ? (
+        <Card className="p-0 overflow-hidden">
+          <EmptyState
+            icon={ClipboardList}
+            title="No completed attempts yet"
+            desc="Complete a Practice Olympiad quiz to unlock attempt review and mistake analysis."
+            action={
+              <Button icon={PlayCircle} onClick={() => { window.location.href = '/#/play'; }}>
+                Start Practicing
+              </Button>
+            }
+          />
+        </Card>
+      ) : (
+        <>
+          <h4 className="font-display font-semibold text-[14.5px] text-fg1 mb-3">Attempt History</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            {attempts.map(a => (
+              <AttemptHistoryCard key={a.attemptId} attempt={a} onReview={() => navigate(`/review/${a.attemptId}`)} />
+            ))}
+          </div>
+
+          {!!learningSummary.length && (
+            <Card className="p-5">
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className="w-10 h-10 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0">
+                  <Sparkles size={17} />
+                </div>
+                <h4 className="font-display font-semibold text-[14.5px] text-fg1">Learning Summary</h4>
+              </div>
+              <ul className="space-y-1.5">
+                {learningSummary.map((line, i) => (
+                  <li key={i} className="flex items-start gap-2 text-[13px] text-fg2 leading-relaxed">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand mt-1.5 shrink-0" />
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+// ── Revision Center (Feature 13) ─────────────────────────────────────────
+// Reuses Feature 12's bookmark infrastructure (useBookmarks) directly for
+// the queue's bookmark toggle — no separate revision-specific bookmark
+// concept. Everything else (queue, priority, schedule, streak, topic
+// coverage, revision accuracy) comes from one endpoint, GET
+// /revision/dashboard; Smart Reminders are a pure client-side derivation
+// over that same payload (revisionReminders.ts) — no new query. Self-
+// contained (fetches its own dashboard), unlike the sections above it which
+// take subjects/questionTypes/topics as props.
+
+// Mirrors server/src/config/revisionConfig.ts's REVISION_INTERVALS_DAYS —
+// display label only, not a scheduling calculation (that stays server-side).
+const REVISION_INTERVAL_DAY_LABELS = [1, 3, 7, 14, 30];
+
+const REVISION_PRIORITY_EMOJI: Record<RevisionPriority, string> = { HIGH: '🔴', MEDIUM: '🟠', LOW: '🟢' };
+
+const REVISION_DUE_BADGE: Record<RevisionDueStatus, { label: string; cls: string }> = {
+  OVERDUE:   { label: 'Overdue',   cls: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/25' },
+  DUE_TODAY: { label: 'Due Today', cls: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/25' },
+  UPCOMING:  { label: 'Upcoming',  cls: 'bg-surface2 text-fg3 border-line' },
+};
+
+const REVISION_LAST_RESULT_CLASS: Record<string, string> = {
+  CORRECT: 'text-emerald-600 dark:text-emerald-400',
+  WRONG:   'text-rose-600 dark:text-rose-400',
+  SKIPPED: 'text-fg3',
+};
+
+function RevisionQueueCard({
+  item, isBookmarked, onToggleBookmark,
+}: { item: RevisionQueueItem; isBookmarked: boolean; onToggleBookmark: () => void }) {
+  const dueBadge = REVISION_DUE_BADGE[item.dueStatus];
+  return (
+    <Card className="p-5 flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <span className="text-[14px] shrink-0" title={`${item.priority} priority`}>{REVISION_PRIORITY_EMOJI[item.priority]}</span>
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-semibold shrink-0 ${dueBadge.cls}`}>
+            {dueBadge.label}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onToggleBookmark}
+          className="w-8 h-8 rounded-lg grid place-items-center text-fg3 hover:text-brand hover:bg-brand-soft transition shrink-0"
+          aria-label={isBookmarked ? 'Remove bookmark' : 'Bookmark this question'}
+        >
+          {isBookmarked ? <BookmarkCheck size={16} className="text-brand" /> : <Bookmark size={16} />}
+        </button>
+      </div>
+
+      <p className="text-[13px] text-fg1 leading-relaxed line-clamp-2">{item.prompt}</p>
+
+      <div className="flex flex-wrap gap-x-1.5 text-[11px] text-fg3">
+        {item.subject && <span>{item.subject.name}</span>}
+        {item.topic && <span>· {item.topic.name}</span>}
+        <span>· {item.difficulty[0]}{item.difficulty.slice(1).toLowerCase()}</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2 pt-3 border-t border-line">
+        <SubjectMetric label="Times Revised"    value={item.timesRevised} />
+        <SubjectMetric label="Wrong / Skipped"  value={`${item.wrongCount}/${item.skipCount}`} />
+        <SubjectMetric label="Current Interval" value={`Day ${REVISION_INTERVAL_DAY_LABELS[item.intervalIndex]}`} />
+        <SubjectMetric label="Next Due"         value={fmtDate(item.nextDueAt)} />
+      </div>
+
+      {item.lastResult && (
+        <p className="text-[11.5px] text-fg3">
+          Last Result: <span className={REVISION_LAST_RESULT_CLASS[item.lastResult]}>{item.lastResult[0]}{item.lastResult.slice(1).toLowerCase()}</span>
+        </p>
+      )}
+    </Card>
+  );
+}
+
+interface RevisionCenterProps {
+  // Lifted to AnalyticsPage (Feature 14 also needs this same dashboard for
+  // Revision/Personal-Best achievements) so it's fetched once, not once per
+  // section — see AnalyticsPage's own useRevisionDashboard() call below.
+  dashboard: RevisionDashboard | null;
+  loading: boolean;
+  error: string | null;
+}
+
+function RevisionCenter({ dashboard, loading, error }: RevisionCenterProps) {
+  const { push, node: toastNode } = useToasts();
+  const { isBookmarked, toggle } = useBookmarks();
+  const [filters, setFilters] = useState<RevisionFilterState>(DEFAULT_REVISION_FILTERS);
+  const [starting, setStarting] = useState(false);
+
+  const subjectOptions = useMemo(() => dashboard ? distinctRevisionSubjects(dashboard.items) : [], [dashboard]);
+  const topicOptions   = useMemo(() => dashboard ? distinctRevisionTopics(dashboard.items) : [], [dashboard]);
+  const filtered        = useMemo(() => dashboard ? filterRevisionItems(dashboard.items, filters) : [], [dashboard, filters]);
+  const reminders        = useMemo(() => dashboard ? buildRevisionReminders(dashboard) : [], [dashboard]);
+
+  const dueCount = dashboard ? dashboard.counts.dueToday + dashboard.counts.overdue : 0;
+
+  const handleStart = async () => {
+    setStarting(true);
+    try {
+      const attempt = await revisionApi.start();
+      window.location.href = `/#/play/quiz/${attempt.attemptId}`;
+    } catch (err: any) {
+      push({ kind: 'danger', title: 'Could not start revision session', sub: err?.message ?? 'Please try again' });
+      setStarting(false);
+    }
+  };
+
+  const handleToggleBookmark = (questionId: string) => {
+    toggle(questionId).catch((err: any) => {
+      push({ kind: 'danger', title: 'Could not update bookmark', sub: err?.message ?? 'Please try again' });
+    });
+  };
+
+  return (
+    <>
+      {toastNode}
+      <div className="mb-4">
+        <h3 className="font-display font-semibold text-[16px] text-fg1 flex items-center gap-2">
+          <Repeat size={18} className="text-brand" /> Revision Center
+        </h3>
+        <p className="text-[12px] text-fg3 mt-1">
+          Spaced revision for the questions you're most likely to forget — built from your own wrong, skipped, and bookmarked questions.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Card key={i} className="p-5"><Skeleton className="h-20" /></Card>
+          ))}
+        </div>
+      ) : error ? (
+        <Card className="p-0 overflow-hidden">
+          <EmptyState icon={XCircle} title="Couldn't load your revision center" desc={error} />
+        </Card>
+      ) : !dashboard || !dashboard.items.length ? (
+        <Card className="p-0 overflow-hidden">
+          <EmptyState
+            icon={Sparkles}
+            title="Great job! You're caught up with your revisions."
+            desc="Keep practicing — questions you get wrong, skip, or bookmark will automatically build your revision queue here."
+            action={
+              <Button icon={PlayCircle} onClick={() => { window.location.href = '/#/play'; }}>
+                Start New Practice
+              </Button>
+            }
+          />
+        </Card>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+            <StatCard label="Due Today"           value={dashboard.counts.dueToday}         icon={CalendarCheck} tone="amber"   />
+            <StatCard label="Overdue"              value={dashboard.counts.overdue}           icon={AlertTriangle} tone="amber"   />
+            <StatCard label="Upcoming"             value={dashboard.counts.upcoming}          icon={CalendarPlus}  tone="brand"   />
+            <StatCard label="Completed Revisions"  value={dashboard.counts.completedRevisions} icon={CheckCircle2}  tone="emerald" />
+            <StatCard label="Revision Accuracy"    value={`${dashboard.revisionAccuracyPercent}%`} icon={Target}    tone="brand"   />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <Card className="p-5">
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400 grid place-items-center shrink-0">
+                  <Flame size={17} />
+                </div>
+                <h4 className="font-display font-semibold text-[14.5px] text-fg1">Revision Streak</h4>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="font-display font-semibold text-[24px] text-fg1 tabular-nums leading-none">{dashboard.streak.currentStreak}</p>
+                  <p className="text-[11px] text-fg3 mt-1">Current Streak</p>
+                </div>
+                <div>
+                  <p className="font-display font-semibold text-[24px] text-fg1 tabular-nums leading-none">{dashboard.streak.bestStreak}</p>
+                  <p className="text-[11px] text-fg3 mt-1">Best Streak</p>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-5">
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className="w-10 h-10 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0">
+                  <History size={17} />
+                </div>
+                <h4 className="font-display font-semibold text-[14.5px] text-fg1">Total Revision Sessions</h4>
+              </div>
+              <p className="font-display font-semibold text-[28px] text-fg1 tabular-nums leading-none">{dashboard.streak.totalSessions}</p>
+            </Card>
+
+            <Card className="p-5 flex flex-col">
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className="w-10 h-10 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0">
+                  <PlayCircle size={17} />
+                </div>
+                <div>
+                  <p className="text-[13px] font-semibold text-fg1">Start Today's Revision</p>
+                  <p className="text-[11px] text-fg3">{dueCount} question{dueCount === 1 ? '' : 's'} ready</p>
+                </div>
+              </div>
+              <Button icon={RotateCcw} className="w-full mt-auto" disabled={starting || dueCount === 0} onClick={handleStart}>
+                {starting ? 'Starting…' : dueCount === 0 ? "You're all caught up" : "Start Today's Revision"}
+              </Button>
+            </Card>
+          </div>
+
+          {!!dashboard.topicCoverage.length && (
+            <Card className="p-5 mb-6">
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className="w-10 h-10 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0">
+                  <Layers size={17} />
+                </div>
+                <h4 className="font-display font-semibold text-[14.5px] text-fg1">Topic Coverage</h4>
+              </div>
+              <div className="divide-y divide-line">
+                {dashboard.topicCoverage.map(t => (
+                  <div key={t.topicId} className="flex items-center justify-between py-2">
+                    <span className="text-[13px] text-fg1">{t.topicName}</span>
+                    <span className="text-[12px] text-fg3">{t.dueCount} question{t.dueCount === 1 ? '' : 's'} due</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {!!reminders.length && (
+            <Card className="p-5 mb-6">
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className="w-10 h-10 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0">
+                  <Lightbulb size={17} />
+                </div>
+                <h4 className="font-display font-semibold text-[14.5px] text-fg1">Smart Reminders</h4>
+              </div>
+              <ul className="space-y-1.5">
+                {reminders.map((line, i) => (
+                  <li key={i} className="flex items-start gap-2 text-[13px] text-fg2 leading-relaxed">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand mt-1.5 shrink-0" />
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3 mb-6">
+            {subjectOptions.length > 1 && (
+              <Select
+                value={filters.subjectId ?? ''}
+                onChange={v => setFilters(f => ({ ...f, subjectId: v || null }))}
+                options={[{ value: '', label: 'All Subjects' }, ...subjectOptions.map(s => ({ value: s.id, label: s.name }))]}
+              />
+            )}
+            {topicOptions.length > 1 && (
+              <Select
+                value={filters.topicId ?? ''}
+                onChange={v => setFilters(f => ({ ...f, topicId: v || null }))}
+                options={[{ value: '', label: 'All Topics' }, ...topicOptions.map(t => ({ value: t.id, label: t.name }))]}
+              />
+            )}
+            <Select
+              value={filters.priority ?? ''}
+              onChange={v => setFilters(f => ({ ...f, priority: (v || null) as RevisionFilterState['priority'] }))}
+              options={[
+                { value: '', label: 'All Priorities' },
+                { value: 'HIGH', label: '🔴 High' },
+                { value: 'MEDIUM', label: '🟠 Medium' },
+                { value: 'LOW', label: '🟢 Low' },
+              ]}
+            />
+            <Select
+              value={filters.dueStatus}
+              onChange={v => setFilters(f => ({ ...f, dueStatus: v as RevisionFilterState['dueStatus'] }))}
+              options={[
+                { value: 'ALL', label: 'Due Today + Overdue + Upcoming' },
+                { value: 'DUE_TODAY', label: 'Due Today' },
+                { value: 'OVERDUE', label: 'Overdue' },
+              ]}
+            />
+            <button
+              type="button"
+              onClick={() => setFilters(f => ({ ...f, bookmarkedOnly: !f.bookmarkedOnly }))}
+              className={`h-10 px-3.5 rounded-xl border text-[13px] font-semibold transition inline-flex items-center gap-1.5 ${
+                filters.bookmarkedOnly ? 'bg-brand-soft border-brand/40 text-brand' : 'bg-surface1 border-line text-fg2 hover:border-line2'
+              }`}
+            >
+              <Bookmark size={14} /> Bookmarked
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilters(f => ({ ...f, completedOnly: !f.completedOnly }))}
+              className={`h-10 px-3.5 rounded-xl border text-[13px] font-semibold transition inline-flex items-center gap-1.5 ${
+                filters.completedOnly ? 'bg-brand-soft border-brand/40 text-brand' : 'bg-surface1 border-line text-fg2 hover:border-line2'
+              }`}
+            >
+              <CheckCircle2 size={14} /> Completed
+            </button>
+            {hasActiveRevisionFilters(filters) && (
+              <button type="button" onClick={() => setFilters(DEFAULT_REVISION_FILTERS)} className="text-[12.5px] text-fg3 hover:text-fg1 underline">
+                Clear filters
+              </button>
+            )}
+          </div>
+
+          {filtered.length ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filtered.map(item => (
+                <RevisionQueueCard
+                  key={item.id}
+                  item={item}
+                  isBookmarked={isBookmarked(item.questionId)}
+                  onToggleBookmark={() => handleToggleBookmark(item.questionId)}
+                />
+              ))}
+            </div>
+          ) : (
+            <Card className="p-0 overflow-hidden">
+              <EmptyState icon={Sparkles} title="No questions match these filters" desc="Try clearing a filter." />
+            </Card>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+// ── Achievements & Milestones (Feature 14) ───────────────────────────────
+// Almost entirely a pure derivation over data Features 1–13 already fetch —
+// attempts/revisionDashboard are passed in as props (lifted to AnalyticsPage
+// alongside PracticeReviewAndMistakeAnalysis/RevisionCenter, which need the
+// exact same two datasets) rather than fetched again here. learningInsights
+// is recomputed locally via its own useMemo, same as five other sections on
+// this page already do — a cheap in-memory derivation over already-fetched
+// props, not a network call, so this mirrors an established pattern rather
+// than introducing a new one.
+
+interface AchievementsSectionProps {
+  overview: PracticeOverview | null;
+  overviewLoading: boolean;
+  subjects: SubjectStat[] | null;
+  questionTypes: QuestionTypeStat[] | null;
+  topics: TopicStat[] | null;
+  allAttempts: OlympiadAttemptSummary[] | null;
+  attemptsLoading: boolean;
+  revisionDashboard: RevisionDashboard | null;
+  revisionLoading: boolean;
+}
+
+function AchievementBadgeCard({ item }: { item: EvaluatedAchievement }) {
+  const levelMeta = BADGE_LEVEL_META[item.definition.level];
+  return (
+    <Card className={`p-5 ${item.unlocked ? '' : 'opacity-90'}`}>
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className={`w-11 h-11 rounded-xl grid place-items-center shrink-0 text-[20px] ${item.unlocked ? 'bg-brand-soft' : 'bg-surface2 opacity-70'}`}>
+            {item.definition.icon}
+          </div>
+          <div className="min-w-0">
+            <p className="font-display font-semibold text-[14px] text-fg1 truncate">{item.definition.name}</p>
+            <p className="text-[11px] text-fg3">{levelMeta.emoji} {levelMeta.label}</p>
+          </div>
+        </div>
+        {item.unlocked && <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />}
+      </div>
+
+      <p className="text-[12px] text-fg3 leading-relaxed mb-3">{item.definition.description}</p>
+
+      {item.unlocked ? (
+        <p className="text-[11.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+          Unlocked{item.unlockedAt ? ` · ${fmtDate(item.unlockedAt.toISOString())}` : ''}
+        </p>
+      ) : (
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11.5px] text-fg3">{item.current} / {item.target} {item.definition.unit}</span>
+            <span className="text-[11.5px] font-semibold text-fg1">{item.percent}%</span>
+          </div>
+          <div className="h-2 rounded-full bg-surface2 overflow-hidden">
+            <div className="h-full rounded-full bg-brand" style={{ width: `${item.percent}%` }} />
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+const ACHIEVEMENT_CATEGORY_ORDER: AchievementCategory[] = [
+  'PRACTICE', 'ACCURACY', 'SUBJECT_MASTERY', 'REVISION', 'SPEED', 'CONSISTENCY', 'IMPROVEMENT',
+];
+
+function AchievementsAndMilestones({
+  overview, overviewLoading, subjects, questionTypes, topics, allAttempts, attemptsLoading, revisionDashboard, revisionLoading,
+}: AchievementsSectionProps) {
+  const { locallyEngagedDates } = useStudyPlanProgress();
+
+  const learningInsights = useMemo(() => (
+    overview?.hasData && subjects && questionTypes && topics
+      ? buildLearningInsights(overview, subjects, questionTypes, topics)
+      : null
+  ), [overview, subjects, questionTypes, topics]);
+
+  const studyPlan = useMemo(() => (
+    learningInsights ? buildStudyPlan(learningInsights, locallyEngagedDates) : null
+  ), [learningInsights, locallyEngagedDates]);
+
+  const attempts = useMemo(() => (
+    (allAttempts ?? []).filter(a => a.status === 'SUBMITTED' && a.quizType !== 'OLYMPIAD')
+  ), [allAttempts]);
+
+  const ctx: AchievementContext | null = useMemo(() => {
+    if (!overview?.hasData) return null;
+    return {
+      overview, subjects: subjects ?? [], topics: topics ?? [], attempts,
+      learningInsights,
+      practiceStreak: studyPlan ? { currentStreak: studyPlan.streak.currentStreak, bestStreak: studyPlan.streak.bestStreak } : null,
+      revision: revisionDashboard,
+    };
+  }, [overview, subjects, topics, attempts, learningInsights, studyPlan, revisionDashboard]);
+
+  const evaluated = useMemo(() => (ctx ? evaluateAchievements(ctx) : []), [ctx]);
+  const milestones = useMemo(() => (ctx ? evaluateMilestones(ctx) : []), [ctx]);
+  const personalBests = useMemo(() => (ctx ? evaluatePersonalBests(ctx) : []), [ctx]);
+  const recent = useMemo(() => recentlyUnlocked(evaluated), [evaluated]);
+  const next = useMemo(() => nextAchievements(evaluated), [evaluated]);
+
+  const unlockedIds = useMemo(() => evaluated.filter(e => e.unlocked).map(e => e.definition.id), [evaluated]);
+  const { current: celebratingId, dismiss } = useAchievementCelebrations(unlockedIds);
+  const celebrating = celebratingId ? evaluated.find(e => e.definition.id === celebratingId) ?? null : null;
+
+  const loading = overviewLoading || attemptsLoading || revisionLoading;
+
+  return (
+    <>
+      <div className="mb-4">
+        <h3 className="font-display font-semibold text-[16px] text-fg1 flex items-center gap-2">
+          <Trophy size={18} className="text-brand" /> Achievements &amp; Milestones
+        </h3>
+        <p className="text-[12px] text-fg3 mt-1">
+          Badges, streak milestones, and personal bests earned from your own Practice Olympiad progress.
+        </p>
+      </div>
+
+      {!ctx ? (
+        loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => <Card key={i} className="p-5"><Skeleton className="h-32" /></Card>)}
+          </div>
+        ) : (
+          <Card className="p-0 overflow-hidden">
+            <EmptyState
+              icon={Trophy}
+              title="Start practicing to unlock your first achievement."
+              desc="Every Practice Olympiad session you complete counts toward your first badge."
+              action={
+                <Button icon={PlayCircle} onClick={() => { window.location.href = '/#/play'; }}>
+                  Start Practice
+                </Button>
+              }
+            />
+          </Card>
+        )
+      ) : (
+        <>
+          {!!recent.length && (
+            <div className="mb-6">
+              <h4 className="font-display font-semibold text-[14.5px] text-fg1 mb-3">Recently Unlocked</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {recent.map(item => (
+                  <Card key={item.definition.id} className="p-4 flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-brand-soft grid place-items-center shrink-0 text-[20px]">{item.definition.icon}</div>
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-semibold text-fg1 truncate">{item.definition.name}</p>
+                      <p className="text-[11px] text-fg3">{item.unlockedAt ? fmtDate(item.unlockedAt.toISOString()) : ''}</p>
+                      <p className="text-[11px] text-fg3 truncate">{item.definition.description}</p>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!!next.length && (
+            <div className="mb-6">
+              <h4 className="font-display font-semibold text-[14.5px] text-fg1 mb-3">Next Achievements</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {next.map(item => (
+                  <Card key={item.definition.id} className="p-4">
+                    <p className="text-[12px] text-fg3 mb-1">
+                      Only {Math.max(0, item.target - item.current)} more {item.definition.unit} until:
+                    </p>
+                    <p className="text-[13.5px] font-semibold text-fg1 flex items-center gap-1.5">
+                      <span>{item.definition.icon}</span>{item.definition.name}
+                    </p>
+                    <div className="h-1.5 rounded-full bg-surface2 overflow-hidden mt-2">
+                      <div className="h-full rounded-full bg-brand" style={{ width: `${item.percent}%` }} />
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {ACHIEVEMENT_CATEGORY_ORDER.map(category => {
+            const items = evaluated.filter(e => e.definition.category === category);
+            if (!items.length) return null;
+            return (
+              <div key={category} className="mb-6">
+                <h4 className="font-display font-semibold text-[14.5px] text-fg1 mb-3">{ACHIEVEMENT_CATEGORY_LABEL[category]}</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {items.map(item => <AchievementBadgeCard key={item.definition.id} item={item} />)}
+                </div>
+              </div>
+            );
+          })}
+
+          <div className="mb-6">
+            <h4 className="font-display font-semibold text-[14.5px] text-fg1 mb-3">Learning Milestones</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {milestones.map(m => (
+                <Card key={m.id} className="p-4">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="text-[13px] font-semibold text-fg1">{m.name}</p>
+                    {m.unlocked && <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />}
+                  </div>
+                  {m.unlocked ? (
+                    <p className="text-[11.5px] font-semibold text-emerald-600 dark:text-emerald-400">Unlocked</p>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[11.5px] text-fg3">{m.current} / {m.target}</span>
+                        <span className="text-[11.5px] font-semibold text-fg1">{m.percent}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-surface2 overflow-hidden">
+                        <div className="h-full rounded-full bg-brand" style={{ width: `${m.percent}%` }} />
+                      </div>
+                    </>
+                  )}
+                </Card>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="font-display font-semibold text-[14.5px] text-fg1 mb-3">Personal Bests</h4>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+              {personalBests.map(b => (
+                <StatCard key={b.label} label={b.detail ? `${b.label} · ${b.detail}` : b.label} value={b.value} icon={Trophy} tone="brand" />
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {celebrating && (
+        <Modal
+          open
+          onClose={dismiss}
+          title="Achievement Unlocked!"
+          size="sm"
+          footer={<Button onClick={dismiss}>Nice!</Button>}
+        >
+          <div className="text-center py-4">
+            <div className="text-[48px] mb-3">{celebrating.definition.icon}</div>
+            <h3 className="font-display font-semibold text-[18px] text-fg1 mb-1">{celebrating.definition.name}</h3>
+            <p className="text-[13px] text-fg3 mb-3">{celebrating.definition.description}</p>
+            <p className="text-[13px] font-semibold text-brand">🎉 Great work — keep up the momentum!</p>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+// ── Practice Streaks & Consistency (Feature 15) ──────────────────────────
+// A habit-tracking dashboard, not another analytics card — but every number
+// on it reuses Features 1/8/9/12: streak counts come straight from Feature
+// 9's computeStreak (never recomputed), attempt history comes from the
+// same lifted OlympiadAttemptSummary[] Features 12/14 already use, and AI
+// Consistency Advice is a thin selector over Feature 8's LearningInsights
+// (no second AI engine — see consistencyEngine.ts's buildConsistencyAdvice).
+
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function PracticeCalendarGrid({ calendar }: { calendar: PracticeCalendar }) {
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+        <h4 className="font-display font-semibold text-[14.5px] text-fg1">{calendar.monthLabel}</h4>
+        <div className="flex items-center gap-3 text-[11px] text-fg3">
+          <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-brand inline-block" /> Current streak</span>
+          <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" /> Longest streak</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1.5 mb-2">
+        {WEEKDAY_LABELS.map(w => <span key={w} className="text-[10.5px] font-semibold text-fg3 text-center">{w}</span>)}
+      </div>
+
+      <div className="grid grid-cols-7 gap-1.5">
+        {Array.from({ length: calendar.leadingBlanks }).map((_, i) => <div key={`blank-${i}`} />)}
+        {calendar.days.map(day => {
+          const icon = day.isFuture ? '' : day.sessionsCount >= 2 ? '⭐' : day.sessionsCount === 1 ? '✅' : '❌';
+          const ring = day.isToday
+            ? 'ring-2 ring-brand'
+            : day.isInCurrentStreak
+              ? 'ring-2 ring-brand/50'
+              : day.isInLongestStreak
+                ? 'ring-2 ring-amber-400/60'
+                : '';
+          return (
+            <div
+              key={day.dateKey}
+              className={`aspect-square rounded-lg border border-line flex flex-col items-center justify-center ${day.isFuture ? 'bg-surface1/40 text-fg4' : 'bg-surface1 text-fg2'} ${ring}`}
+            >
+              <span className="text-[10px]">{day.dayOfMonth}</span>
+              {!day.isFuture && <span className="text-[12px] leading-none mt-0.5">{icon}</span>}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+interface PracticeStreaksSectionProps {
+  overview: PracticeOverview | null;
+  overviewLoading: boolean;
+  subjects: SubjectStat[] | null;
+  questionTypes: QuestionTypeStat[] | null;
+  topics: TopicStat[] | null;
+  allAttempts: OlympiadAttemptSummary[] | null;
+  attemptsLoading: boolean;
+}
+
+function PracticeStreaksAndConsistency({
+  overview, overviewLoading, subjects, questionTypes, topics, allAttempts, attemptsLoading,
+}: PracticeStreaksSectionProps) {
+  const { locallyEngagedDates } = useStudyPlanProgress();
+
+  const learningInsights = useMemo(() => (
+    overview?.hasData && subjects && questionTypes && topics
+      ? buildLearningInsights(overview, subjects, questionTypes, topics)
+      : null
+  ), [overview, subjects, questionTypes, topics]);
+
+  const practiceDates = useMemo(() => (
+    overview?.hasData ? practiceDatesFromOverview(overview) : new Set<string>()
+  ), [overview]);
+
+  const streak = useMemo(() => computeStreak(practiceDates, locallyEngagedDates, new Date()), [practiceDates, locallyEngagedDates]);
+
+  const attempts = useMemo(() => (
+    (allAttempts ?? []).filter(a => a.status === 'SUBMITTED' && a.quizType !== 'OLYMPIAD')
+  ), [allAttempts]);
+
+  const calendar = useMemo(() => (overview?.hasData ? buildPracticeCalendar(overview, streak) : null), [overview, streak]);
+  const monthly = useMemo(() => (calendar ? computeMonthlyConsistency(calendar) : null), [calendar]);
+  const weeklyActivity = useMemo(() => buildWeeklyActivity(attempts), [attempts]);
+  const frequency = useMemo(() => (
+    overview?.hasData ? computePracticeFrequency(overview, practiceDates) : null
+  ), [overview, practiceDates]);
+  const milestones = useMemo(() => buildStreakMilestones(streak), [streak]);
+  const nextMilestone = useMemo(() => nextStreakMilestone(streak), [streak]);
+  const score = useMemo(() => (
+    frequency && monthly ? computeConsistencyScore(streak, frequency, monthly, weeklyActivity) : null
+  ), [streak, frequency, monthly, weeklyActivity]);
+  const insights = useMemo(() => (monthly ? buildConsistencyInsights(attempts, streak, monthly) : []), [attempts, streak, monthly]);
+  const advice = useMemo(() => (score ? buildConsistencyAdvice(learningInsights, streak, score) : null), [learningInsights, streak, score]);
+  const motivation = useMemo(() => buildMotivationMessage(streak), [streak]);
+
+  const loading = overviewLoading || attemptsLoading;
+  const hasEnoughData = Boolean(overview?.hasData && overview.totalAttempts > 0);
+
+  return (
+    <>
+      <div className="mb-4">
+        <h3 className="font-display font-semibold text-[16px] text-fg1 flex items-center gap-2">
+          <Flame size={18} className="text-brand" /> Practice Streaks &amp; Consistency
+        </h3>
+        <p className="text-[12px] text-fg3 mt-1">
+          Your habit-tracking dashboard, built entirely from your real Practice Olympiad activity.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => <Card key={i} className="p-5"><Skeleton className="h-24" /></Card>)}
+        </div>
+      ) : !hasEnoughData || !overview?.hasData || !calendar || !monthly || !frequency || !score ? (
+        <Card className="p-0 overflow-hidden">
+          <EmptyState
+            icon={Flame}
+            title="Complete more Practice Olympiad quizzes to start building your practice streak."
+            desc="Your streak, calendar, and consistency score will appear here once you begin practising."
+            action={
+              <Button icon={PlayCircle} onClick={() => { window.location.href = '/#/play'; }}>
+                Start Practicing
+              </Button>
+            }
+          />
+        </Card>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-2">
+            <Card className="p-5">
+              <div className="flex items-center gap-2.5 mb-2">
+                <Flame size={20} className="text-orange-500" />
+                <p className="text-[12px] text-fg3">Current Streak</p>
+              </div>
+              <p className="font-display font-semibold text-[30px] text-fg1 tabular-nums leading-none">
+                {streak.currentStreak} <span className="text-[14px] font-normal text-fg3">Days</span>
+              </p>
+            </Card>
+            <Card className="p-5">
+              <div className="flex items-center gap-2.5 mb-2">
+                <Trophy size={20} className="text-amber-500" />
+                <p className="text-[12px] text-fg3">Best Streak</p>
+              </div>
+              <p className="font-display font-semibold text-[30px] text-fg1 tabular-nums leading-none">
+                {streak.bestStreak} <span className="text-[14px] font-normal text-fg3">Days</span>
+              </p>
+            </Card>
+            <Card className="p-5">
+              <div className="flex items-center gap-2.5 mb-2">
+                <CalendarCheck size={20} className="text-brand" />
+                <p className="text-[12px] text-fg3">Next Milestone</p>
+              </div>
+              {nextMilestone ? (
+                <>
+                  <p className="font-display font-semibold text-[16px] text-fg1">{nextMilestone.days}-Day Streak</p>
+                  <p className="text-[11.5px] text-fg3 mt-0.5">{nextMilestone.remaining} day{nextMilestone.remaining === 1 ? '' : 's'} remaining</p>
+                </>
+              ) : (
+                <p className="font-display font-semibold text-[16px] text-fg1">All milestones reached!</p>
+              )}
+            </Card>
+          </div>
+          <p className="text-[11.5px] text-fg3 mb-6">
+            Last Practice Date: <span className="text-fg1 font-semibold">{fmtDate(overview.lastPracticeDate)}</span>
+          </p>
+
+          <div className="mb-6">
+            <PracticeCalendarGrid calendar={calendar} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+            <Card className="p-5">
+              <p className="text-[12px] text-fg3 mb-1">Practised</p>
+              <p className="font-display font-semibold text-[22px] text-fg1">{monthly.daysPracticed} / {monthly.daysElapsed} Days</p>
+            </Card>
+            <Card className="p-5">
+              <p className="text-[12px] text-fg3 mb-1">Consistency</p>
+              <p className="font-display font-semibold text-[22px] text-fg1">{monthly.percentage}%</p>
+            </Card>
+            <Card className="p-5">
+              <p className="text-[12px] text-fg3 mb-1.5">Classification</p>
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full border text-[12px] font-semibold bg-brand-soft text-brand border-[rgba(53,64,36,0.18)]">
+                {monthly.band}
+              </span>
+            </Card>
+          </div>
+
+          <Card className="p-5 mb-6">
+            <h4 className="font-display font-semibold text-[14.5px] text-fg1 mb-4">Weekly Activity</h4>
+            <div className="grid grid-cols-7 gap-2">
+              {weeklyActivity.map(day => (
+                <div key={day.dateKey} className="text-center">
+                  <p className="text-[10.5px] text-fg3 mb-1.5">{day.dayLabel}</p>
+                  <div className="h-16 rounded-lg bg-surface2 flex items-end overflow-hidden">
+                    <div
+                      className={`w-full rounded-t-lg ${day.practiced ? 'bg-brand' : ''}`}
+                      style={{ height: day.practiced ? `${Math.min(100, Math.max(10, (day.questionsSolved / 20) * 100))}%` : '0%' }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-fg3 mt-1">{day.questionsSolved}q</p>
+                  <p className="text-[10px] text-fg4">{Math.round(day.timeStudiedSec / 60)}m</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <StatCard label="Avg Sessions / Week" value={frequency.avgSessionsPerWeek} icon={Zap} tone="brand" />
+            <StatCard label="Avg Questions / Day" value={frequency.avgQuestionsPerDay} icon={Hash} tone="brand" />
+            <StatCard label="Avg Study Time / Session" value={fmtDurationHMS(frequency.avgStudyTimePerSessionSec)} icon={Clock} tone="violet" />
+          </div>
+
+          {!!insights.length && (
+            <Card className="p-5 mb-6">
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className="w-10 h-10 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0">
+                  <Sparkles size={17} />
+                </div>
+                <h4 className="font-display font-semibold text-[14.5px] text-fg1">Consistency Insights</h4>
+              </div>
+              <ul className="space-y-1.5">
+                {insights.map((line, i) => (
+                  <li key={i} className="flex items-start gap-2 text-[13px] text-fg2 leading-relaxed">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand mt-1.5 shrink-0" />
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
+          <Card className="p-5 mb-6">
+            <h4 className="font-display font-semibold text-[14.5px] text-fg1 mb-4">Streak Milestones</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              {milestones.map(m => (
+                <div key={m.days} className="text-center">
+                  <p className="text-[12.5px] font-semibold text-fg1 mb-1.5">{m.days}-Day Streak</p>
+                  <div className="h-2 rounded-full bg-surface2 overflow-hidden mb-1.5">
+                    <div className={`h-full rounded-full ${m.achieved ? 'bg-emerald-400' : 'bg-brand'}`} style={{ width: `${m.percent}%` }} />
+                  </div>
+                  <p className="text-[11px] text-fg3">{m.achieved ? 'Achieved' : `${m.current}/${m.days} days`}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p-5 mb-6">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0">
+                <Gauge size={17} />
+              </div>
+              <h4 className="font-display font-semibold text-[14.5px] text-fg1">Consistency Score</h4>
+            </div>
+            <div className="flex items-end gap-3 mb-2">
+              <span className="font-display font-semibold text-[36px] text-fg1 tabular-nums leading-none">{score.score}</span>
+              <span className="text-[13px] font-semibold text-brand mb-1.5">{score.band}</span>
+            </div>
+            <div className="h-2 rounded-full bg-surface2 overflow-hidden mb-4">
+              <div className="h-full rounded-full bg-brand" style={{ width: `${score.score}%` }} />
+            </div>
+            <div className="space-y-2 pt-3 border-t border-line">
+              {score.breakdown.map(b => (
+                <div key={b.label} className="flex items-center justify-between gap-3">
+                  <span className="text-[12px] text-fg3">{b.label} <span className="text-fg4">· {Math.round(b.weight * 100)}% weight</span></span>
+                  <span className="text-[12.5px] font-semibold text-fg1 tabular-nums">{b.score}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Card className="p-5">
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className="w-10 h-10 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0">
+                  <Brain size={17} />
+                </div>
+                <h4 className="font-display font-semibold text-[14.5px] text-fg1">AI Consistency Advice</h4>
+              </div>
+              <p className="text-[13px] text-fg2 leading-relaxed">{advice}</p>
+            </Card>
+            <Card className="p-5">
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400 grid place-items-center shrink-0">
+                  <Flame size={17} />
+                </div>
+                <h4 className="font-display font-semibold text-[14.5px] text-fg1">Motivation</h4>
+              </div>
+              <p className="text-[13px] text-fg2 leading-relaxed">{motivation}</p>
+            </Card>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 export function AnalyticsPage() {
   const { data, loading, error } = usePracticeOverview();
   // Lifted up from SubjectWisePerformance so Feature 3 (Strength & Weakness
@@ -1870,6 +3123,12 @@ export function AnalyticsPage() {
   // Feature 7's own fetch — a genuinely different grouping/dataset from
   // `subjects`/`questionTypes` above, not reusable from either.
   const { data: topics, loading: topicsLoading, error: topicsError } = useTopicBreakdown();
+  // Lifted here (rather than fetched separately inside PracticeReviewAndMistakeAnalysis
+  // and AchievementsAndMilestones, which both need it) so it's fetched once per page
+  // load, not twice — see Feature 14's explicit "avoid additional database queries".
+  const { data: allAttempts, loading: attemptsLoading, error: attemptsError } = useOlympiadAttempts();
+  // Same reasoning, shared between RevisionCenter and AchievementsAndMilestones.
+  const { data: revisionDashboard, loading: revisionLoading, error: revisionError } = useRevisionDashboard();
 
   return (
     <StandalonePage>
@@ -1878,6 +3137,43 @@ export function AnalyticsPage() {
         title="Practice Analytics"
         subtitle="Your overall Practice Olympiad performance."
       />
+
+      <div className="mb-8">
+        <RecommendedNextPractice
+          overview={data}
+          subjects={subjects}
+          questionTypes={questionTypes}
+          topics={topics}
+          loading={loading || subjectsLoading || questionTypesLoading || topicsLoading}
+          error={error || subjectsError || questionTypesError || topicsError}
+        />
+      </div>
+
+      <div className="mb-8">
+        <PracticeReviewAndMistakeAnalysis
+          subjects={subjects} questionTypes={questionTypes} topics={topics}
+          allAttempts={allAttempts} loading={attemptsLoading} error={attemptsError}
+        />
+      </div>
+
+      <div className="mb-8">
+        <RevisionCenter dashboard={revisionDashboard} loading={revisionLoading} error={revisionError} />
+      </div>
+
+      <div className="mb-8">
+        <AchievementsAndMilestones
+          overview={data} overviewLoading={loading} subjects={subjects} questionTypes={questionTypes} topics={topics}
+          allAttempts={allAttempts} attemptsLoading={attemptsLoading}
+          revisionDashboard={revisionDashboard} revisionLoading={revisionLoading}
+        />
+      </div>
+
+      <div className="mb-8">
+        <PracticeStreaksAndConsistency
+          overview={data} overviewLoading={loading} subjects={subjects} questionTypes={questionTypes} topics={topics}
+          allAttempts={allAttempts} attemptsLoading={attemptsLoading}
+        />
+      </div>
 
       {loading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">

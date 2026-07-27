@@ -7,6 +7,7 @@ import { ADMIN_ROLES } from '../utils/roles';
 import { prisma } from '../lib/prisma';
 import { Role, SubmissionStatus, AttemptStatus } from '../lib/enums';
 import { ContentMeta } from '../services/content.service';
+import { AdminDashboardService } from '../services/adminDashboard.service';
 
 const router = new Router();
 
@@ -89,6 +90,22 @@ router.get(
         submittedAt: s.submittedAt,
       })),
     });
+  }),
+);
+
+// Feature A1 (Admin Dashboard) — everything the existing /stats endpoint
+// above doesn't already cover (content-catalog totals, question-bank
+// stats, today's activity, charts, performance indicators). Recent
+// assessments/submissions (from /stats), recent practice activity (from
+// GET /quizzes/attempts), and recent student registrations (from
+// GET /users/students) are fetched by the client directly from their own
+// existing endpoints — not duplicated here.
+router.get(
+  '/admin-overview',
+  authorize(...ADMIN_ROLES),
+  asyncHandler(async (_req, res) => {
+    const data = await AdminDashboardService.getOverview();
+    ApiResponse.ok(res, data);
   }),
 );
 

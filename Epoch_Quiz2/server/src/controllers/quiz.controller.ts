@@ -13,6 +13,7 @@ import type {
   SubmitAttemptInput,
   SaveProgressInput,
   ListQuizAttemptsInput,
+  RetryAttemptInput,
 } from '../validators/quiz.validator';
 
 const param = (req: Request, key: string): string => req.params[key] as string;
@@ -112,5 +113,13 @@ export const QuizController = {
       req.body as SubmitAttemptInput,
     );
     ApiResponse.ok(res, result, 'Quiz submitted');
+  }),
+
+  /** Feature 12 — "Practice Incorrect Questions Again". */
+  retryAttempt: asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user) throw ApiError.unauthorized();
+    const { scope } = req.body as RetryAttemptInput;
+    const result = await QuizService.startRetry(req.user.id, param(req, 'id'), scope);
+    ApiResponse.created(res, result, 'Retry practice session started');
   }),
 };

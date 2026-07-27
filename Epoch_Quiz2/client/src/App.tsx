@@ -100,8 +100,13 @@ export default function App() {
   // API calls before the access token is set.
   if (!sessionReady) return null;
 
-  const parts = route.split('/');
+  // Split off any query string (e.g. Feature 11's Analytics deep link,
+  // '#/play?subject=...&difficulty=...') before route-part parsing below —
+  // none of the existing routes ever expected '?' inside a path segment.
+  const [routePath, routeQuery] = route.split('?');
+  const parts = routePath.split('/');
   const top = parts[0] || 'home';
+  const searchParams = new URLSearchParams(routeQuery ?? '');
 
   let page: React.ReactNode = null;
 
@@ -119,7 +124,21 @@ export default function App() {
       // quiz overview, quiz, and results — lives entirely under /play and
       // its child routes (play/quiz/:id, play/result/:id). None of it ever
       // touches the standalone Results page.
-      page = <QuizPlayPage navigate={navigate} />;
+      //
+      // Feature 11 (Smart Practice Recommendations) deep-links here with
+      // ?subject=<id>&difficulty=EASY|MEDIUM|HARD or ?mixed=1&difficulty=...
+      // from the Analytics page's "Start Practice" button, so the recommended
+      // subject/difficulty (or Mixed) is preselected instead of the student
+      // choosing manually.
+      const difficultyParam = searchParams.get('difficulty');
+      page = (
+        <QuizPlayPage
+          navigate={navigate}
+          initialSubjectId={searchParams.get('subject') ?? undefined}
+          initialDifficulty={difficultyParam === 'EASY' || difficultyParam === 'MEDIUM' || difficultyParam === 'HARD' ? difficultyParam : undefined}
+          initialMixed={searchParams.get('mixed') === '1'}
+        />
+      );
     }
   } else if (top === 'olympiad') {
     if (!getAuth()) {

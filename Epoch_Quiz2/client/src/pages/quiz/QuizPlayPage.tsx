@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { NavigateFn } from '../../types';
 import {
   BookOpen, ChevronRight, Target, Clock,
@@ -18,6 +18,18 @@ import { useT } from '../../lib/i18n';
 
 interface QuizPlayPageProps {
   navigate: NavigateFn;
+  /** Feature 11 (Smart Practice Recommendations) deep link — preselects a
+   *  real subject by id, skipping straight to the difficulty-preselected
+   *  Quiz Overview screen below. Ignored if no matching subject is found. */
+  initialSubjectId?: string;
+  /** Preselected difficulty for the deep link above. Falls back to the
+   *  first available difficulty on the matched subject if this one has no
+   *  questions (mirrors the disabled-option behavior in the difficulty
+   *  picker further down). */
+  initialDifficulty?: 'EASY' | 'MEDIUM' | 'HARD';
+  /** Deep-links into the "Mixed Subjects Practice" tile instead of a real
+   *  subject — takes priority over initialSubjectId if both are set. */
+  initialMixed?: boolean;
 }
 
 function fmtMarks(n: number): string {
@@ -114,7 +126,7 @@ function OverviewRow({ icon: Icon, label, value }: { icon: React.ElementType; la
  * `play/result/:id` children — see App.tsx). Never touches the standalone
  * Assessment flow; closing/cancelling out of any step here just stays on `/play`.
  */
-export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
+export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate, initialSubjectId, initialDifficulty, initialMixed }) => {
   const t = useT();
   const { push, node: toastNode } = useToasts();
   const { data: subjects, loading, error: subjectsError, refetch: refetchSubjects } = usePracticeSubjects();
@@ -192,6 +204,44 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate }) => {
       setPreviewLoading(false);
     }
   };
+
+  // Feature 11 (Smart Practice Recommendations) deep link — once the real
+  // subject list has loaded, preselect the matching subject/Mixed tile and
+  // difficulty exactly once, then auto-advance straight to the Quiz Overview
+  // above (same openOverview() a manual "Continue" click would trigger).
+  // Deliberately stops short of calling startQuiz(): creating an attempt
+  // starts its time-limit clock, so — same as every manual flow through this
+  // page — that still requires the student's own explicit "Start Quiz" click.
+  const deepLinkAppliedRef = useRef(false);
+  const [autoAdvancePending, setAutoAdvancePending] = useState(false);
+
+  useEffect(() => {
+    if (deepLinkAppliedRef.current || !subjects) return;
+    if (!initialMixed && !initialSubjectId) { deepLinkAppliedRef.current = true; return; }
+
+    const match = initialMixed ? mixedSubject : subjects.find(s => s.id === initialSubjectId) ?? null;
+    deepLinkAppliedRef.current = true;
+    if (!match) return;
+
+    const counts: Record<'EASY' | 'MEDIUM' | 'HARD', number> = {
+      EASY: match.easyCount, MEDIUM: match.mediumCount, HARD: match.hardCount,
+    };
+    const chosenDifficulty = initialDifficulty && counts[initialDifficulty] > 0
+      ? initialDifficulty
+      : (['MEDIUM', 'EASY', 'HARD'] as const).find(d => counts[d] > 0);
+
+    setSelected(match);
+    if (chosenDifficulty) {
+      setDifficulty(chosenDifficulty);
+      setAutoAdvancePending(true);
+    }
+  }, [subjects, mixedSubject, initialSubjectId, initialDifficulty, initialMixed]);
+
+  useEffect(() => {
+    if (!autoAdvancePending || !selected || !difficulty) return;
+    setAutoAdvancePending(false);
+    openOverview();
+  }, [autoAdvancePending, selected, difficulty]);
 
   // "Start Quiz" on the overview screen — this is the only place an attempt
   // gets created, so the time-limit clock never starts before the student

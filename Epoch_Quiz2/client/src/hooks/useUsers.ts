@@ -58,6 +58,10 @@ export interface StudentRow {
   email: string;
   schoolName: string | null;
   teacherCode: string | null;
+  /** Feature A1 (Admin Dashboard) — "Recent Student Registrations" needs
+   *  Class/Board per student; resolved server-side via ContentMeta. */
+  className: string | null;
+  educationBoard: string | null;
   attempted: number;
   avgScore: number;
   rank: number;

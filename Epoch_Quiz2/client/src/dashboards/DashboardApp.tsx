@@ -10,6 +10,7 @@ import { AssessmentTakePage } from './student/pages/AssessmentTakePage';
 import { AssessmentResultPage } from './student/pages/AssessmentResultPage';
 import { ResultsPage } from './student/pages/ResultsPage';
 import { AnalyticsPage } from './student/pages/AnalyticsPage';
+import { PracticeReviewPage } from './student/pages/PracticeReviewPage';
 import { LeaderboardPage } from './student/pages/LeaderboardPage';
 import { ProfilePage } from './student/pages/ProfilePage';
 import { RequireRole } from './shared/RequireRole';
@@ -99,6 +100,7 @@ export function DashboardApp() {
           <Route path="/assessment/result/:submissionId" element={<AssessmentResultPage />} />
           <Route path="/results"     element={<ResultsPage />} />
           <Route path="/analytics"   element={<AnalyticsPage />} />
+          <Route path="/review/:attemptId" element={<PracticeReviewPage />} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/profile"     element={<ProfilePage />} />
         </Route>

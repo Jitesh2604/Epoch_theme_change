@@ -49,6 +49,14 @@ export const attemptIdParamsSchema = z.object({
   id: z.string().min(1),
 });
 
+// Feature 12 (Practice Review & Mistake Analysis) — "Practice Incorrect
+// Questions Again". Scope is applied server-side against the source
+// attempt's own AttemptAnswer rows (see QuizService.startRetry) — the client
+// never supplies question ids directly.
+export const retryAttemptSchema = z.object({
+  scope: z.enum(['wrong', 'skipped', 'both']).default('both'),
+});
+
 // Debounced continuous autosave (paused omitted) and the explicit Pause
 // action (paused: true) share this shape — see QuizService.saveProgress.
 export const saveProgressSchema = z.object({
@@ -86,3 +94,4 @@ export type SaveAttemptAnswerInput  = z.infer<typeof saveAttemptAnswerSchema>;
 export type SubmitAttemptInput      = z.infer<typeof submitAttemptSchema>;
 export type SaveProgressInput       = z.infer<typeof saveProgressSchema>;
 export type ListQuizAttemptsInput   = z.infer<typeof listQuizAttemptsQuerySchema>;
+export type RetryAttemptInput       = z.infer<typeof retryAttemptSchema>;
