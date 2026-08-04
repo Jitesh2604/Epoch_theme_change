@@ -22,6 +22,7 @@ import { getAuth } from './dashboards/shared/auth';
 import { refreshSession, getRefreshToken } from './lib/authStore';
 import { showToast } from './components/ui/Toast';
 import { rememberPostAuthTarget } from './lib/postAuthRedirect';
+import { useExamModeActive } from './hooks/useExamMode';
 
 function PlayGate({ targetRoute }: { targetRoute: string }) {
   useEffect(() => {
@@ -56,6 +57,7 @@ function parseHash(): string {
 
 export default function App() {
   const [route, setRoute] = useState(parseHash());
+  const examMode = useExamModeActive();
   const [theme, setTheme] = useState(() => localStorage.getItem('epoch-theme') ?? 'light');
   const tweaks = TWEAK_DEFAULTS;
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('epoch-lang') as Lang) ?? 'EN');
@@ -182,7 +184,7 @@ export default function App() {
   return (
     <LangContext.Provider value={{ lang, setLang }}>
       <div className="aurora" />
-      <NavBar route={route} navigate={navigate} />
+      {!examMode && <NavBar route={route} navigate={navigate} />}
       <main>{page}</main>
       <ToastStack />
     </LangContext.Provider>

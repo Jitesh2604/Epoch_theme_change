@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { NavigateFn } from '../../types';
 import {
-  CheckCircle2, XCircle, ChevronRight, BookOpen, Clock, X, SkipForward,
-  CornerDownRight, Pause,
+  CheckCircle2, XCircle, ChevronRight, CornerDownRight,
 } from 'lucide-react';
-import { Card, Button, Badge, ProgressBar, useToasts } from '../../dashboards/shared/ui';
+import { Card, Button, Badge, useToasts } from '../../dashboards/shared/ui';
 import {
   practiceApi,
   type PracticeAttemptData,
@@ -12,6 +11,8 @@ import {
   type SaveAnswerFeedback,
 } from '../../hooks/usePracticeQuiz';
 import { useQuizExitGuard } from '../../hooks/useQuizExitGuard';
+import { useExamMode } from '../../hooks/useExamMode';
+import { ExamHeader, ExamProgressBar, QuestionPalette, SubmitTestDialog, LeaveExamDialog } from './shared/ExamUI';
 
 interface PracticePlayPageProps {
   navigate:  NavigateFn;
@@ -149,6 +150,11 @@ function OptionButton({
 // ── Page ──────────────────────────────────────────────────────────
 
 export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps) {
+  // This page only ever mounts while a practice attempt is being played —
+  // hide the global chrome for its whole lifetime; useExamMode restores it
+  // automatically on unmount (finish → result page, or Exit).
+  useExamMode(true);
+
   const { elapsed, formatted: timer } = useElapsedSec();
   const elapsedRef    = useRef(elapsed);
   const { push, node: toastNode } = useToasts();
@@ -156,12 +162,19 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
   const [attempt,    setAttempt]    = useState<PracticeAttemptData | null>(null);
   const [loadErr,    setLoadErr]    = useState('');
   const [idx,        setIdx]        = useState(0);
+  const [maxIdx,     setMaxIdx]     = useState(0);
   const [answers,    setAnswers]    = useState<Record<string, AnswerState>>({});
   const [feedbacks,  setFeedbacks]  = useState<Record<string, FeedbackState>>({});
   const [submitted,  setSubmitted]  = useState<Record<string, boolean>>({});
   const [saving,     setSaving]     = useState(false);
   const [finishing,  setFinishing]  = useState(false);
   const [textInput,  setTextInput]  = useState('');
+  const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
+
+  // Tracks the furthest question reached so far — lets the palette allow
+  // jumping back to review an already-answered question without allowing
+  // jumps ahead (answering stays strictly sequential).
+  useEffect(() => { setMaxIdx(m => Math.max(m, idx)); }, [idx]);
 
   // Keep elapsedRef in sync so submitAnswer callback can read current elapsed time
   useEffect(() => { elapsedRef.current = elapsed; }, [elapsed]);
@@ -303,6 +316,13 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
     }
   };
 
+  // Jump back to review an already-answered question from the palette.
+  // Never allowed past `maxIdx`, so a student can't skip ahead this way.
+  const jumpTo = (i: number) => {
+    if (i < 0 || i > maxIdx || i === idx) return;
+    setIdx(i);
+  };
+
   const finish = async () => {
     // Guards against the manual "Finish Quiz" click and the countdown's
     // auto-finish firing at the same moment (both call this function).
@@ -418,56 +438,29 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
     !!currentAnswer.textAnswer;
 
   return (
-    <div className="container" style={{ paddingTop: 24, paddingBottom: 40 }}>
-      <div className="max-w-2xl mx-auto">
+    <div className="min-h-screen container" style={{ paddingTop: 24, paddingBottom: 40 }}>
+      <div className="max-w-3xl mx-auto">
         {toastNode}
-        {/* ── Top bar ─────────────────────────────────────────────── */}
-        <div className="flex items-center gap-3 mb-5 flex-wrap">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-brand-soft text-brand grid place-items-center shrink-0">
-              <BookOpen size={14} />
-            </div>
-            <div className="min-w-0">
-              <div className="text-[13px] font-semibold text-fg1 truncate">{attempt.subject.name}</div>
-              <div className="text-[11px] text-fg3">
-                {attempt.timeLimitSec
-                  ? `${questions.length} Questions | ${Math.round(attempt.timeLimitSec / 60)} Minutes`
-                  : 'Practice Quiz'}
-              </div>
-            </div>
-          </div>
 
-          <div className={`flex items-center gap-1.5 text-[12px] font-mono ${
-            remaining !== null && remaining <= 60 ? 'text-rose-400' : 'text-fg3'
-          }`}>
-            <Clock size={13} />
-            {remaining !== null ? fmtMMSS(remaining) : timer}
-          </div>
+        <ExamHeader
+          title="Practice Olympiad"
+          subject={attempt.subject.name}
+          index={idx}
+          total={questions.length}
+          timeDisplay={attempt.timeLimitSec ? (remaining !== null ? fmtMMSS(remaining) : timer) : 'No Time Limit – Self-Paced'}
+          timeUrgent={remaining !== null && remaining <= 60}
+          onExit={requestLeave}
+        />
 
-          <span className="text-[12px] text-fg2 font-semibold tabular-nums">
-            {idx + 1} / {questions.length}
-          </span>
+        <ExamProgressBar answered={answeredCount} total={questions.length} />
 
-          <Button variant="outline" icon={Pause} size="sm" onClick={handlePause} className="shrink-0">
-            Pause
-          </Button>
-
-          <button
-            onClick={requestLeave}
-            className="w-8 h-8 grid place-items-center rounded-lg text-fg3 hover:text-fg1 hover:bg-surface1 transition"
-          >
-            <X size={15} />
-          </button>
-        </div>
-
-        {/* Progress */}
-        <div className="mb-5">
-          <ProgressBar value={answeredCount} max={questions.length} tone="brand" />
-          <div className="flex justify-between mt-1.5 text-[11px] text-fg3">
-            <span>{answeredCount} answered</span>
-            <span>{questions.length - answeredCount} remaining</span>
-          </div>
-        </div>
+        <QuestionPalette
+          total={questions.length}
+          currentIndex={idx}
+          answered={questions.map(qq => !!submitted[qq.id])}
+          highestReached={maxIdx}
+          onJump={jumpTo}
+        />
 
         {/* ── Question card ──────────────────────────────────────── */}
         <Card className="p-6 mb-4">
@@ -610,17 +603,6 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
         <div className="flex gap-3">
           {!qSubmitted && (
             <Button
-              variant="ghost"
-              icon={SkipForward}
-              onClick={() => submitAnswer(true)}
-              disabled={saving || finishing}
-            >
-              Skip
-            </Button>
-          )}
-
-          {!qSubmitted && (
-            <Button
               className="flex-1"
               onClick={() => submitAnswer(false)}
               disabled={saving || !hasSelection || finishing}
@@ -636,32 +618,24 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
           )}
 
           {qSubmitted && isLastQ && (
-            <Button className="flex-1" onClick={finish} disabled={finishing}>
-              {finishing ? 'Finishing…' : 'Finish Quiz'}
+            <Button className="flex-1" onClick={() => setConfirmSubmitOpen(true)} disabled={finishing}>
+              {finishing ? 'Submitting…' : 'Submit Test'}
             </Button>
           )}
         </div>
 
         {/* ── Exit confirmation overlay — shown on the X button, browser
                Back, refresh warning, and in-app nav clicks alike. ───────── */}
-        {leaveConfirmOpen && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-            <Card className="p-6 max-w-sm w-full">
-              <h3 className="font-display font-semibold text-[17px] text-fg1 mb-2">Leave quiz?</h3>
-              <p className="text-[13px] text-fg3 mb-5">
-                Are you sure you want to leave the quiz? Your progress will be saved, and you can resume it later.
-              </p>
-              <div className="flex gap-3">
-                <Button variant="ghost" className="flex-1" onClick={stay}>
-                  Continue Quiz
-                </Button>
-                <Button variant="danger" className="flex-1" onClick={confirmLeaveNow}>
-                  Leave Quiz
-                </Button>
-              </div>
-            </Card>
-          </div>
-        )}
+        <LeaveExamDialog open={leaveConfirmOpen} onStay={stay} onLeave={confirmLeaveNow} />
+
+        <SubmitTestDialog
+          open={confirmSubmitOpen}
+          answered={answeredCount}
+          total={questions.length}
+          submitting={finishing}
+          onKeepGoing={() => setConfirmSubmitOpen(false)}
+          onSubmit={() => { setConfirmSubmitOpen(false); finish(); }}
+        />
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { NavigateFn } from '../../types';
+import { ChevronRight, CheckCircle2, XCircle } from 'lucide-react';
 import { Icon } from '../../components/ui/Icon';
 import { showToast } from '../../components/ui/Toast';
 import {
@@ -9,6 +10,9 @@ import {
   type PracticeResult,
 } from '../../hooks/usePracticeQuiz';
 import { useQuizExitGuard } from '../../hooks/useQuizExitGuard';
+import { useExamMode } from '../../hooks/useExamMode';
+import { Card, Button, Badge } from '../../dashboards/shared/ui';
+import { ExamHeader, ExamProgressBar, QuestionPalette, SubmitTestDialog, LeaveExamDialog } from './shared/ExamUI';
 
 interface Props {
   navigate: NavigateFn;
@@ -51,6 +55,12 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate, resumeAttemptId })
   // Attempt Olympiad, so land them straight back on their question.
   const [phase, setPhase]     = useState<'preview' | 'playing'>(resumeAttemptId ? 'playing' : 'preview');
 
+  // Chrome (navbar) hides only once the student is actually answering
+  // questions — not on the pre-test instructions screen — and restores
+  // automatically the moment `phase` leaves 'playing' (result) or on unmount
+  // (Quit).
+  useExamMode(phase === 'playing');
+
   const [idx, setIdx]           = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [locked, setLocked]     = useState(false);
@@ -58,6 +68,7 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate, resumeAttemptId })
   const [busy, setBusy]         = useState(false);
   const [result, setResult]     = useState<PracticeResult | null>(null);
   const [submittedAt, setSubmittedAt] = useState<Date | null>(null);
+  const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
   const startMs = useRef(Date.now());
   // Guard against duplicate starts (StrictMode double-invoke / remounts).
   const startedRef = useRef(false);
@@ -286,7 +297,7 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate, resumeAttemptId })
             </div>
             <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--fg-2)', fontSize: 13, lineHeight: 1.7 }}>
               <li>Read each question carefully before answering.</li>
-              <li>You can skip a question if you're unsure.</li>
+              <li>Questions must be answered in order — you can't skip ahead.</li>
               <li>Take your time — there's no clock running.</li>
             </ul>
           </div>
@@ -343,90 +354,114 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate, resumeAttemptId })
   };
 
   return (
-    <div className="page-enter">
-      <div className="quiz-head">
-        <div className="container">
-          <div className="quiz-head-row">
-            <button className="btn btn-ghost sm" onClick={requestLeave}>
-              <Icon name="arrowLeft" size={14} /> Quit
-            </button>
-            <button className="btn btn-ghost sm" onClick={handlePause}>
-              <Icon name="pause" size={14} /> Pause
-            </button>
-            <span className="q-pill"><span className="dot" /> Practice Olympiad</span>
-            <span className="q-counter">Question <strong>{idx + 1}</strong> / {questions.length}</span>
-            <div className="q-bar-wrap" style={{ minWidth: 120 }}>
-              <div className="q-bar" style={{ width: `${((idx + (locked ? 1 : 0)) / questions.length) * 100}%` }} />
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className="min-h-screen container" style={{ paddingTop: 24, paddingBottom: 40 }}>
+      <div className="max-w-3xl mx-auto">
+        <ExamHeader
+          title="Practice Olympiad"
+          subject="Mixed · all your subjects"
+          index={idx}
+          total={questions.length}
+          timeDisplay="No Time Limit – Self-Paced"
+          onExit={requestLeave}
+        />
 
-      <div className="quiz-body container">
-        <div className="quiz-grid" data-layout="split" key={idx}>
-          <div className="q-box">
-            <div className="q-tag">
-              <span>Mixed · all your subjects</span>
-              <span className="q-num">{String(idx + 1).padStart(2, '0')} / {String(questions.length).padStart(2, '0')}</span>
-            </div>
-            <div className="q-text">{cur.prompt}</div>
-            {locked && feedback?.feedback?.explanation && (
-              <div className="q-hint" style={{ marginTop: 20, padding: 16, background: 'var(--bg)', borderRadius: 10, borderLeft: '2px solid var(--brand)' }}>
-                <strong style={{ color: 'var(--brand)', fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Explanation</strong>
-                <span style={{ color: 'var(--fg-1)', fontSize: 14, lineHeight: 1.55 }}>{feedback.feedback.explanation}</span>
-              </div>
-            )}
+        <ExamProgressBar answered={idx + (locked ? 1 : 0)} total={questions.length} />
+
+        <QuestionPalette
+          total={questions.length}
+          currentIndex={idx}
+          answered={questions.map((_, i) => i < idx || (i === idx && locked))}
+          highestReached={idx}
+        />
+
+        <Card className="p-6 mb-4" key={idx}>
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-[11px] font-semibold tracking-[0.1em] uppercase text-fg3">
+              Question {idx + 1}
+            </span>
+            <Badge tone="neutral" dot={false} className="text-[10px]">Mixed</Badge>
           </div>
 
-          <div className="q-options" data-opt-style="card">
+          <p className="text-[15px] text-fg1 leading-relaxed mb-5 font-medium">{cur.prompt}</p>
+
+          <div className="space-y-2">
             {options.map(opt => {
               const isCorrect  = locked && opt.letter === correctLetter;
               const isSelected = opt.letter === selected;
-              let cls = 'q-option';
-              if (locked) { if (isCorrect) cls += ' correct'; else if (isSelected) cls += ' wrong'; }
-              else if (isSelected) cls += ' selected';
+              let cls = 'border-line bg-surface1 text-fg1 hover:border-brand/40 hover:bg-brand-soft/20';
+              if (locked) {
+                cls = isCorrect
+                  ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'
+                  : isSelected
+                    ? 'border-rose-500/50 bg-rose-500/10 text-rose-300'
+                    : 'border-line bg-surface1/50 text-fg3 opacity-60';
+              } else if (isSelected) {
+                cls = 'border-brand/60 bg-brand-soft text-brand';
+              }
               return (
-                <button key={opt.letter} className={cls} disabled={locked || busy} onClick={() => setSelected(opt.letter)}>
-                  <span className="o-key">{opt.letter}</span>
-                  <span className="o-text">{opt.text}</span>
+                <button
+                  key={opt.letter}
+                  onClick={() => !locked && !busy && setSelected(opt.letter)}
+                  disabled={locked || busy}
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border text-left transition active:scale-[0.99] disabled:cursor-default ${cls}`}
+                >
+                  <span className={`w-7 h-7 rounded-lg grid place-items-center text-[12px] font-display font-semibold shrink-0 border ${
+                    isSelected && !locked ? 'bg-brand text-brand-ink border-transparent' : 'bg-surface2 border-line text-fg3'
+                  }`}>
+                    {opt.letter}
+                  </span>
+                  <span className="text-[13.5px] flex-1">{opt.text}</span>
                   {locked && (isCorrect || isSelected) && (
-                    <span className="o-mark"><Icon name={isCorrect ? 'check' : 'x'} size={16} strokeWidth={2.5} /></span>
+                    isCorrect
+                      ? <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+                      : <XCircle size={16} className="text-rose-400 shrink-0" />
                   )}
                 </button>
               );
             })}
           </div>
+        </Card>
+
+        {locked && feedback?.feedback?.explanation && (
+          <Card className="p-4 mb-4">
+            <p className="text-[11px] font-semibold tracking-[0.1em] uppercase text-brand mb-2">Explanation</p>
+            <p className="text-[13px] text-fg2 leading-relaxed">{feedback.feedback.explanation}</p>
+          </Card>
+        )}
+
+        <div className="flex gap-3">
+          {!locked && (
+            <Button className="flex-1" disabled={selected == null || busy} onClick={() => submitAnswer(false)}>
+              {busy ? 'Saving…' : 'Submit Answer'}
+            </Button>
+          )}
+
+          {locked && idx + 1 < questions.length && (
+            <Button className="flex-1" icon={ChevronRight} onClick={next} disabled={busy}>
+              Next Question
+            </Button>
+          )}
+
+          {locked && idx + 1 >= questions.length && (
+            <Button className="flex-1" onClick={() => setConfirmSubmitOpen(true)} disabled={busy}>
+              {busy ? 'Submitting…' : 'Submit Test'}
+            </Button>
+          )}
         </div>
 
-        <div className="quiz-actions">
-          <span style={{ fontSize: 12, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)' }}>
-            {locked ? (feedback?.isCorrect ? 'Correct' : (!selected ? 'Skipped' : 'Wrong')) : 'Select an answer'}
-          </span>
-          <div className="spacer" />
-          {!locked && <button className="btn btn-ghost"   disabled={busy} onClick={() => submitAnswer(true)}>Skip</button>}
-          {!locked && <button className="btn btn-primary" disabled={selected == null || busy} onClick={() => submitAnswer(false)}>{busy ? 'Saving…' : 'Submit'}</button>}
-          {locked  && <button className="btn btn-primary" disabled={busy} onClick={next}>
-            {busy ? 'Submitting…' : idx + 1 < questions.length ? <>Next <Icon name="arrowRight" size={14} /></> : <>Finish <Icon name="check" size={14} strokeWidth={2.5} /></>}
-          </button>}
-        </div>
+        {/* ── Exit confirmation overlay — shown on the Exit button, browser
+               Back, refresh warning, and in-app nav clicks alike. ───────── */}
+        <LeaveExamDialog open={leaveConfirmOpen} onStay={stay} onLeave={confirmLeaveNow} />
+
+        <SubmitTestDialog
+          open={confirmSubmitOpen}
+          answered={idx + (locked ? 1 : 0)}
+          total={questions.length}
+          submitting={busy}
+          onKeepGoing={() => setConfirmSubmitOpen(false)}
+          onSubmit={() => { setConfirmSubmitOpen(false); next(); }}
+        />
       </div>
-
-      {/* ── Exit confirmation overlay — shown on the Quit button, browser
-             Back, refresh warning, and in-app nav clicks alike. ───────── */}
-      {leaveConfirmOpen && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border-1)', borderRadius: 16, padding: 24, maxWidth: 380, width: '100%' }}>
-            <h3 style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>Leave Olympiad?</h3>
-            <p style={{ fontSize: 13, color: 'var(--fg-3)', marginBottom: 20, lineHeight: 1.6 }}>
-              Are you sure you want to leave the quiz? Your progress will be saved, and you can resume it later.
-            </p>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={stay}>Continue Quiz</button>
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={confirmLeaveNow}>Leave Quiz</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
