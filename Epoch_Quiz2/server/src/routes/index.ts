@@ -18,6 +18,7 @@ import contactRoutes      from './contact.routes';
 import analyticsRoutes    from './analytics.routes';
 import bookmarkRoutes     from './bookmark.routes';
 import revisionRoutes     from './revision.routes';
+import studentPerformanceRoutes from './studentPerformance.routes';
 
 const router = new Router();
 
@@ -49,5 +50,6 @@ router.use('/contact',       contactRoutes);
 router.use('/analytics',     analyticsRoutes);
 router.use('/bookmarks',     bookmarkRoutes);
 router.use('/revision',      revisionRoutes);
+router.use('/admin-analytics', studentPerformanceRoutes);
 
 export default router;
