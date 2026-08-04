@@ -8,6 +8,10 @@ export function useClasses() {
   return useAsync<CatalogItem[]>(() => api.get('/catalog/classes'), []);
 }
 
+export function useBoards() {
+  return useAsync<CatalogItem[]>(() => api.get('/catalog/boards'), []);
+}
+
 export function useCatalogSeries() {
   return useAsync<CatalogItem[]>(() => api.get('/catalog/series'), []);
 }

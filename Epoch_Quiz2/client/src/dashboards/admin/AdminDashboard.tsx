@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, GraduationCap, ClipboardList, BookOpen, FileQuestion,
-  BarChart3, Settings as SettingsIcon, Home, Award, TrendingUp,
+  BarChart3, Settings as SettingsIcon, Home, Award, TrendingUp, Layers,
 } from 'lucide-react';
 import { Route, Routes, Navigate } from 'react-router-dom';
 import { DashboardLayout } from '../shared/DashboardLayout';
@@ -9,6 +9,7 @@ import { DashboardOverviewPage } from './pages/DashboardOverviewPage';
 // import { TeachersPage } from './pages/TeachersPage';
 import { StudentsPage } from './pages/StudentsPage';
 import { StudentPerformancePage } from './pages/StudentPerformancePage';
+import { SubjectAnalyticsPage } from './pages/SubjectAnalyticsPage';
 import { AssessmentsPage } from './pages/AssessmentsPage';
 import { AssessmentResultsPage } from './pages/AssessmentResultsPage';
 import { AssessmentQuestionBankPage } from './pages/AssessmentQuestionBankPage';
@@ -39,6 +40,7 @@ export function AdminDashboard() {
               // { to: '/admin/teachers', label: 'Teachers', icon: Users },
               { to: '/admin/students', label: 'Students', icon: GraduationCap },
               { to: '/admin/student-performance', label: 'Student Performance', icon: TrendingUp },
+              { to: '/admin/subject-analytics', label: 'Subject Analytics', icon: Layers },
               { to: '/admin/assessments', label: 'Assessments', icon: ClipboardList },
               { to: '/admin/assessment-results', label: 'Assessment Results', icon: Award },
               { to: '/admin/assessment-question-bank', label: 'Assessment Question Bank', icon: FileQuestion },
@@ -61,6 +63,7 @@ export function AdminDashboard() {
         {/* <Route path="teachers" element={<TeachersPage />} /> */}
         <Route path="students" element={<StudentsPage />} />
         <Route path="student-performance" element={<StudentPerformancePage />} />
+        <Route path="subject-analytics" element={<SubjectAnalyticsPage />} />
         <Route path="assessments" element={<AssessmentsPage />} />
         <Route path="assessment-results" element={<AssessmentResultsPage />} />
         <Route path="create-assessment" element={<CreateAssessmentPage />} />
