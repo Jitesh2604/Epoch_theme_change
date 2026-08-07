@@ -93,6 +93,9 @@ function ReviewItem({ a, idx }: { a: PracticeResultAnswer; idx: number }) {
       {open && (
         <div className="px-4 pb-4 pt-1 border-t border-line/50 space-y-3">
           <p className="text-[13px] text-fg1">{a.question.prompt}</p>
+          {a.question.promptImageUrl && (
+            <img src={a.question.promptImageUrl} alt="Question" className="max-h-56 rounded-lg object-contain border border-line" />
+          )}
 
           {/* Options with highlights */}
           {a.question.options.length > 0 && (
@@ -106,11 +109,16 @@ function ReviewItem({ a, idx }: { a: PracticeResultAnswer; idx: number }) {
                 if (isCorrect) cls = 'border-emerald-500/50 bg-emerald-500/8 text-emerald-300';
                 else if (isYours) cls = 'border-rose-500/50 bg-rose-500/8 text-rose-300';
                 return (
-                  <div key={opt.letter} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-[12.5px] ${cls}`}>
+                  <div key={opt.letter} className={`flex items-start gap-2.5 px-3 py-2 rounded-lg border text-[12.5px] ${cls}`}>
                     <span className="font-semibold w-5 shrink-0">{opt.letter}.</span>
-                    <span className="flex-1">{opt.text}</span>
-                    {isCorrect && <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />}
-                    {isYours && !isCorrect && <XCircle size={13} className="text-rose-400 shrink-0" />}
+                    <div className="flex-1 min-w-0">
+                      <span>{opt.text}</span>
+                      {opt.imageUrl && (
+                        <img src={opt.imageUrl} alt={`Option ${opt.letter}`} className="mt-1.5 max-h-24 rounded-md object-contain border border-line" />
+                      )}
+                    </div>
+                    {isCorrect && <CheckCircle2 size={13} className="text-emerald-400 shrink-0 mt-0.5" />}
+                    {isYours && !isCorrect && <XCircle size={13} className="text-rose-400 shrink-0 mt-0.5" />}
                   </div>
                 );
               })}
@@ -157,6 +165,9 @@ function ReviewItem({ a, idx }: { a: PracticeResultAnswer; idx: number }) {
             <div className="p-3 rounded-lg bg-surface1 border border-line text-[12px] text-fg2">
               <span className="font-semibold text-fg1">Explanation: </span>
               {a.question.explanation}
+              {a.question.explanationImageUrl && (
+                <img src={a.question.explanationImageUrl} alt="Explanation" className="mt-2 max-h-40 rounded-md object-contain border border-line" />
+              )}
             </div>
           )}
         </div>

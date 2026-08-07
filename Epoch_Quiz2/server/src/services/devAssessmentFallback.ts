@@ -3,34 +3,49 @@ import { isDev } from '../config';
 import { AssessmentStatus, Difficulty, QuestionType, Role, UserStatus } from '../lib/enums';
 import { ContentService, ContentMeta } from './content.service';
 import { logger } from '../utils/logger';
+import type { AssessmentApiDefinition } from './assessmentApiAdapter';
 
 /**
- * Development-only Assessment fallback — see AssessmentService.list, the
- * only caller. When a student's real, PUBLISHED, assigned-to-them assessment
- * list is empty, this creates 2-3 realistic dummy assessments per subject as
- * genuine DB rows with genuine gradable questions, so the whole Assessment
- * flow (list -> overview -> take -> result) is testable without an admin
- * hand-building fixtures first. Every write here is gated by `isDev` and
- * cannot run in production regardless of caller.
+ * Assessment generation/fallback — see AssessmentService.list, the only
+ * caller of the entry points below. AssessmentService.list source-selects
+ * between two generators, never both at once:
+ *   1. getAssessmentsFromApi() (assessmentApiAdapter.ts) returns data →
+ *      ensureApiSourcedAssessments materializes those definitions.
+ *   2. It returns nothing → ensureDevFallbackAssessments materializes the
+ *      generic dummy set below instead.
+ * Either way the result is a genuine DB row with genuine gradable questions,
+ * so the whole Assessment flow (list -> overview -> take -> result) works
+ * identically regardless of which generator produced it. Every write in this
+ * file is gated by `isDev` and cannot run in production regardless of caller.
  *
  * Identified (and kept idempotent) via a fixed marker in `description`
  * rather than a schema change — `Assessment` has no tags/flag field, and a
  * migration felt disproportionate for a dev convenience. The marker text is
  * deliberately readable (shown to the student on the overview page in dev),
- * so it's obvious at a glance that a given assessment is sample data, not a
- * real one from their school.
+ * so it's obvious at a glance that a given assessment is generated sample
+ * data, not a real one from their school.
  */
 export const DEV_FALLBACK_DESCRIPTION_MARKER = 'Auto-generated sample assessment for local development and testing.';
 
 /**
  * Same generated content as the auto fallback above, but for
  * `createVisibleDummyAssessments` — explicitly requested dev sample data
- * that's meant to sit *alongside* real assessments, not be hidden by
- * AssessmentService.list's "hide once real data exists" rule (which only
- * matches DEV_FALLBACK_DESCRIPTION_MARKER). Still clearly labeled as sample
- * data in the description text a student would read.
+ * that's meant to sit *alongside* real assessments, not be hidden by any
+ * "hide once real data exists" rule (this predates the current API/dummy
+ * source-selection architecture and is unrelated to it — see the function's
+ * own doc comment below). Still clearly labeled as sample data in the
+ * description text a student would read.
  */
 export const DEV_VISIBLE_SAMPLE_DESCRIPTION_MARKER = 'Sample assessment created for local development testing.';
+
+/**
+ * Stamped on assessments materialized from getAssessmentsFromApi()'s
+ * definitions (currently its dev-mock data — see assessmentApiAdapter.ts).
+ * Kept distinct from DEV_FALLBACK_DESCRIPTION_MARKER so AssessmentService.list
+ * can filter to exactly one source per request and never mix API-sourced
+ * with dummy-fallback assessments in the same response.
+ */
+export const API_SOURCED_DESCRIPTION_MARKER = 'Assessment sourced from the Assessment API for local testing.';
 
 const FALLBACK_SUBJECTS_MAX = 3;
 const QUESTIONS_PER_ASSESSMENT = 100;
@@ -175,24 +190,104 @@ async function resolveFallbackSubjects(): Promise<FallbackSubject[]> {
 
 // ── Shared creation core ─────────────────────────────────────────────────
 
-/**
- * Does the actual writing: resolves subjects, generates questions, creates
- * Assessment + AssessmentQuestionBank + AssessmentQuestion + direct
- * assignment rows. Used by both entry points below — the only difference
- * between them is which description marker gets stamped on (which in turn
- * decides whether AssessmentService.list's "hide once real data exists"
- * rule ever applies to the result).
- */
-async function createDummyAssessmentSet(studentId: string, descriptionMarker: string): Promise<number> {
+async function findFallbackCreator(): Promise<{ id: string } | null> {
   const creator = await prisma.user.findFirst({
     where: { role: { in: [Role.SUPER_ADMIN, Role.PUBLICATION_ADMIN, Role.CONTENT_MANAGER] } },
     orderBy: { createdAt: 'asc' },
     select: { id: true },
   });
   if (!creator) {
-    logger.warn('[dev-assessment-fallback] No admin user found to own dummy assessments — skipping (run `npm run seed` first).');
-    return 0;
+    logger.warn('[dev-assessment-fallback] No admin user found to own generated assessments — skipping (run `npm run seed` first).');
   }
+  return creator;
+}
+
+interface AssessmentDefinition {
+  title: string;
+  subjectId: string | null;
+  difficulty: Difficulty;
+  durationMinutes: number;
+  questionCount: number;
+}
+
+/**
+ * Writes one real, gradable Assessment: generates `def.questionCount`
+ * text-only questions (never image-bearing — see genArithmeticMcq/
+ * genTrueFalse/genFillInBlank above, none of which ever set an *ImageUrl
+ * field), creates the AssessmentQuestionBank + Assessment + AssessmentQuestion
+ * link rows, and assigns it directly to `studentId`. Shared by both the
+ * dummy fallback (definitions computed from resolveFallbackSubjects) and the
+ * API-sourced path (definitions supplied by getAssessmentsFromApi) — the
+ * only difference between the two is which `descriptionMarker` gets stamped
+ * on, and where the definition itself came from.
+ */
+async function materializeOneAssessment(
+  creatorId: string, studentId: string, def: AssessmentDefinition, descriptionMarker: string, seedOffset: number,
+): Promise<void> {
+  const dummyQuestions = buildQuestionSet(seedOffset, def.questionCount);
+
+  const questions = await prisma.$transaction(
+    dummyQuestions.map(q => prisma.assessmentQuestionBank.create({
+      data: {
+        type: QuestionType[q.type],
+        prompt: q.prompt,
+        optionA: q.optionA ?? null,
+        optionB: q.optionB ?? null,
+        optionC: q.optionC ?? null,
+        optionD: q.optionD ?? null,
+        correctAnswer: q.correctAnswer ?? null,
+        correctOptions: '[]',
+        correctBoolean: q.correctBoolean ?? null,
+        explanation: 'Sample explanation — dummy question generated for local development testing.',
+        marks: 1,
+        difficulty: def.difficulty,
+        tags: JSON.stringify(['dev-fallback']),
+        status: UserStatus.ACTIVE,
+        createdById: creatorId,
+      },
+    })),
+  );
+
+  const totalMarks = questions.length;
+  const assessment = await prisma.assessment.create({
+    data: {
+      title: def.title,
+      description: descriptionMarker,
+      duration: def.durationMinutes,
+      totalMarks,
+      passingMarks: Math.ceil(totalMarks / 2),
+      status: AssessmentStatus.PUBLISHED,
+      publishedAt: new Date(),
+      // Same default as a real assessment (assessment.service.ts's
+      // create()) — results stay hidden from the student until an admin
+      // explicitly publishes them via the normal publish/unpublish
+      // endpoints. Generated assessments must go through that same gate,
+      // not skip it, so the Result screen's "submitted, awaiting publish"
+      // state is actually exercised like it would be for real data instead
+      // of being bypassed.
+      resultsPublished: false,
+      subjectExternalId: def.subjectId,
+      createdById: creatorId,
+    },
+  });
+
+  await prisma.assessmentQuestion.createMany({
+    data: questions.map((q, i) => ({ assessmentId: assessment.id, questionId: q.id, order: i + 1 })),
+  });
+  await prisma.assessmentAssignedStudent.create({
+    data: { assessmentId: assessment.id, studentId },
+  });
+}
+
+/**
+ * Resolves fallback subjects, builds one AssessmentDefinition per subject ×
+ * assessmentCount, and materializes each. Only entry point that still uses
+ * resolveFallbackSubjects — the API-sourced path gets its definitions from
+ * the adapter instead.
+ */
+async function createDummyAssessmentSet(studentId: string, descriptionMarker: string): Promise<number> {
+  const creator = await findFallbackCreator();
+  if (!creator) return 0;
 
   const subjects = await resolveFallbackSubjects();
   let created = 0;
@@ -201,60 +296,11 @@ async function createDummyAssessmentSet(studentId: string, descriptionMarker: st
     for (let n = 1; n <= subject.assessmentCount; n++) {
       const difficulty = DIFFICULTIES[created % DIFFICULTIES.length];
       const duration = DURATIONS_MIN[created % DURATIONS_MIN.length];
-      const dummyQuestions = buildQuestionSet(created * 100, QUESTIONS_PER_ASSESSMENT);
-
-      const questions = await prisma.$transaction(
-        dummyQuestions.map(q => prisma.assessmentQuestionBank.create({
-          data: {
-            type: QuestionType[q.type],
-            prompt: q.prompt,
-            optionA: q.optionA ?? null,
-            optionB: q.optionB ?? null,
-            optionC: q.optionC ?? null,
-            optionD: q.optionD ?? null,
-            correctAnswer: q.correctAnswer ?? null,
-            correctOptions: '[]',
-            correctBoolean: q.correctBoolean ?? null,
-            explanation: 'Sample explanation — dummy question generated for local development testing.',
-            marks: 1,
-            difficulty,
-            tags: JSON.stringify(['dev-fallback']),
-            status: UserStatus.ACTIVE,
-            createdById: creator.id,
-          },
-        })),
+      await materializeOneAssessment(
+        creator.id, studentId,
+        { title: `${subject.name} Assessment ${n}`, subjectId: subject.id, difficulty, durationMinutes: duration, questionCount: QUESTIONS_PER_ASSESSMENT },
+        descriptionMarker, created * 100,
       );
-
-      const totalMarks = questions.length;
-      const assessment = await prisma.assessment.create({
-        data: {
-          title: `${subject.name} Assessment ${n}`,
-          description: descriptionMarker,
-          duration,
-          totalMarks,
-          passingMarks: Math.ceil(totalMarks / 2),
-          status: AssessmentStatus.PUBLISHED,
-          publishedAt: new Date(),
-          // Same default as a real assessment (assessment.service.ts's
-          // create()) — results stay hidden from the student until an admin
-          // explicitly publishes them via the normal publish/unpublish
-          // endpoints. Dummy assessments must go through that same gate,
-          // not skip it, so the Result screen's "submitted, awaiting
-          // publish" state is actually exercised like it would be for real
-          // data instead of being bypassed.
-          resultsPublished: false,
-          subjectExternalId: subject.id,
-          createdById: creator.id,
-        },
-      });
-
-      await prisma.assessmentQuestion.createMany({
-        data: questions.map((q, i) => ({ assessmentId: assessment.id, questionId: q.id, order: i + 1 })),
-      });
-      await prisma.assessmentAssignedStudent.create({
-        data: { assessmentId: assessment.id, studentId },
-      });
-
       created++;
     }
   }
@@ -285,6 +331,49 @@ export async function ensureDevFallbackAssessments(studentId: string): Promise<v
   const created = await createDummyAssessmentSet(studentId, DEV_FALLBACK_DESCRIPTION_MARKER);
   if (created > 0) {
     logger.info(`[dev-assessment-fallback] Created ${created} dummy assessment(s) (${QUESTIONS_PER_ASSESSMENT} questions each) for student ${studentId}.`);
+  }
+}
+
+/**
+ * Materializes each getAssessmentsFromApi() definition into a real, gradable
+ * Assessment assigned to `studentId` — the "API returned data" branch of
+ * AssessmentService.list's source selection, counterpart to
+ * ensureDevFallbackAssessments above. Idempotent per (student, title): a
+ * definition already materialized for this student is skipped rather than
+ * duplicated on every request.
+ *
+ * Question CONTENT is still generated locally (the adapter only supplies
+ * title/subject/difficulty/duration/count, not real questions — see
+ * assessmentApiAdapter.ts) — this whole function is scaffolding for local
+ * testing ahead of the real API, and its necessity should be reconsidered
+ * once that API can supply real question content directly.
+ */
+export async function ensureApiSourcedAssessments(studentId: string, definitions: AssessmentApiDefinition[]): Promise<void> {
+  if (!isDev) return;
+  if (!definitions.length) return;
+
+  const creator = await findFallbackCreator();
+  if (!creator) return;
+
+  const existingTitles = new Set(
+    (await prisma.assessment.findMany({
+      where: { description: { startsWith: API_SOURCED_DESCRIPTION_MARKER }, assignedStudents: { some: { studentId } } },
+      select: { title: true },
+    })).map(a => a.title),
+  );
+
+  let created = 0;
+  for (const def of definitions) {
+    if (existingTitles.has(def.title)) continue;
+    await materializeOneAssessment(
+      creator.id, studentId,
+      { title: def.title, subjectId: def.subjectExternalId, difficulty: def.difficulty, durationMinutes: def.durationMinutes, questionCount: def.questionCount },
+      API_SOURCED_DESCRIPTION_MARKER, 500_000 + created * 1000,
+    );
+    created++;
+  }
+  if (created > 0) {
+    logger.info(`[assessment-api-adapter] Materialized ${created} API-sourced assessment(s) for student ${studentId}.`);
   }
 }
 

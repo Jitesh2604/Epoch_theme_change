@@ -22,10 +22,16 @@ import type {
 
 // ── Types ─────────────────────────────────────────────────────────────
 
-/** Question fields needed to render/grade a quiz question. */
+/** Question fields needed to render/grade a quiz question. Image fields are
+ *  optional metadata on the same Question row (no separate image-question
+ *  model/table) — an image question is just a normal question where these
+ *  happen to be non-null; every selection query below already fetches full
+ *  rows, so nothing here changes which questions are eligible for selection. */
 interface QuizQuestion {
-  id: string; type: QuestionType; prompt: string;
+  id: string; type: QuestionType; prompt: string; promptImageUrl: string | null;
   optionA: string | null; optionB: string | null; optionC: string | null; optionD: string | null;
+  optionAImageUrl: string | null; optionBImageUrl: string | null;
+  optionCImageUrl: string | null; optionDImageUrl: string | null;
   correctAnswer: string | null; correctOptions: string; correctBoolean: boolean | null;
   marks: number; difficulty: string;
 }
@@ -42,6 +48,23 @@ export const GRADABLE_TYPES: QuestionType[] = [
   QuestionType.TRUE_FALSE, QuestionType.FILL_IN_BLANK,
 ];
 
+// Practice Olympiad no longer selects image-based questions at all — a
+// question counts as "image-type" if its prompt or any answer option carries
+// an image, regardless of question type. Explanation images are unaffected
+// (shown only after answering; they don't make the question itself an
+// image question). Every Practice/Mixed selection query below spreads this
+// in so a question with any image field set is never drawn, not just
+// deprioritized — no duplicate-avoidance tradeoff needed since the pool of
+// text-only questions is filtered up front, same as the existing
+// status/type/difficulty filters.
+const NO_IMAGE_QUESTION: Prisma.QuestionWhereInput = {
+  promptImageUrl: null,
+  optionAImageUrl: null,
+  optionBImageUrl: null,
+  optionCImageUrl: null,
+  optionDImageUrl: null,
+};
+
 function slugify(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'subject';
 }
@@ -55,21 +78,27 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
-function getOptions(q: Pick<QuizQuestion, 'optionA' | 'optionB' | 'optionC' | 'optionD'>): { letter: string; text: string }[] {
-  return ([['A', q.optionA], ['B', q.optionB], ['C', q.optionC], ['D', q.optionD]] as [string, string | null][])
+function getOptions(
+  q: Pick<QuizQuestion, 'optionA' | 'optionB' | 'optionC' | 'optionD' | 'optionAImageUrl' | 'optionBImageUrl' | 'optionCImageUrl' | 'optionDImageUrl'>,
+): { letter: string; text: string; imageUrl: string | null }[] {
+  return ([
+    ['A', q.optionA, q.optionAImageUrl], ['B', q.optionB, q.optionBImageUrl],
+    ['C', q.optionC, q.optionCImageUrl], ['D', q.optionD, q.optionDImageUrl],
+  ] as [string, string | null, string | null][])
     .filter(([, t]) => t)
-    .map(([l, t]) => ({ letter: l, text: t! }));
+    .map(([l, t, img]) => ({ letter: l, text: t!, imageUrl: img ?? null }));
 }
 
 function sanitizeQuestion(q: QuizQuestion, order: number) {
   return {
     order,
-    id:         q.id,
-    type:       q.type,
-    prompt:     q.prompt,
-    options:    (q.type === QuestionType.MCQ_SINGLE || q.type === QuestionType.MCQ_MULTIPLE) ? getOptions(q) : null,
-    marks:      q.marks,
-    difficulty: q.difficulty,
+    id:             q.id,
+    type:           q.type,
+    prompt:         q.prompt,
+    promptImageUrl: q.promptImageUrl ?? null,
+    options:        (q.type === QuestionType.MCQ_SINGLE || q.type === QuestionType.MCQ_MULTIPLE) ? getOptions(q) : null,
+    marks:          q.marks,
+    difficulty:     q.difficulty,
   };
 }
 
@@ -294,6 +323,7 @@ async function pickMixedQuestions(
   const scopeAnd = classBoardAnd(classExternalId, board);
   const baseWhere = {
     status: 'ACTIVE' as const, type: { in: GRADABLE_TYPES }, difficulty,
+    ...NO_IMAGE_QUESTION,
     ...(scopeAnd.length && { AND: scopeAnd }),
   };
 
@@ -332,8 +362,10 @@ async function buildResult(attemptId: string) {
     include: {
       question: {
         select: {
-          type: true, prompt: true, marks: true, difficulty: true, explanation: true,
+          type: true, prompt: true, promptImageUrl: true, marks: true, difficulty: true,
+          explanation: true, explanationImageUrl: true,
           optionA: true, optionB: true, optionC: true, optionD: true,
+          optionAImageUrl: true, optionBImageUrl: true, optionCImageUrl: true, optionDImageUrl: true,
           correctAnswer: true, correctOptions: true, correctBoolean: true,
           // Feature 12 (Practice Review & Mistake Analysis) — per-question
           // subject, needed for the Review screen's Subject filter on Mixed/
@@ -404,12 +436,14 @@ async function buildResult(attemptId: string) {
         correctBoolean: a.question.correctBoolean,
       },
       question: {
-        prompt:      a.question.prompt,
-        options:     getOptions(a.question),
-        marks:       a.question.marks,
-        difficulty:  a.question.difficulty,
-        explanation: a.question.explanation,
-        subject:     a.question.subjectExternalId
+        prompt:              a.question.prompt,
+        promptImageUrl:      a.question.promptImageUrl ?? null,
+        options:             getOptions(a.question),
+        marks:               a.question.marks,
+        difficulty:          a.question.difficulty,
+        explanation:         a.question.explanation,
+        explanationImageUrl: a.question.explanationImageUrl ?? null,
+        subject:             a.question.subjectExternalId
           ? { id: a.question.subjectExternalId, name: subjectNames.get(a.question.subjectExternalId) ?? UNKNOWN_SUBJECT_NAME }
           : null,
       },
@@ -544,6 +578,7 @@ export const QuizService = {
       where: {
         subjectExternalId: input.subjectExternalId, status: 'ACTIVE', type: { in: GRADABLE_TYPES },
         difficulty: input.difficulty,
+        ...NO_IMAGE_QUESTION,
         ...(scopeAnd.length && { AND: scopeAnd }),
       },
       select: { marks: true },
@@ -589,6 +624,7 @@ export const QuizService = {
     const allQuestions = await prisma.question.findMany({
       where: {
         subjectExternalId: input.subjectExternalId, status: 'ACTIVE', type: { in: GRADABLE_TYPES },
+        ...NO_IMAGE_QUESTION,
         ...(input.difficulty && { difficulty: input.difficulty }),
         ...(input.chapterExternalId && { chapterExternalId: input.chapterExternalId }),
         ...(scopeAnd.length && { AND: scopeAnd }),
@@ -720,11 +756,12 @@ export const QuizService = {
     return {
       ok: true, isCorrect, marksAwarded,
       feedback: {
-        correctAnswer:  question.correctAnswer,
-        correctOptions: parseStrArr(question.correctOptions),
-        correctBoolean: question.correctBoolean,
-        explanation:    question.explanation,
-        options:        getOptions(question),
+        correctAnswer:       question.correctAnswer,
+        correctOptions:      parseStrArr(question.correctOptions),
+        correctBoolean:      question.correctBoolean,
+        explanation:         question.explanation,
+        explanationImageUrl: question.explanationImageUrl ?? null,
+        options:             getOptions(question),
       },
     };
   },
@@ -880,9 +917,11 @@ export const QuizService = {
       include: {
         question: {
           select: {
-            id: true, type: true, prompt: true, marks: true, difficulty: true,
+            id: true, type: true, prompt: true, promptImageUrl: true, marks: true, difficulty: true,
             optionA: true, optionB: true, optionC: true, optionD: true,
-            correctAnswer: true, correctOptions: true, correctBoolean: true, explanation: true,
+            optionAImageUrl: true, optionBImageUrl: true, optionCImageUrl: true, optionDImageUrl: true,
+            correctAnswer: true, correctOptions: true, correctBoolean: true,
+            explanation: true, explanationImageUrl: true,
           },
         },
       },
@@ -929,11 +968,12 @@ export const QuizService = {
         isCorrect:      a.isCorrect,
         marksAwarded:   a.marksAwarded,
         feedback: Boolean(a.isSubmitted) ? {
-          correctAnswer:  a.question.correctAnswer,
-          correctOptions: parseStrArr(a.question.correctOptions),
-          correctBoolean: a.question.correctBoolean,
-          explanation:    a.question.explanation,
-          options:        getOptions(a.question),
+          correctAnswer:       a.question.correctAnswer,
+          correctOptions:      parseStrArr(a.question.correctOptions),
+          correctBoolean:      a.question.correctBoolean,
+          explanation:         a.question.explanation,
+          explanationImageUrl: a.question.explanationImageUrl ?? null,
+          options:             getOptions(a.question),
         } : null,
       })),
     };

@@ -14,13 +14,16 @@ export interface PracticeSubject {
 }
 
 export interface PracticeQuestion {
-  order:      number;
-  id:         string;
-  type:       'MCQ_SINGLE' | 'MCQ_MULTIPLE' | 'TRUE_FALSE' | 'FILL_IN_BLANK';
-  prompt:     string;
-  options:    { letter: string; text: string }[] | null;
-  marks:      number;
-  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+  order:          number;
+  id:             string;
+  type:           'MCQ_SINGLE' | 'MCQ_MULTIPLE' | 'TRUE_FALSE' | 'FILL_IN_BLANK';
+  prompt:         string;
+  /** Present when this question has an image alongside/instead of prompt
+   *  text — same Question row, no separate image-question type. */
+  promptImageUrl: string | null;
+  options:        { letter: string; text: string; imageUrl: string | null }[] | null;
+  marks:          number;
+  difficulty:     'EASY' | 'MEDIUM' | 'HARD';
 }
 
 export interface PracticeAttemptData {
@@ -78,11 +81,12 @@ export interface SaveAnswerFeedback {
   isCorrect:    boolean | null;
   marksAwarded: number;
   feedback: {
-    correctAnswer:  string | null;
-    correctOptions: string[];
-    correctBoolean: boolean | null;
-    explanation:    string | null;
-    options:        { letter: string; text: string }[];
+    correctAnswer:       string | null;
+    correctOptions:      string[];
+    correctBoolean:      boolean | null;
+    explanation:         string | null;
+    explanationImageUrl: string | null;
+    options:             { letter: string; text: string; imageUrl: string | null }[];
   };
 }
 
@@ -108,16 +112,18 @@ export interface PracticeResultAnswer {
     correctBoolean: boolean | null;
   };
   question: {
-    prompt:      string;
-    options:     { letter: string; text: string }[];
-    marks:       number;
-    difficulty:  string;
-    explanation: string | null;
+    prompt:              string;
+    promptImageUrl:      string | null;
+    options:             { letter: string; text: string; imageUrl: string | null }[];
+    marks:               number;
+    difficulty:          string;
+    explanation:         string | null;
+    explanationImageUrl: string | null;
     /** Feature 12 (Practice Review & Mistake Analysis) — per-question
      *  subject, needed for the Review screen's Subject filter on Mixed/Retry
      *  attempts, which span more than one subject. Single-subject Practice
      *  attempts have the same subject on every question. */
-    subject:     { id: string; name: string } | null;
+    subject:             { id: string; name: string } | null;
   };
 }
 

@@ -7,7 +7,11 @@ import { pageMeta, pageToSkipTake } from '../utils/pagination';
 import { ContentService, ContentMeta, UNKNOWN_CLASS_NAME } from './content.service';
 import { SettingsService } from './settings.service';
 import { isDev } from '../config';
-import { DEV_FALLBACK_DESCRIPTION_MARKER, ensureDevFallbackAssessments } from './devAssessmentFallback';
+import {
+  DEV_FALLBACK_DESCRIPTION_MARKER, API_SOURCED_DESCRIPTION_MARKER,
+  ensureDevFallbackAssessments, ensureApiSourcedAssessments,
+} from './devAssessmentFallback';
+import { getAssessmentsFromApi } from './assessmentApiAdapter';
 import type {
   CreateAssessmentInput,
   UpdateAssessmentInput,
@@ -234,37 +238,29 @@ export const AssessmentService = {
     if (search) and.push({ OR: [{ title: { contains: search } }, { description: { contains: search } }] });
 
     if (actor.role === Role.STUDENT) {
-      // Students only see PUBLISHED assessments assigned to them (directly or via their class).
-      const classId = await getStudentClassId(actor.id);
-      const visibility: Prisma.AssessmentWhereInput = {
-        OR: [
-          { assignedStudents: { some: { studentId: actor.id } } },
-          ...(classId ? [{ assignedClasses: { some: { classExternalId: classId } } }] : []),
-        ],
-      };
-      where.status = AssessmentStatus.PUBLISHED;
-      and.push(visibility);
+      // Source selection (replaces the old "seed dummy data once the DB has
+      // nothing real" trigger): ask the Assessment API adapter first — a
+      // stub today, a real external call once one exists (see
+      // assessmentApiAdapter.ts, the only file that should need to change
+      // for that swap). If it returns definitions, materialize/show ONLY
+      // those; otherwise fall back to the generic dummy set. The two
+      // sources are never mixed in one response — each request resolves to
+      // exactly one description marker, filtered below.
+      const apiDefinitions = await getAssessmentsFromApi(actor);
+      let sourceMarker = DEV_FALLBACK_DESCRIPTION_MARKER;
 
-      // Dev-only fallback: if this student has no real assessment yet, seed
-      // a few realistic dummy ones so the module is testable without an
-      // admin hand-building fixtures. The moment a real one becomes visible
-      // to them, this branch stops firing and any leftover dummy rows are
-      // excluded below — see devAssessmentFallback.ts.
-      if (isDev) {
-        const hasReal = await prisma.assessment.count({
-          where: {
-            status: AssessmentStatus.PUBLISHED,
-            NOT: { description: { startsWith: DEV_FALLBACK_DESCRIPTION_MARKER } },
-            ...visibility,
-          },
-        }) > 0;
-
-        if (hasReal) {
-          and.push({ NOT: { description: { startsWith: DEV_FALLBACK_DESCRIPTION_MARKER } } });
-        } else {
-          await ensureDevFallbackAssessments(actor.id);
-        }
+      if (apiDefinitions.length > 0) {
+        await ensureApiSourcedAssessments(actor.id, apiDefinitions);
+        sourceMarker = API_SOURCED_DESCRIPTION_MARKER;
+      } else if (isDev) {
+        await ensureDevFallbackAssessments(actor.id);
       }
+
+      where.status = AssessmentStatus.PUBLISHED;
+      and.push({
+        assignedStudents: { some: { studentId: actor.id } },
+        description: { startsWith: sourceMarker },
+      });
     } else if (isAdminRole(actor.role) && mine) {
       where.createdById = actor.id;
     }

@@ -28,13 +28,14 @@ interface AnswerState {
 }
 
 interface FeedbackState {
-  isCorrect:      boolean | null;
-  marksAwarded:   number;
-  correctAnswer?:  string | null;
-  correctOptions?: string[];
-  correctBoolean?: boolean | null;
-  explanation?:    string | null;
-  options:         { letter: string; text: string }[];
+  isCorrect:            boolean | null;
+  marksAwarded:         number;
+  correctAnswer?:       string | null;
+  correctOptions?:      string[];
+  correctBoolean?:      boolean | null;
+  explanation?:         string | null;
+  explanationImageUrl?: string | null;
+  options:              { letter: string; text: string; imageUrl: string | null }[];
 }
 
 // ── Difficulty badge ──────────────────────────────────────────────
@@ -101,7 +102,7 @@ function useCountdown(startTime: string | undefined, timeLimitSec: number | null
 function OptionButton({
   option, selected, feedback, submitted, onClick,
 }: {
-  option:    { letter: string; text: string };
+  option:    { letter: string; text: string; imageUrl?: string | null };
   selected:  boolean;
   feedback:  FeedbackState | null;
   submitted: boolean;
@@ -127,19 +128,24 @@ function OptionButton({
     <button
       onClick={onClick}
       disabled={submitted}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition active:scale-[0.99] disabled:cursor-default ${cls}`}
+      className={`w-full flex items-start gap-3 px-4 py-3 rounded-xl border text-left transition active:scale-[0.99] disabled:cursor-default ${cls}`}
     >
-      <span className={`w-7 h-7 rounded-lg grid place-items-center text-[12px] font-display font-semibold shrink-0 border ${
+      <span className={`w-7 h-7 rounded-lg grid place-items-center text-[12px] font-display font-semibold shrink-0 border mt-0.5 ${
         selected && !submitted ? 'bg-brand text-brand-ink border-transparent' : 'bg-surface2 border-line text-fg3'
       }`}>
         {option.letter}
       </span>
-      <span className="text-[13.5px] flex-1">{option.text}</span>
+      <div className="flex-1 min-w-0">
+        <span className="text-[13.5px]">{option.text}</span>
+        {option.imageUrl && (
+          <img src={option.imageUrl} alt={`Option ${option.letter}`} className="mt-2 max-h-32 rounded-lg object-contain border border-line" />
+        )}
+      </div>
       {submitted && feedback && (
         feedback.correctAnswer === option.letter || (feedback.correctOptions ?? []).includes(option.letter)
-          ? <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+          ? <CheckCircle2 size={16} className="text-emerald-400 shrink-0 mt-0.5" />
           : selected
-            ? <XCircle size={16} className="text-rose-400 shrink-0" />
+            ? <XCircle size={16} className="text-rose-400 shrink-0 mt-0.5" />
             : null
       )}
     </button>
@@ -471,7 +477,10 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
             </Badge>
           </div>
 
-          <p className="text-[15px] text-fg1 leading-relaxed mb-5 font-medium">{q.prompt}</p>
+          <p className="text-[15px] text-fg1 leading-relaxed mb-3 font-medium">{q.prompt}</p>
+          {q.promptImageUrl && (
+            <img src={q.promptImageUrl} alt="Question" className="mb-5 max-h-64 rounded-xl object-contain border border-line" />
+          )}
 
           {/* MCQ_SINGLE / MCQ_MULTIPLE */}
           {(q.type === 'MCQ_SINGLE' || q.type === 'MCQ_MULTIPLE') && (
@@ -593,6 +602,9 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
               <p className="text-[12px] text-fg3 italic border-t border-line/50 pt-2 mt-2">
                 {feedback.explanation}
               </p>
+            )}
+            {feedback.explanationImageUrl && (
+              <img src={feedback.explanationImageUrl} alt="Explanation" className="mt-2 max-h-48 rounded-lg object-contain border border-line" />
             )}
           </Card>
         )}

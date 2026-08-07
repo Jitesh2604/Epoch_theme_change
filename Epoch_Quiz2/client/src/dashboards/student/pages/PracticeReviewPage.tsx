@@ -87,6 +87,9 @@ function QuestionReviewCard({ answer, timing, isBookmarked, onToggleBookmark }: 
       </div>
 
       <p className="text-[13.5px] text-fg1 leading-relaxed mb-3">{answer.question.prompt}</p>
+      {answer.question.promptImageUrl && (
+        <img src={answer.question.promptImageUrl} alt="Question" className="mb-3 max-h-56 rounded-lg object-contain border border-line" />
+      )}
 
       {answer.question.options.length > 0 && (
         <div className="space-y-1.5 mb-3">
@@ -97,11 +100,16 @@ function QuestionReviewCard({ answer, timing, isBookmarked, onToggleBookmark }: 
             if (isCorrectOpt) cls = 'border-emerald-400/50 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400';
             else if (isYourOpt) cls = 'border-rose-400/50 bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400';
             return (
-              <div key={opt.letter} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border text-[12.5px] ${cls}`}>
+              <div key={opt.letter} className={`flex items-start gap-2.5 px-3 py-2 rounded-lg border text-[12.5px] ${cls}`}>
                 <span className="font-semibold w-5 shrink-0">{opt.letter}.</span>
-                <span className="flex-1">{opt.text}</span>
-                {isCorrectOpt && <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />}
-                {isYourOpt && !isCorrectOpt && <XCircle size={13} className="text-rose-500 shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <span>{opt.text}</span>
+                  {opt.imageUrl && (
+                    <img src={opt.imageUrl} alt={`Option ${opt.letter}`} className="mt-1.5 max-h-24 rounded-md object-contain border border-line" />
+                  )}
+                </div>
+                {isCorrectOpt && <CheckCircle2 size={13} className="text-emerald-500 shrink-0 mt-0.5" />}
+                {isYourOpt && !isCorrectOpt && <XCircle size={13} className="text-rose-500 shrink-0 mt-0.5" />}
               </div>
             );
           })}
@@ -142,6 +150,9 @@ function QuestionReviewCard({ answer, timing, isBookmarked, onToggleBookmark }: 
       {answer.question.explanation && (
         <div className="p-3 rounded-lg bg-surface1 border border-line text-[12px] text-fg2">
           <span className="font-semibold text-fg1">Explanation: </span>{answer.question.explanation}
+          {answer.question.explanationImageUrl && (
+            <img src={answer.question.explanationImageUrl} alt="Explanation" className="mt-2 max-h-40 rounded-md object-contain border border-line" />
+          )}
         </div>
       )}
     </Card>
