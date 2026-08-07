@@ -17,7 +17,6 @@ const prisma = new PrismaClient();
 const PASSWORD = process.env.E2E_PASSWORD ?? 'TestPass@123';
 
 const USERS: Array<{ email: string; name: string; role: Role; avatarHue: number }> = [
-  { email: process.env.E2E_TEACHER_EMAIL ?? 'test-teacher@epochquiz.test', name: 'E2E Teacher', role: Role.TEACHER, avatarHue: 150 },
   { email: process.env.E2E_STUDENT_EMAIL ?? 'test-student@epochquiz.test', name: 'E2E Student', role: Role.STUDENT, avatarHue: 250 },
 ];
 

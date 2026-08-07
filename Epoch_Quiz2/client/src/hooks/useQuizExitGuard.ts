@@ -58,7 +58,6 @@ export function useQuizExitGuard({ active, onConfirmLeave }: UseQuizExitGuardOpt
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, [active]);
-
   // In-app link clicks — sidebar nav (dashboard) and nav bar (marketing
   // site) both render real <a> tags, so a capture-phase click listener
   // intercepts either regardless of which router is in play.

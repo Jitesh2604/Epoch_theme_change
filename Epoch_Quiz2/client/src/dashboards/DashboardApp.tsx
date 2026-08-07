@@ -1,9 +1,7 @@
-import { useEffect, useState, Component, type ReactNode, type ErrorInfo } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { useCallback, useEffect, useState, Component, type ReactNode, type ErrorInfo } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { RoleSelectionPage } from './RoleSelectionPage';
 import { AdminDashboard } from './admin/AdminDashboard';
-// Teacher module is temporarily hidden — see DashboardApp route below.
-// import { TeacherDashboard } from './teacher/TeacherDashboard';
 import { MyAssessmentsPage } from './student/pages/MyAssessmentsPage';
 import { AssessmentOverviewPage } from './student/pages/AssessmentOverviewPage';
 import { AssessmentTakePage } from './student/pages/AssessmentTakePage';
@@ -16,6 +14,36 @@ import { ProfilePage } from './student/pages/ProfilePage';
 import { RequireRole } from './shared/RequireRole';
 import { getRole, pathForRole, signOut } from './shared/auth';
 import { refreshSession, getRefreshToken } from '../lib/authStore';
+import { NavBar } from '../components/layout/NavBar';
+
+/**
+ * The same top NavBar shown on the marketing-site root (Home, Play Olympiad,
+ * FAQ) — reused here so students see one consistent navbar across the whole
+ * app, not just a brand-only header. NavBar's own Assessment/Results/
+ * Analytics/Leaderboard/Profile links already use real `<a href>`s (not the
+ * hash-router's navigate()) since those routes live in this separate
+ * DashboardApp root — see NavBar.tsx's "Cross-app hard navigation" comments.
+ * `navigate` here covers the remaining links (Home, Play Olympiad, FAQ,
+ * About, Contact, Login, Sign up, and the logout redirect), which need a
+ * real navigation back to the marketing-site root the same way, since a
+ * hash change alone wouldn't unmount this root.
+ *
+ * Deliberately NOT applied to the exam-taking route itself
+ * (/assessment/take/:submissionId, see the Routes tree below) — that page
+ * stays completely chrome-free for a distraction-free exam, the same way
+ * Practice/Olympiad's exam-mode hides the marketing-site NavBar only while
+ * `phase === 'playing'` (see useExamMode.ts).
+ */
+function StudentLayout() {
+  const { pathname } = useLocation();
+  const navigate = useCallback((path: string) => { window.location.href = '/#/' + path; }, []);
+  return (
+    <>
+      <NavBar route={pathname.replace(/^\//, '')} navigate={navigate} />
+      <Outlet />
+    </>
+  );
+}
 
 class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -41,9 +69,12 @@ class DashboardErrorBoundary extends Component<{ children: ReactNode }, { error:
 
 function RootFallback() {
   const role = getRole();
-  // Teacher module is hidden and has no route; clear any stale locally-stored
-  // 'teacher' role (e.g. from before this change) instead of redirect-looping.
-  if (role === 'teacher') {
+  // The Teacher role was removed and has no route; clear any stale
+  // locally-stored 'teacher' value (from before the removal) instead of
+  // redirect-looping. Compared as a string since the Role type itself no
+  // longer includes 'teacher' — a real browser's localStorage isn't bound
+  // by that type at runtime.
+  if ((role as string) === 'teacher') {
     signOut();
     return <Navigate to="/select-role" replace />;
   }
@@ -79,30 +110,32 @@ export function DashboardApp() {
       <Routes>
         <Route path="/select-role" element={<RoleSelectionPage />} />
         <Route path="/admin/*"   element={<RequireRole role="admin"><AdminDashboard /></RequireRole>} />
-        {/* Teacher module is temporarily hidden — re-add this route (and the
-            TeacherDashboard import above) to bring it back. */}
-        {/* <Route path="/teacher/*" element={<RequireRole role="teacher"><TeacherDashboard /></RequireRole>} /> */}
 
         {/* There is no Student Dashboard — these are flat, top-level
             standalone routes (not nested under a "/student" prefix, which
-            would itself imply a dashboard area). Each renders its own
-            minimal shell (StandaloneHeader, or nothing at all for the exam
-            itself) instead of DashboardLayout's sidebar/topbar. Reachable
-            from the main site navbar's Assessment/Results/Leaderboard
-            links and the profile menu's Profile link — see NavBar.tsx.
-            /assessment is the restored My Assessments list (Available/
-            Completed tabs) — students pick an assessment here rather than
-            being auto-redirected into the single current one. */}
+            would itself imply a dashboard area), not DashboardLayout's
+            sidebar/topbar. All but the exam-taking screen itself render
+            under StudentLayout, which shows the same top NavBar as the
+            marketing-site root — see StudentLayout above. /assessment is
+            the restored My Assessments list (Available/Completed tabs) —
+            students pick an assessment here rather than being
+            auto-redirected into the single current one. */}
         <Route element={<RequireRole role="student"><Outlet /></RequireRole>}>
-          <Route path="/assessment"                     element={<MyAssessmentsPage />} />
-          <Route path="/assessment/:assessmentId"        element={<AssessmentOverviewPage />} />
-          <Route path="/assessment/take/:submissionId"   element={<AssessmentTakePage />} />
-          <Route path="/assessment/result/:submissionId" element={<AssessmentResultPage />} />
-          <Route path="/results"     element={<ResultsPage />} />
-          <Route path="/analytics"   element={<AnalyticsPage />} />
-          <Route path="/review/:attemptId" element={<PracticeReviewPage />} />
-          <Route path="/leaderboard" element={<LeaderboardPage />} />
-          <Route path="/profile"     element={<ProfilePage />} />
+          {/* No navbar during the exam itself — distraction-free, same
+              principle as Practice/Olympiad's exam-mode hiding (see
+              StudentLayout's doc comment above). */}
+          <Route path="/assessment/take/:submissionId" element={<AssessmentTakePage />} />
+
+          <Route element={<StudentLayout />}>
+            <Route path="/assessment"                     element={<MyAssessmentsPage />} />
+            <Route path="/assessment/:assessmentId"        element={<AssessmentOverviewPage />} />
+            <Route path="/assessment/result/:submissionId" element={<AssessmentResultPage />} />
+            <Route path="/results"     element={<ResultsPage />} />
+            <Route path="/analytics"   element={<AnalyticsPage />} />
+            <Route path="/review/:attemptId" element={<PracticeReviewPage />} />
+            <Route path="/leaderboard" element={<LeaderboardPage />} />
+            <Route path="/profile"     element={<ProfilePage />} />
+          </Route>
         </Route>
 
         <Route path="*" element={<RootFallback />} />

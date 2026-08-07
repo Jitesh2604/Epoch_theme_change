@@ -15,8 +15,11 @@ function round(n: number): number {
 export type TrendDirection = 'improved' | 'declined' | 'consistent';
 
 // A small dead-zone around zero — noise between two single data points
-// shouldn't be reported as a real trend either way.
-const TREND_DEAD_ZONE = 3;
+// shouldn't be reported as a real trend either way. Exported since Feature 8
+// (classAnalyticsAggregation.ts) reuses the same dead-zone when banding a
+// class's mean trend delta, rather than picking a second, possibly-drifting
+// value.
+export const TREND_DEAD_ZONE = 3;
 
 export interface AccuracyRatios {
   correctPercent: number;

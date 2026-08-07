@@ -14,7 +14,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   assessmentId: string;
-  /** Called with the IDs of questions the teacher confirmed to add */
+  /** Called with the IDs of questions the admin confirmed to add */
   onAdd: (questionIds: string[]) => Promise<void>;
 }
 

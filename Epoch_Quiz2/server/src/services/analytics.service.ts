@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { AttemptStatus, QuizType, QuestionType } from '../lib/enums';
-import { ContentMeta } from './content.service';
+import { ContentMeta, UNKNOWN_SUBJECT_NAME, UNKNOWN_TOPIC_NAME } from './content.service';
 
 /**
  * Student Analytics — Feature 1: Overall Performance Dashboard.
@@ -134,7 +134,7 @@ export const AnalyticsService = {
     // rather than misattributed to one subject.
     const subjectNames = await ContentMeta.subjects();
     const sessionLabel = (r: PracticeAttemptRow) => r.quiz.subjectExternalId
-      ? (subjectNames.get(r.quiz.subjectExternalId) ?? r.quiz.subjectExternalId)
+      ? (subjectNames.get(r.quiz.subjectExternalId) ?? UNKNOWN_SUBJECT_NAME)
       : 'Mixed Subjects Practice';
     const toSession = (r: PracticeAttemptRow) => ({ subjectLabel: sessionLabel(r), date: r.startTime, durationSec: r.timeTakenSec });
     const longestSession  = toSession(rows.reduce((a, b) => (b.timeTakenSec > a.timeTakenSec ? b : a)));
@@ -366,7 +366,7 @@ export const AnalyticsService = {
 
       return {
         subjectId:   subjectExternalId,
-        subjectName: subjectNames.get(subjectExternalId) ?? subjectExternalId,
+        subjectName: subjectNames.get(subjectExternalId) ?? UNKNOWN_SUBJECT_NAME,
         totalAttempts,
         totalQuestionsAttempted,
         totalCorrect,
@@ -386,6 +386,84 @@ export const AnalyticsService = {
     });
 
     return result;
+  },
+
+  /**
+   * Feature 2b: Subject × Question-Type Performance.
+   *
+   * Question-type accuracy broken down *within* each subject (e.g. "Maths →
+   * MCQ: 88%, True/False: 76%"), so it can be shown inside each Subject-wise
+   * Performance card instead of as its own cross-subject section (Feature 5
+   * below stays a genuinely different, subject-agnostic aggregate — used
+   * elsewhere, e.g. AI Learning Insights — not superseded by this).
+   *
+   * Same per-(dimension, attempt) slicing as getSubjectBreakdown/
+   * getQuestionTypeBreakdown, just keyed on the (subject, type) pair
+   * together so a Mixed attempt's questions land in the right subject *and*
+   * the right type, never blended across subjects. A (subject, type)
+   * combination only appears in the result if the student has actually
+   * answered at least one question of that type in that subject — no
+   * zero-filled/invented rows.
+   */
+  async getSubjectQuestionTypeBreakdown(studentId: string) {
+    const rows = await fetchPracticeAnswerRows(studentId);
+
+    interface SubjectTypeAttemptSlice {
+      subjectExternalId: string;
+      type: QuestionType;
+      attemptId: string;
+      correct: number; wrong: number; skipped: number;
+    }
+    const slices = new Map<string, SubjectTypeAttemptSlice>();
+    for (const r of rows) {
+      const subjectExternalId = r.question.subjectExternalId;
+      if (subjectExternalId === null) continue; // defensive — shouldn't occur for Practice/Mixed
+      const type = r.question.type;
+      const key = `${subjectExternalId}::${type}::${r.attemptId}`;
+      let slice = slices.get(key);
+      if (!slice) {
+        slice = { subjectExternalId, type, attemptId: r.attemptId, correct: 0, wrong: 0, skipped: 0 };
+        slices.set(key, slice);
+      }
+      if (r.isSkipped) slice.skipped += 1;
+      else if (r.isCorrect === true) slice.correct += 1;
+      else if (r.isCorrect === false) slice.wrong += 1;
+    }
+
+    // Group the per-(subject,type,attempt) slices by (subject,type).
+    const bySubjectType = new Map<string, SubjectTypeAttemptSlice[]>();
+    for (const slice of slices.values()) {
+      const key = `${slice.subjectExternalId}::${slice.type}`;
+      const list = bySubjectType.get(key);
+      if (list) list.push(slice);
+      else bySubjectType.set(key, [slice]);
+    }
+
+    if (!bySubjectType.size) return [];
+
+    const subjectNames = await ContentMeta.subjects();
+
+    return [...bySubjectType.values()].map((typeSlices) => {
+      const { subjectExternalId, type } = typeSlices[0];
+      const totalCorrect = typeSlices.reduce((s, x) => s + x.correct, 0);
+      const totalWrong   = typeSlices.reduce((s, x) => s + x.wrong, 0);
+      const totalSkipped = typeSlices.reduce((s, x) => s + x.skipped, 0);
+      const totalQuestionsAttempted = totalCorrect + totalWrong + totalSkipped;
+
+      const answered = totalCorrect + totalWrong;
+      const accuracyPercent = answered > 0 ? round((totalCorrect / answered) * 100) : 0;
+
+      return {
+        subjectId: subjectExternalId,
+        subjectName: subjectNames.get(subjectExternalId) ?? UNKNOWN_SUBJECT_NAME,
+        questionType: type,
+        totalQuestionsAttempted,
+        totalCorrect,
+        totalWrong,
+        totalSkipped,
+        accuracyPercent,
+      };
+    });
   },
 
   /**
@@ -594,9 +672,9 @@ export const AnalyticsService = {
 
       return {
         topicId: chapterExternalId,
-        topicName: chapterNames.get(chapterExternalId) ?? chapterExternalId,
+        topicName: chapterNames.get(chapterExternalId) ?? UNKNOWN_TOPIC_NAME,
         subjectId: subjectExternalId,
-        subjectName: subjectExternalId ? (subjectNames.get(subjectExternalId) ?? subjectExternalId) : 'Unknown Subject',
+        subjectName: subjectExternalId ? (subjectNames.get(subjectExternalId) ?? UNKNOWN_SUBJECT_NAME) : UNKNOWN_SUBJECT_NAME,
         totalAttempts,
         totalQuestionsAttempted,
         totalCorrect,

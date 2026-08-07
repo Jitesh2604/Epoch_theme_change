@@ -9,13 +9,12 @@
  *
  * When the Content API is not configured or is unreachable, catalog lists come
  * back empty (the endpoints never fail hard — the logged-out home page uses
- * some of them). Teacher-code resolution is a local lookup of app-owned profile
- * rows whose stored external ids are resolved to names via the cached API.
+ * some of them).
  */
 import type { BookFilters } from '@epochstudio/content-client';
-import { prisma } from '../lib/prisma';
 import { ContentService, ContentMeta } from './content.service';
 import { logger } from '../utils/logger';
+import { sortByClassName } from '../lib/classOrder';
 
 async function safe<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
   if (!ContentService.isConfigured()) return fallback;
@@ -36,9 +35,12 @@ export const CatalogService = {
   async listClasses(): Promise<{ id: string; name: string; serial: string | null }[]> {
     return safe('classes', async () => {
       const standards = await ContentService.getStandards();
-      return standards
-        .map(s => ({ id: String(s.id), name: s.name, serial: String(s.order ?? '') }))
-        .sort((a, b) => (a.serial ?? '').localeCompare(b.serial ?? '') || a.name.localeCompare(b.name));
+      // Sorted by the app's own curated academic order (Nursery..Class 12),
+      // not the Content API's `order` field — that field was previously
+      // compared as a STRING ("10" sorts before "2" lexicographically),
+      // which is exactly the bug this fixes. See lib/classOrder.ts.
+      const mapped = standards.map(s => ({ id: String(s.id), name: s.name, serial: String(s.order ?? '') }));
+      return sortByClassName(mapped, s => s.name);
     }, []);
   },
 
@@ -67,37 +69,4 @@ export const CatalogService = {
     }, []);
   },
 
-  async resolveTeacherCode(code: string) {
-    const teacher = await prisma.teacherProfile.findUnique({
-      where: { teacherCode: code },
-      select: {
-        id: true,
-        boardExternalId: true,
-        user: { select: { name: true } },
-        classes: { select: { classExternalId: true } },
-        teacherSeries: { select: { seriesExternalId: true } },
-        books: { select: { bookExternalId: true } },
-      },
-    });
-    if (!teacher) return null;
-
-    // Resolve the stored external ids to display names via the cached API.
-    const [boardMap, classMap, seriesMap, books] = await Promise.all([
-      ContentMeta.boards(),
-      ContentMeta.classes(),
-      ContentMeta.seriesMap(),
-      ContentMeta.books(teacher.books.map(b => b.bookExternalId).filter((v): v is string => !!v)),
-    ]);
-
-    const boardName = teacher.boardExternalId ? boardMap.get(String(teacher.boardExternalId)) ?? null : null;
-
-    return {
-      teacherCode: code,
-      teacherName: teacher.user.name,
-      board:       teacher.boardExternalId ? { id: teacher.boardExternalId, name: boardName } : null,
-      classes:     teacher.classes.map(c => classMap.get(String(c.classExternalId)) ?? c.classExternalId).filter(Boolean),
-      series:      teacher.teacherSeries.map(s => seriesMap.get(String(s.seriesExternalId)) ?? s.seriesExternalId).filter(Boolean),
-      books:       books.map(b => b.name),
-    };
-  },
 };

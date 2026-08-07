@@ -367,7 +367,7 @@ async function main() {
   const creator = await prisma.user.findFirst({
     where: {
       role: {
-        in: [Role.SUPER_ADMIN, Role.PUBLICATION_ADMIN, Role.CONTENT_MANAGER, Role.TEACHER],
+        in: [Role.SUPER_ADMIN, Role.PUBLICATION_ADMIN, Role.CONTENT_MANAGER],
       },
     },
     orderBy: { createdAt: 'asc' },

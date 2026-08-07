@@ -71,17 +71,12 @@ const SHOT_WIDTHS = new Set(['w320', 'w375', 'w768', 'w920', 'w1024']);
 // Real paths (BrowserRouter dashboards) and hash routes (marketing/auth).
 const PUBLIC_ROUTES = [
   '/#/home', '/#/login', '/#/signup', '/#/forgot-password',
-  '/#/complete-profile/student', '/#/complete-profile/teacher',
+  '/#/complete-profile/student',
   '/#/olympiad', '/#/instruction',
 ];
 const ADMIN_ROUTES = [
-  '/admin', '/admin/teachers', '/admin/students', '/admin/assessments',
+  '/admin', '/admin/students', '/admin/assessments',
   '/admin/question-bank', '/admin/reports', '/admin/settings', '/admin/help',
-];
-const TEACHER_ROUTES = [
-  '/teacher', '/teacher/create-assessment', '/teacher/assessments', '/teacher/question-bank',
-  '/teacher/upload-questions', '/teacher/students', '/teacher/results', '/teacher/analytics',
-  '/teacher/profile', '/teacher/settings',
 ];
 const STUDENT_ROUTES = [
   '/student', '/student/practice', '/student/join', '/student/assessments',
@@ -168,13 +163,6 @@ test('audit: admin', async ({ page }) => {
   test.setTimeout(300_000);
   await seedAuth(page, 'admin@epoch.local', 'Admin@12345', 'admin');
   await sweep(page, 'admin', ADMIN_ROUTES);
-  fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
-});
-
-test('audit: teacher', async ({ page }) => {
-  test.setTimeout(300_000);
-  await seedAuth(page, 'test-teacher@epochquiz.test', 'TestPass@123', 'teacher');
-  await sweep(page, 'teacher', TEACHER_ROUTES);
   fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
 });
 

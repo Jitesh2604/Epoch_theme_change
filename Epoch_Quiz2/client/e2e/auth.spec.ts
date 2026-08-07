@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { TEST_TEACHER, TEST_STUDENT, loginAs } from './helpers';
+import { TEST_STUDENT, loginAs } from './helpers';
 
 // ---------------------------------------------------------------------------
 // Authentication flows
@@ -19,12 +19,6 @@ test.describe('Login', () => {
     await page.fill('input[type="password"]', 'WrongPassword1');
     await page.click('button[type="submit"]');
     await expect(page.locator('.auth-error').first()).toBeVisible();
-  });
-
-  test('teacher can log in and reach teacher dashboard', async ({ page }) => {
-    await loginAs(page, TEST_TEACHER.email, TEST_TEACHER.password);
-    await page.waitForURL('**/teacher**', { timeout: 10_000 });
-    await expect(page).toHaveURL(/teacher/);
   });
 
   test('student can log in and reach student dashboard', async ({ page }) => {
@@ -57,21 +51,9 @@ test.describe('Forgot Password', () => {
   });
 });
 
-test.describe('Logout', () => {
-  test('teacher can log out', async ({ page }) => {
-    await loginAs(page, TEST_TEACHER.email, TEST_TEACHER.password);
-    await page.waitForURL('**/teacher**', { timeout: 10_000 });
-    // Open user menu
-    await page.click('header button:has-text("Teacher")');
-    await page.click('text=Sign out');
-    // Should redirect to login hash page
-    await page.waitForURL(url => url.hash.includes('login') || !url.pathname.includes('teacher'), { timeout: 8_000 });
-  });
-});
-
 test.describe('Protected routes', () => {
   test('unauthenticated user is redirected away from dashboard', async ({ page }) => {
-    await page.goto('/teacher');
+    await page.goto('/admin');
     // Should show "Sign in required" or redirect
     const body = await page.textContent('body');
     const redirected = page.url().includes('login') || (body?.includes('Sign in') ?? false);

@@ -20,6 +20,8 @@ import bookmarkRoutes     from './bookmark.routes';
 import revisionRoutes     from './revision.routes';
 import studentPerformanceRoutes from './studentPerformance.routes';
 import subjectAnalyticsRoutes from './subjectAnalytics.routes';
+import questionAnalyticsRoutes from './questionAnalytics.routes';
+import assessmentAnalyticsRoutes from './assessmentAnalytics.routes';
 
 const router = new Router();
 
@@ -53,5 +55,7 @@ router.use('/bookmarks',     bookmarkRoutes);
 router.use('/revision',      revisionRoutes);
 router.use('/admin-analytics', studentPerformanceRoutes);
 router.use('/admin-analytics', subjectAnalyticsRoutes);
+router.use('/admin-analytics', questionAnalyticsRoutes);
+router.use('/admin-analytics', assessmentAnalyticsRoutes);
 
 export default router;

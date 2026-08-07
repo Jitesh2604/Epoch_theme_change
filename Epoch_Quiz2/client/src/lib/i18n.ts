@@ -29,13 +29,12 @@ const T: Record<Lang, Record<string, string>> = {
     'home.quizzes': 'quizzes',
     'home.topics': 'topics',
 
-    'page.chooseCategory': 'Choose your category.',
+    'page.chooseCategory': 'Choose your subject.',
     'page.twoQuizModes': 'Pick a subject and a difficulty to begin your practice quiz — self-paced, no teacher required.',
 
     'level.perQuestion': '/ question',
 
     'quiz.pause': 'Pause',
-    'quiz.resume': 'Resume',
     'quiz.timesUp': "Time's up.",
 
     'result.avgTime': 'Avg. time / question',
@@ -53,16 +52,14 @@ const T: Record<Lang, Record<string, string>> = {
     'faq.subjectDifficulty.q': 'How do I pick a subject and difficulty?',
     'faq.subjectDifficulty.a': 'Subjects are taxonomy-tagged to curriculum boards, each with its own question bank. Difficulty — Easy, Medium, or Hard — picks which tier of questions gets pulled into your set, and (for Subject Practice) how many questions and how much time you get.',
     'faq.answerSubmit.q': 'How do I answer and submit questions?',
-    'faq.answerSubmit.a': 'One question at a time. Pick an option, hit Submit. You can also Skip — it counts as no answer.',
+    'faq.answerSubmit.a': 'One question at a time. Pick an option, hit Submit.',
     'faq.results.q': 'How do I see my results?',
     'faq.results.a': 'Every quiz ends with a per-question review and your score. Retry as often as you like — only graded Assessments count toward the leaderboard.',
     'faq.sectionScoring': 'Scoring',
     'faq.scoreCorrect.q': 'What happens when I answer correctly?',
-    'faq.scoreCorrect.a': 'Full marks for the question, exactly as your teacher or admin set them. No speed bonus — take the time you need.',
+    'faq.scoreCorrect.a': 'Full marks for the question, exactly as set by the admin who created it. No speed bonus — take the time you need.',
     'faq.scoreWrong.q': 'What happens when I answer incorrectly?',
     'faq.scoreWrong.a': "No marks deducted. You can review it afterwards in the question's explanation.",
-    'faq.scoreSkip.q': 'What happens if I skip a question?',
-    'faq.scoreSkip.a': 'Treated as no answer. No points awarded, no penalty.',
     'faq.sectionTimers': 'Timers',
     'faq.timerPractice.q': 'Is there a time limit for Subject Practice?',
     'faq.timerPractice.a': 'Each attempt gets a fixed time limit based on the difficulty you choose. Once you start, a countdown runs and the quiz submits automatically if time runs out.',
@@ -119,13 +116,12 @@ const T: Record<Lang, Record<string, string>> = {
     'home.quizzes': 'क्विज़',
     'home.topics': 'विषय',
 
-    'page.chooseCategory': 'अपनी श्रेणी चुनें।',
+    'page.chooseCategory': 'अपना विषय चुनें।',
     'page.twoQuizModes': 'अपना अभ्यास क्विज़ शुरू करने के लिए एक विषय और कठिनाई चुनें — स्व-गति से, बिना किसी शिक्षक के।',
 
     'level.perQuestion': '/ प्रश्न',
 
     'quiz.pause': 'रोकें',
-    'quiz.resume': 'जारी रखें',
     'quiz.timesUp': 'समय समाप्त।',
 
     'result.avgTime': 'औसत समय / प्रश्न',
@@ -143,7 +139,7 @@ const T: Record<Lang, Record<string, string>> = {
     'faq.subjectDifficulty.q': 'मैं विषय और कठिनाई कैसे चुनूं?',
     'faq.subjectDifficulty.a': 'विषय पाठ्यक्रम बोर्डों के अनुसार टैग किए गए हैं, प्रत्येक का अपना प्रश्न बैंक है। कठिनाई — आसान, मध्यम या कठिन — तय करती है कि किस स्तर के प्रश्न चुने जाएंगे, और (Subject Practice के लिए) आपको कितने प्रश्न और कितना समय मिलेगा।',
     'faq.answerSubmit.q': 'मैं प्रश्नों के उत्तर कैसे दूं और सबमिट कैसे करूं?',
-    'faq.answerSubmit.a': 'एक बार में एक प्रश्न। विकल्प चुनें, Submit करें। Skip भी कर सकते हैं — इसे कोई उत्तर नहीं माना जाता।',
+    'faq.answerSubmit.a': 'एक बार में एक प्रश्न। विकल्प चुनें, Submit करें।',
     'faq.results.q': 'मैं अपने परिणाम कैसे देखूं?',
     'faq.results.a': 'हर क्विज़ के अंत में प्रश्न-दर-प्रश्न समीक्षा और आपका स्कोर मिलता है। जितनी बार चाहें दोबारा खेलें — केवल ग्रेडेड Assessments ही लीडरबोर्ड में गिने जाते हैं।',
     'faq.sectionScoring': 'स्कोरिंग',
@@ -151,8 +147,6 @@ const T: Record<Lang, Record<string, string>> = {
     'faq.scoreCorrect.a': 'प्रश्न के पूरे अंक, ठीक वैसे ही जैसे आपके शिक्षक या एडमिन ने तय किए हैं। कोई स्पीड बोनस नहीं — जितना समय चाहिए लें।',
     'faq.scoreWrong.q': 'गलत उत्तर देने पर क्या होता है?',
     'faq.scoreWrong.a': 'कोई कटौती नहीं। आप इसे बाद में प्रश्न की व्याख्या में देख सकते हैं।',
-    'faq.scoreSkip.q': 'अगर मैं कोई प्रश्न छोड़ दूं तो क्या होता है?',
-    'faq.scoreSkip.a': 'कोई उत्तर नहीं माना जाता। कोई अंक नहीं मिलते, कोई दंड नहीं।',
     'faq.sectionTimers': 'टाइमर',
     'faq.timerPractice.q': 'क्या Subject Practice के लिए समय-सीमा है?',
     'faq.timerPractice.a': 'आपकी चुनी हुई कठिनाई के अनुसार हर अटेम्प्ट को एक तय समय-सीमा मिलती है। शुरू करते ही उलटी गिनती चलने लगती है और समय समाप्त होने पर क्विज़ अपने-आप सबमिट हो जाता है।',

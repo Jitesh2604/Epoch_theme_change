@@ -1,5 +1,5 @@
 import { useState, useRef, DragEvent } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, FileSpreadsheet, CheckCircle2, XCircle, Download, FileCheck2, AlertTriangle, ArrowRight, History } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, useToasts } from './ui';
@@ -18,10 +18,8 @@ interface ImportSummary {
 }
 
 export function UploadQuestionsPage() {
-  const location = useLocation();
   const navigate = useNavigate();
-  const roleLabel = location.pathname.startsWith('/teacher') ? 'Teacher' : 'Admin';
-  const historyPath = location.pathname.startsWith('/teacher') ? '/teacher/upload-questions/history' : '/admin/upload-questions/history';
+  const historyPath = '/admin/upload-questions/history';
   const [phase, setPhase] = useState<Phase>('idle');
   const [fileName, setFileName] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -136,7 +134,7 @@ export function UploadQuestionsPage() {
     <>
       {node}
       <PageHeader
-        eyebrow={`${roleLabel} · Bulk Import`}
+        eyebrow="Admin · Bulk Import"
         title="Upload Questions"
         subtitle="Drag and drop an Excel sheet to add many questions at once. We'll preview them before anything is saved."
         actions={

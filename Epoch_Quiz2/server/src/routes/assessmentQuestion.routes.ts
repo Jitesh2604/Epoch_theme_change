@@ -23,28 +23,28 @@ router.use(authenticate);
 
 router.get(
   '/',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(listAssessmentQuestionsQuerySchema, 'query'),
   AssessmentQuestionController.list,
 );
 
 router.post(
   '/',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(createAssessmentQuestionSchema),
   AssessmentQuestionController.create,
 );
 
 router.get(
   '/:id',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentQuestionBankIdParamsSchema, 'params'),
   AssessmentQuestionController.getById,
 );
 
 router.patch(
   '/:id',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentQuestionBankIdParamsSchema, 'params'),
   validate(updateAssessmentQuestionBankSchema),
   AssessmentQuestionController.update,
@@ -52,7 +52,7 @@ router.patch(
 
 router.delete(
   '/:id',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentQuestionBankIdParamsSchema, 'params'),
   AssessmentQuestionController.remove,
 );

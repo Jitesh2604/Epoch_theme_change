@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'teacher' | 'student';
+export type Role = 'admin' | 'student';
 
 export type QuestionType = 'mcq' | 'truefalse' | 'descriptive';
 
@@ -29,18 +29,6 @@ export interface Assessment {
   createdAt: string;
   attempts: number;
   avgScore: number;
-}
-
-export interface TeacherRow {
-  id: string;
-  name: string;
-  email: string;
-  subject: string;
-  assessments: number;
-  students: number;
-  status: 'active' | 'pending' | 'inactive';
-  joinedAt: string;
-  avatarHue: number;
 }
 
 export interface StudentRow {

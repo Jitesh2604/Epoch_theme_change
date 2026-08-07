@@ -3,7 +3,7 @@ import { AttemptStatus, QuizType } from '../lib/enums';
 import { parseStrArr, toJson } from '../utils/json';
 import { AnalyticsService } from './analytics.service';
 import { BookmarkService } from './bookmark.service';
-import { ContentMeta } from './content.service';
+import { ContentMeta, UNKNOWN_SUBJECT_NAME, UNKNOWN_TOPIC_NAME } from './content.service';
 import {
   REVISION_INTERVALS_DAYS, TOPIC_ACCURACY_THRESHOLD,
   PRIORITY_WEIGHTS, PRIORITY_THRESHOLDS,
@@ -236,9 +236,9 @@ async function getDashboard(studentId: string) {
       prompt: item.question.prompt,
       difficulty: item.question.difficulty,
       subject: item.question.subjectExternalId
-        ? { id: item.question.subjectExternalId, name: subjectNames.get(item.question.subjectExternalId) ?? item.question.subjectExternalId }
+        ? { id: item.question.subjectExternalId, name: subjectNames.get(item.question.subjectExternalId) ?? UNKNOWN_SUBJECT_NAME }
         : null,
-      topic: topicId ? { id: topicId, name: topicNameMap.get(topicId) ?? topicId } : null,
+      topic: topicId ? { id: topicId, name: topicNameMap.get(topicId) ?? UNKNOWN_TOPIC_NAME } : null,
       reasons: parseStrArr(item.reasons),
       intervalIndex: item.intervalIndex,
       timesRevised: item.timesRevised,

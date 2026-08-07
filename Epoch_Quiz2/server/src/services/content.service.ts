@@ -114,6 +114,18 @@ export const ContentService = {
 
 export interface CatalogRef { externalId: string; name: string }
 
+/**
+ * Single source of truth for the friendly placeholder shown when a stored
+ * external id can't be resolved to a name (deleted/renamed catalog entry,
+ * transient per-book chapter-fetch failure — see chapterNames() below).
+ * Every caller that does `someMap.get(id) ?? id` instead of `?? UNKNOWN_*`
+ * leaks a raw database id into the UI — use these constants, never the raw
+ * id, as the fallback.
+ */
+export const UNKNOWN_SUBJECT_NAME = 'Unknown Subject';
+export const UNKNOWN_TOPIC_NAME = 'Unknown Topic';
+export const UNKNOWN_CLASS_NAME = 'Unknown Class';
+
 async function safeList<T>(label: string, fn: () => Promise<T[]>): Promise<T[]> {
   if (!isContentConfigured()) return [];
   try { return await fn(); }
@@ -129,6 +141,37 @@ async function refMap(
   if (kind === 'class') for (const s of await safeList('standards', () => ContentService.getStandards())) map.set(String(s.id), s.name);
   if (kind === 'subject') for (const s of await safeList('subjects', () => ContentService.getSubjects())) map.set(String(s.id), s.name);
   if (kind === 'series') for (const s of await safeList('series', () => ContentService.getSeries()))    map.set(String(s.id), s.name);
+  return map;
+}
+
+// ── Chapter-name fallback via /api/questions ───────────────────────────────
+// Same runtime-shape caveat documented in questionSync.service.ts: the SDK's
+// declared Question type has previously been found to disagree with the live
+// payload (nested `chapter: {id, name, book}` vs the SDK's flat `chapterId`,
+// no chapter name at all). This app already reads that embedded shape
+// defensively when syncing Question rows — this reuses the exact same shape,
+// just pulling `chapter.name` (never persisted locally) instead of ids.
+interface RtChapterRef { id?: unknown; name?: unknown }
+interface RtQuestionForChapter { chapter?: RtChapterRef | null }
+
+async function chapterNamesViaQuestions(bookId: string): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const pageSize = env.CONTENT_SYNC_PAGE_SIZE;
+  let offset = 0;
+  for (;;) {
+    const page = await ContentService.getQuestions({ bookId, limit: pageSize, offset });
+    const rows = (page.questions ?? []) as unknown as RtQuestionForChapter[];
+    if (rows.length === 0) break;
+    for (const raw of rows) {
+      const ch = raw.chapter ?? null;
+      if (ch?.id != null && typeof ch.name === 'string' && ch.name.trim()) {
+        map.set(String(ch.id), ch.name);
+      }
+    }
+    offset += rows.length;
+    if (page.pagination && offset >= page.pagination.total) break;
+    if (rows.length < pageSize) break;
+  }
   return map;
 }
 
@@ -173,6 +216,13 @@ export const ContentMeta = {
    * (only the books actually referenced, not the whole catalog). Mirrors
    * questionSync.service.ts's buildChapterFallbackMap: one book's failure
    * (e.g. transient API error) is logged and skipped, not fatal to the rest.
+   *
+   * Some tenant/book configurations reject the single-resource book endpoints
+   * (`GET /api/books/chapters/:id`) with 401 while list endpoints on the same
+   * API key stay open — observed for every book in this environment. When
+   * getChapters() fails, fall back to chapterNamesViaQuestions(), which reads
+   * the same chapter id+name off the (working) /api/questions list endpoint
+   * instead — see that function for the runtime-shape rationale.
    */
   async chapterNames(bookExternalIds: string[]): Promise<Map<string, string>> {
     const map = new Map<string, string>();
@@ -182,8 +232,15 @@ export const ContentMeta = {
       try {
         const chapters = await ContentService.getChapters(bookId);
         for (const ch of chapters) map.set(String(ch.id), ch.name);
+        continue;
       } catch (err) {
-        logger.warn(`[content] could not load chapters for book ${bookId}: ${(err as Error).message}`);
+        logger.warn(`[content] could not load chapters for book ${bookId} via getChapters: ${(err as Error).message} — falling back to /api/questions`);
+      }
+      try {
+        const fallback = await cached(`chapters-via-questions:${bookId}`, () => chapterNamesViaQuestions(bookId));
+        for (const [id, name] of fallback) map.set(id, name);
+      } catch (err) {
+        logger.warn(`[content] chapter fallback via /api/questions also failed for book ${bookId}: ${(err as Error).message}`);
       }
     }
     return map;

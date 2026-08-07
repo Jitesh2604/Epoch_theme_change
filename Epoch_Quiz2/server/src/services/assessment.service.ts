@@ -4,8 +4,10 @@ import { AssessmentStatus, Role } from '../lib/enums';
 import { isAdminRole } from '../utils/roles';
 import { ApiError } from '../utils/ApiError';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
-import { ContentService, ContentMeta } from './content.service';
+import { ContentService, ContentMeta, UNKNOWN_CLASS_NAME } from './content.service';
 import { SettingsService } from './settings.service';
+import { isDev } from '../config';
+import { DEV_FALLBACK_DESCRIPTION_MARKER, ensureDevFallbackAssessments } from './devAssessmentFallback';
 import type {
   CreateAssessmentInput,
   UpdateAssessmentInput,
@@ -146,11 +148,6 @@ async function loadAuthorized(id: string, actor: Actor, mode: 'read' | 'write'):
 
   if (isAdminRole(actor.role)) return a;
 
-  if (actor.role === Role.TEACHER) {
-    if (a.createdById !== actor.id) throw ApiError.forbidden('You can only access assessments you created');
-    return a;
-  }
-
   // STUDENT
   if (mode === 'write') throw ApiError.forbidden('Students cannot modify assessments');
   if (a.status !== AssessmentStatus.PUBLISHED) throw ApiError.notFound('Assessment not found');
@@ -162,8 +159,8 @@ async function loadAuthorized(id: string, actor: Actor, mode: 'read' | 'write'):
 
 export const AssessmentService = {
   async create(actor: Actor, input: CreateAssessmentInput) {
-    if (actor.role !== Role.TEACHER && !isAdminRole(actor.role)) {
-      throw ApiError.forbidden('Only teachers can create assessments');
+    if (!isAdminRole(actor.role)) {
+      throw ApiError.forbidden('Only admins can create assessments');
     }
     if (input.subjectExternalId) await ensureSubjectExists(input.subjectExternalId);
     if (input.classExternalId)   await ensureClassExists(input.classExternalId);
@@ -220,7 +217,7 @@ export const AssessmentService = {
       ContentMeta.classes(),
     ]);
     const classes = assignedClasses
-      .map(c => ({ id: c.classExternalId, name: classMap.get(String(c.classExternalId)) ?? c.classExternalId }))
+      .map(c => ({ id: c.classExternalId, name: classMap.get(String(c.classExternalId)) ?? UNKNOWN_CLASS_NAME }))
       .sort((a, b) => a.name.localeCompare(b.name));
     return { classes, students };
   },
@@ -236,18 +233,38 @@ export const AssessmentService = {
     const and: Prisma.AssessmentWhereInput[] = [];
     if (search) and.push({ OR: [{ title: { contains: search } }, { description: { contains: search } }] });
 
-    if (actor.role === Role.TEACHER) {
-      where.createdById = actor.id;
-    } else if (actor.role === Role.STUDENT) {
+    if (actor.role === Role.STUDENT) {
       // Students only see PUBLISHED assessments assigned to them (directly or via their class).
       const classId = await getStudentClassId(actor.id);
-      where.status = AssessmentStatus.PUBLISHED;
-      and.push({
+      const visibility: Prisma.AssessmentWhereInput = {
         OR: [
           { assignedStudents: { some: { studentId: actor.id } } },
           ...(classId ? [{ assignedClasses: { some: { classExternalId: classId } } }] : []),
         ],
-      });
+      };
+      where.status = AssessmentStatus.PUBLISHED;
+      and.push(visibility);
+
+      // Dev-only fallback: if this student has no real assessment yet, seed
+      // a few realistic dummy ones so the module is testable without an
+      // admin hand-building fixtures. The moment a real one becomes visible
+      // to them, this branch stops firing and any leftover dummy rows are
+      // excluded below — see devAssessmentFallback.ts.
+      if (isDev) {
+        const hasReal = await prisma.assessment.count({
+          where: {
+            status: AssessmentStatus.PUBLISHED,
+            NOT: { description: { startsWith: DEV_FALLBACK_DESCRIPTION_MARKER } },
+            ...visibility,
+          },
+        }) > 0;
+
+        if (hasReal) {
+          and.push({ NOT: { description: { startsWith: DEV_FALLBACK_DESCRIPTION_MARKER } } });
+        } else {
+          await ensureDevFallbackAssessments(actor.id);
+        }
+      }
     } else if (isAdminRole(actor.role) && mine) {
       where.createdById = actor.id;
     }

@@ -12,7 +12,7 @@ import {
 } from '../utils/jwt';
 import { env, isDev } from '../config';
 import { EmailService } from './email.service';
-import { ContentMeta } from './content.service';
+import { ContentMeta, UNKNOWN_SUBJECT_NAME } from './content.service';
 import { SettingsService, assertMinPasswordLength } from './settings.service';
 import type { RegisterInput, LoginInput } from '../validators/auth.validator';
 
@@ -80,26 +80,14 @@ async function issueTokens(user: Pick<DbUser, 'id' | 'email' | 'role'>): Promise
   return { accessToken, refreshToken };
 }
 
-async function generateTeacherCode(): Promise<string> {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  for (let attempt = 0; attempt < 20; attempt++) {
-    let code = '';
-    for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
-    const existing = await prisma.teacherProfile.findUnique({ where: { teacherCode: code }, select: { id: true } });
-    if (!existing) return code;
-  }
-  throw ApiError.internal('Could not generate a unique teacher code. Please try again.');
-}
-
 function generateVerificationCode(): string {
   return String(crypto.randomInt(100_000, 1_000_000));
 }
 
 export const AuthService = {
   async register(input: RegisterInput): Promise<{ email: string; expiresInMinutes: number; devCode?: string }> {
-    // Registration is always for Role.STUDENT while the Teacher module is
-    // disabled (see auth.validator.ts), so this is effectively the master
-    // switch for public self-signup.
+    // Registration is STUDENT-only (see auth.validator.ts's registerSchema) —
+    // this is effectively the master switch for public self-signup.
     if ((await SettingsService.get('users.studentRegistration')) === 'false') {
       throw ApiError.forbidden('Self-registration is currently disabled. Contact an administrator.');
     }
@@ -117,13 +105,8 @@ export const AuthService = {
     const passwordHash = await hashPassword(input.password);
     const avatarHue    = Math.floor(Math.random() * 360);
 
-    // `input.role` is typed as Role.STUDENT while the Teacher module is
-    // hidden (see auth.validator.ts); widen it so the dormant teacher branch
-    // below still type-checks and can be re-enabled by reverting that schema.
+    // Registration is STUDENT-only (see auth.validator.ts's registerSchema).
     const role = input.role as Role;
-
-    let teacherCode: string | undefined;
-    if (role === Role.TEACHER) teacherCode = await generateTeacherCode();
 
     // Created PENDING, not ACTIVE — login is blocked (see login() below)
     // until the code emailed below is confirmed via verifyEmail().
@@ -137,11 +120,7 @@ export const AuthService = {
         status:          UserStatus.PENDING,
         avatarHue,
         profileComplete: false,
-        ...(role === Role.TEACHER
-          ? { teacherProfile: { create: { teacherCode } } }
-          : role === Role.STUDENT
-            ? { studentProfile: { create: {} } }
-            : {}),
+        ...(role === Role.STUDENT ? { studentProfile: { create: {} } } : {}),
       },
     });
 
@@ -171,9 +150,6 @@ export const AuthService = {
       throw new ApiError(403, 'Please verify your email before signing in.', { code: 'EMAIL_NOT_VERIFIED' });
     }
     if (user.status === UserStatus.INACTIVE) throw ApiError.forbidden('Account is inactive');
-    // The Teacher module is temporarily hidden. Remove this check to re-enable
-    // teacher sign-in for existing accounts.
-    if (user.role === Role.TEACHER) throw ApiError.forbidden('Teacher accounts are currently unavailable.');
 
     const ok = await comparePassword(input.password, user.passwordHash);
     if (!ok) throw ApiError.unauthorized('Invalid email or password');
@@ -244,9 +220,6 @@ export const AuthService = {
 
     const user = await prisma.user.findUnique({ where: { id: stored.userId } });
     if (!user) throw ApiError.unauthorized('User no longer exists');
-    // The Teacher module is temporarily hidden — this also cuts off any
-    // already-issued teacher session once its access token expires.
-    if (user.role === Role.TEACHER) throw ApiError.forbidden('Teacher accounts are currently unavailable.');
 
     await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
     return issueTokens(user);
@@ -302,32 +275,29 @@ export const AuthService = {
     ]);
   },
 
-  async getMe(userId: string): Promise<PublicUser & { teacherProfile?: unknown; studentProfile?: unknown }> {
+  async getMe(userId: string): Promise<PublicUser & { studentProfile?: unknown }> {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw ApiError.notFound('User not found');
 
-    const [teacherProfile, studentProfile] = await Promise.all([
-      prisma.teacherProfile.findUnique({ where: { userId } }),
-      prisma.studentProfile.findUnique({ where: { userId } }),
-    ]);
+    const studentProfile = await prisma.studentProfile.findUnique({ where: { userId } });
 
     let studentWithSubjects: Record<string, unknown> | null = studentProfile as Record<string, unknown> | null;
     if (studentProfile) {
       // Subjects are stored as Content API external ids; resolve display names
-      // from the live (cached) catalog. Unknown ids fall back to the id itself.
+      // from the live (cached) catalog. Unresolvable ids fall back to
+      // UNKNOWN_SUBJECT_NAME, never the raw id — see content.service.ts.
       const [links, subjectNames] = await Promise.all([
         prisma.studentSubject.findMany({ where: { studentProfileId: studentProfile.id }, select: { subjectExternalId: true } }),
         ContentMeta.subjects(),
       ]);
       const subjects = links
-        .map(l => ({ id: l.subjectExternalId, name: subjectNames.get(l.subjectExternalId) ?? l.subjectExternalId, slug: slugifySubject(subjectNames.get(l.subjectExternalId) ?? l.subjectExternalId) }))
+        .map(l => ({ id: l.subjectExternalId, name: subjectNames.get(l.subjectExternalId) ?? UNKNOWN_SUBJECT_NAME, slug: slugifySubject(subjectNames.get(l.subjectExternalId) ?? UNKNOWN_SUBJECT_NAME) }))
         .sort((a, b) => a.name.localeCompare(b.name));
       studentWithSubjects = { ...studentProfile, subjects };
     }
 
     return {
       ...toPublicUser(user),
-      ...(teacherProfile ? { teacherProfile } : {}),
       ...(studentWithSubjects ? { studentProfile: studentWithSubjects } : {}),
     };
   },

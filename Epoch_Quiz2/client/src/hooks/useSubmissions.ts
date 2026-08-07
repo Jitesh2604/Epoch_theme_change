@@ -10,7 +10,7 @@ export interface SubmissionListItem {
   startedAt: string;
   submittedAt: string | null;
   timeTakenSec: number;
-  // Absent (undefined) on rows returned by /submissions (admin/teacher list),
+  // Absent (undefined) on rows returned by /submissions (admin list),
   // which is never gated — only /submissions/me populates these.
   resultsPublished?: boolean;
   resultPublishAt?: string | null;

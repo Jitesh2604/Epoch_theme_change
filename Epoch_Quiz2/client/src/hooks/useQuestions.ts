@@ -73,7 +73,7 @@ export interface UploadHistoryPage {
   meta: { page: number; limit: number; total: number; totalPages: number };
 }
 
-/** A teacher sees only their own uploads; an admin sees everyone's — enforced server-side. */
+/** Non-admins see only their own uploads; an admin sees everyone's — enforced server-side. */
 export function useUploadHistory(params: { page?: number; limit?: number; status?: string } = {}) {
   return useAsync<UploadHistoryPage>(
     () => api.getWithQuery('/questions/upload/history', { page: 1, limit: 20, ...params }),

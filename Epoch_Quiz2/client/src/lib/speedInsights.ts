@@ -1,9 +1,11 @@
 import type { PracticeOverviewData, SubjectStat } from '../hooks/useStudentAnalytics';
 
 /**
- * Feature 4: Speed & Time Analytics — pure derivation over PracticeOverviewData
- * (Feature 1) + SubjectStat[] (Feature 2), both already fetched by
- * AnalyticsPage.tsx for the earlier sections. No fetching of its own.
+ * Speed/time-efficiency derivation over PracticeOverviewData + SubjectStat[].
+ * The standalone "Speed & Time Analytics" UI section that originally used
+ * this directly has been removed; `getEfficiencyQuadrant`/`deriveSpeedInsights`
+ * remain in use by learningInsightsEngine.ts (AI Learning Insights) and
+ * questionTypeInsights.ts (Speed vs Accuracy).
  */
 
 function round(n: number): number {
@@ -70,8 +72,6 @@ export interface SpeedTimeInsights {
   averageQuizDurationSec: number;
   fastestSubject: SubjectStat;
   slowestSubject: SubjectStat;
-  /** All subjects, fastest (lowest avg time/question) first. */
-  subjectComparison: SubjectStat[];
   efficiencyBySubject: { subject: SubjectStat; efficiency: EfficiencyLabel }[];
   /** null when no subject has ≥2 attempts, or nothing actually got faster. */
   speedImprovement: SpeedImprovementPick | null;
@@ -83,7 +83,6 @@ export function deriveSpeedInsights(overview: PracticeOverviewData, subjects: Su
 
   const fastestSubject = pickBy(subjects, s => s.averageTimePerQuestionSec, 'min');
   const slowestSubject = pickBy(subjects, s => s.averageTimePerQuestionSec, 'max');
-  const subjectComparison = [...subjects].sort((a, b) => a.averageTimePerQuestionSec - b.averageTimePerQuestionSec);
   const efficiencyBySubject = subjects.map(subject => ({ subject, efficiency: getEfficiencyQuadrant(subject) }));
 
   const withHistory = subjects.filter(s => s.totalAttempts >= 2);
@@ -119,7 +118,6 @@ export function deriveSpeedInsights(overview: PracticeOverviewData, subjects: Su
     averageQuizDurationSec: overview.totalAttempts > 0 ? round(overview.totalPracticeTimeSec / overview.totalAttempts) : 0,
     fastestSubject,
     slowestSubject,
-    subjectComparison,
     efficiencyBySubject,
     speedImprovement,
     speedInsightLines: summaryLines,

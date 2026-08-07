@@ -4,8 +4,6 @@ import { motion } from 'framer-motion';
 import { GraduationCap, ArrowRight, Sparkles } from 'lucide-react';
 import { getRole, pathForRole } from './shared/auth';
 
-// Teacher module is temporarily hidden — remove this comment and restore the
-// 'teacher' entry (with its UserCog icon import) below to bring it back.
 const ROLES: { id: string; label: string; desc: string; icon: any; gradient: string; border: string; iconBg: string }[] = [
   {
     id: 'student',

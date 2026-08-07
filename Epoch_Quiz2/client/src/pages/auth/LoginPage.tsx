@@ -34,7 +34,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
         return;
       }
 
-      // Force onboarding before dashboard access for teachers/students.
+      // Force onboarding before dashboard access for students.
       if (uiRole !== 'admin' && !user.profileComplete) {
         showToast(`Welcome back, ${user.name} — let's finish your profile`, 'success');
         window.location.hash = '#/complete-profile';

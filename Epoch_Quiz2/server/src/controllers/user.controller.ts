@@ -40,11 +40,6 @@ export const UserController = {
     ApiResponse.ok(res, user, 'User deactivated');
   }),
 
-  listTeachers: asyncHandler(async (req: Request, res: Response) => {
-    const { items, meta } = await UserService.listTeachers(req.query as unknown as ListProfilesQuery);
-    ApiResponse.ok(res, { items, meta });
-  }),
-
   listStudents: asyncHandler(async (req: Request, res: Response) => {
     const { items, meta } = await UserService.listStudents(req.query as unknown as ListProfilesQuery);
     ApiResponse.ok(res, { items, meta });

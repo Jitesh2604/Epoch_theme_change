@@ -121,6 +121,29 @@ export function useSubjectBreakdown() {
   return useAsync<SubjectStat[]>(() => api.get('/analytics/practice/subjects'), []);
 }
 
+// Student Analytics — Feature 2b: Subject × Question-Type Performance.
+// Question-type accuracy broken down *within* each subject, so Subject-wise
+// Performance cards can show "Maths → MCQ 88%, True/False 76%, ..." instead
+// of question-type accuracy living in its own cross-subject section — see
+// server/src/services/analytics.service.ts's getSubjectQuestionTypeBreakdown.
+// Only (subject, type) pairs the student has actually answered appear here —
+// no zero-filled/invented rows for types they've never attempted.
+
+export interface SubjectQuestionTypeStat {
+  subjectId: string;
+  subjectName: string;
+  questionType: string; // raw QuestionType enum value, e.g. 'MCQ_SINGLE'
+  totalQuestionsAttempted: number;
+  totalCorrect: number;
+  totalWrong: number;
+  totalSkipped: number;
+  accuracyPercent: number;
+}
+
+export function useSubjectQuestionTypeBreakdown() {
+  return useAsync<SubjectQuestionTypeStat[]>(() => api.get('/analytics/practice/subject-question-types'), []);
+}
+
 // Student Analytics — Feature 5: Question Type Analytics. Same idea as
 // SubjectStat, grouped by Question.type instead — a single Practice/Mixed
 // attempt can mix question types just as freely as it can mix subjects, so

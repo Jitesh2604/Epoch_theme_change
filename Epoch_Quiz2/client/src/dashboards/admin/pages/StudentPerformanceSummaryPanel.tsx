@@ -1,23 +1,27 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Target, Flame, Clock } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Target, Flame, Clock, ClipboardCheck, History, Award } from 'lucide-react';
 import { Modal, Card, Badge, ProgressBar, Skeleton, EmptyState } from '../../shared/ui';
-import { studentPerformanceApi, type StudentDetail } from '../../../hooks/useStudentPerformance';
+import { studentPerformanceApi, type StudentDetail, type AssessmentHistoryEntry } from '../../../hooks/useStudentPerformance';
 import { computeConfidence } from '../../../lib/confidenceScore';
 import { deriveInsights } from '../../../lib/strengthWeaknessInsights';
 import { buildLearningInsights } from '../../../lib/learningInsightsEngine';
 import { computeStreak, practiceDatesFromOverview } from '../../../lib/studyPlanEngine';
-import { computePracticeFrequency } from '../../../lib/consistencyEngine';
+import { computePracticeFrequency, buildStreakMilestones } from '../../../lib/consistencyEngine';
 import { getPerformanceBand } from '../../../lib/performanceBand';
 import { evaluateAtRisk } from '../../../lib/atRiskDetection';
+import { deriveAssessmentTrend, type AssessmentTrendPoint } from '../../../lib/assessmentTrendInsights';
+import { classifyStudentPerformance } from '../../../lib/studentPerformanceGrade';
 import { fmtDuration, fmtSeconds, fmtDate } from '../../../lib/formatters';
 
 /**
- * Admin Analytics — Feature 2: Student Summary Panel.
+ * Admin Analytics — Feature 2/6: Student Summary Panel.
  *
  * Every section here calls the exact same derivation functions the
  * student's own AnalyticsPage.tsx uses (buildLearningInsights, deriveInsights,
  * computeConfidence, computeStreak, computePracticeFrequency,
- * getPerformanceBand) — this component adds no new formulas, only layout.
+ * getPerformanceBand) plus Feature 5's Assessment reducer (already applied
+ * server-side into detail.assessmentStats/assessmentHistory) — this
+ * component adds no new formulas, only layout and light merging.
  */
 
 interface Props {
@@ -69,7 +73,7 @@ export function StudentPerformanceSummaryPanel({ studentId, studentName, onClose
 function SummaryBody({ detail }: { detail: StudentDetail }) {
   const overview = detail.overview.hasData === true ? detail.overview : null;
   if (!overview) return null;
-  const { subjects, questionTypes, topics, revisionDashboard } = detail;
+  const { subjects, questionTypes, topics, revisionDashboard, assessmentStats, assessmentHistory } = detail;
 
   const confidence = computeConfidence(overview, subjects, questionTypes);
   const strengthWeakness = deriveInsights(subjects);
@@ -77,10 +81,46 @@ function SummaryBody({ detail }: { detail: StudentDetail }) {
   const streak = computeStreak(practiceDates, new Set(), new Date());
   const frequency = computePracticeFrequency(overview, practiceDates);
   const insights = buildLearningInsights(overview, subjects, questionTypes, topics);
-  const atRisk = evaluateAtRisk({ overview, confidence, revisionOverdueCount: revisionDashboard.counts.overdue });
+
+  const assessmentAveragePercent = assessmentStats.completedAttempts > 0 ? assessmentStats.averagePercentage : null;
+  const assessmentPercentHistory: AssessmentTrendPoint[] = assessmentHistory
+    .filter((a): a is AssessmentHistoryEntry & { percent: number } => a.percent !== null)
+    .map(a => ({ date: a.submittedAt ?? a.startedAt, percent: a.percent }));
+  const assessmentTrend = deriveAssessmentTrend(assessmentPercentHistory);
+
+  // Detail view has the full submission history, so — unlike the bulk
+  // table — it can afford the declining-trend signal too.
+  const atRisk = evaluateAtRisk({
+    overview, confidence, revisionOverdueCount: revisionDashboard.counts.overdue,
+    assessmentAveragePercent, assessmentTrendDeclining: assessmentTrend.direction === 'declined',
+  });
+  const grade = classifyStudentPerformance({
+    atRisk: atRisk.atRisk, atRiskReasons: atRisk.reasons,
+    accuracyPercent: overview.accuracyPercent, assessmentAveragePercent,
+  });
+
+  // Progress Timeline — merges Practice attempt dates (accuracyTrend.history,
+  // already fetched for Feature 1) with Assessment submission dates
+  // (assessmentHistory, already fetched above), most recent first. Not a
+  // new fetch — just a chronological interleave of two already-fetched lists.
+  const timelineEvents = [
+    ...overview.accuracyTrend.history.map(h => ({ date: h.date, label: `Practice session — ${h.accuracy}% accuracy`, kind: 'practice' as const })),
+    ...assessmentHistory.filter(a => a.submittedAt).map(a => ({
+      date: a.submittedAt!, label: `${a.title} — ${a.percent !== null ? `${a.percent}%` : a.status}`, kind: 'assessment' as const,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 15);
+
+  const milestones = buildStreakMilestones({ currentStreak: streak.currentStreak, bestStreak: streak.bestStreak, practicedToday: false });
 
   return (
     <div className="space-y-5">
+      {grade.grade && (
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-fg3">Overall Performance Grade</span>
+          <Badge tone={grade.grade === 'Excellent' || grade.grade === 'Good' ? 'success' : grade.grade === 'Average' ? 'warning' : 'danger'}>{grade.grade}</Badge>
+        </div>
+      )}
+
       {atRisk.atRisk && (
         <Card className="p-4 border-2 border-amber-500/40 bg-amber-500/5">
           <div className="flex items-center gap-2 mb-2">
@@ -165,6 +205,44 @@ function SummaryBody({ detail }: { detail: StudentDetail }) {
         </div>
       </section>
 
+      {/* ── Assessment Analytics ────────────────────────────────────── */}
+      <section>
+        <h3 className="text-[11px] font-semibold tracking-[0.1em] uppercase text-fg3 mb-2.5 flex items-center gap-1.5"><ClipboardCheck size={12} />Assessment Analytics</h3>
+        {assessmentStats.totalAttempts > 0 ? (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+              <Stat label="Total Assessments" value={assessmentStats.totalAttempts} />
+              <Stat label="Average Score" value={assessmentStats.averageScore} />
+              <Stat label="Average Percentage" value={`${assessmentStats.averagePercentage}%`} />
+              <Stat
+                label="Completion Rate"
+                value={`${assessmentStats.totalAttempts ? Math.round((assessmentStats.completedAttempts / assessmentStats.totalAttempts) * 100) : 0}%`}
+              />
+              <Stat label="Pass Rate" value={`${assessmentStats.passRate}%`} />
+              {assessmentTrend.direction !== 'consistent' && (
+                <Stat
+                  label="Score Trend"
+                  value={assessmentTrend.direction === 'improved' ? `+${assessmentTrend.deltaPercent}%` : `${assessmentTrend.deltaPercent}%`}
+                />
+              )}
+            </div>
+            <div className="space-y-1.5">
+              {assessmentHistory.map(a => (
+                <div key={`${a.assessmentId}-${a.startedAt}`} className="flex items-center justify-between rounded-lg border border-line bg-surface1 px-3 py-2 text-[12px]">
+                  <span className="text-fg1 truncate">{a.title}</span>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-fg3">{fmtDate(a.startedAt)}</span>
+                    {a.percent !== null ? (
+                      <Badge tone={a.passed ? 'success' : 'danger'}>{a.percent}%</Badge>
+                    ) : <Badge tone="neutral">{a.status}</Badge>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : <p className="text-[12px] text-fg3">No Assessment attempts yet.</p>}
+      </section>
+
       {/* ── AI Summary ──────────────────────────────────────────────── */}
       <section>
         <h3 className="text-[11px] font-semibold tracking-[0.1em] uppercase text-fg3 mb-2.5 flex items-center gap-1.5"><CheckCircle2 size={12} />AI Summary</h3>
@@ -205,6 +283,33 @@ function SummaryBody({ detail }: { detail: StudentDetail }) {
         ) : (
           <p className="text-[12px] text-fg3">Needs at least 3 practice attempts to generate AI insights.</p>
         )}
+      </section>
+
+      {/* ── Progress Timeline ───────────────────────────────────────── */}
+      <section>
+        <h3 className="text-[11px] font-semibold tracking-[0.1em] uppercase text-fg3 mb-2.5 flex items-center gap-1.5"><History size={12} />Progress Timeline</h3>
+
+        {milestones.some(m => m.achieved) && (
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {milestones.filter(m => m.achieved).map(m => (
+              <span key={m.days} className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/25">
+                <Award size={10} />{m.days}-day streak
+              </span>
+            ))}
+          </div>
+        )}
+
+        {timelineEvents.length ? (
+          <div className="space-y-1.5">
+            {timelineEvents.map((e, i) => (
+              <div key={i} className="flex items-center gap-3 text-[12px]">
+                <span className="text-fg3 shrink-0 w-[84px]">{fmtDate(e.date)}</span>
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${e.kind === 'practice' ? 'bg-sky-400' : 'bg-violet-400'}`} />
+                <span className="text-fg2 truncate">{e.label}</span>
+              </div>
+            ))}
+          </div>
+        ) : <p className="text-[12px] text-fg3">No practice or assessment history yet.</p>}
       </section>
     </div>
   );

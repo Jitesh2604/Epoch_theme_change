@@ -3,9 +3,9 @@ import type { ElementType } from 'react';
 import type { NavigateFn } from '../../types';
 import {
   CheckCircle2, XCircle, MinusCircle, Clock, Trophy, RotateCcw,
-  BookOpen, ChevronDown, ChevronUp, Calendar, Hash, ListChecks, PlayCircle, FlagOff,
+  BookOpen, ChevronDown, ChevronUp, Calendar, Hash, BarChart3, PlayCircle, FlagOff,
 } from 'lucide-react';
-import { Card, Button, Badge, ProgressBar } from '../../dashboards/shared/ui';
+import { Card, Button, Badge } from '../../dashboards/shared/ui';
 import { practiceApi, type PracticeResult, type PracticeResultAnswer } from '../../hooks/usePracticeQuiz';
 
 interface PracticeResultPageProps {
@@ -13,14 +13,16 @@ interface PracticeResultPageProps {
   attemptId: string;
 }
 
-// ── Grade helper ──────────────────────────────────────────────────
-
-function grade(pct: number): { label: string; color: string } {
-  if (pct >= 90) return { label: 'Outstanding!',  color: '#22c55e' };
-  if (pct >= 75) return { label: 'Great work!',   color: '#22c55e' };
-  if (pct >= 60) return { label: 'Good effort!',  color: '#f59e0b' };
-  if (pct >= 40) return { label: 'Keep going!',   color: '#f59e0b' };
-  return              { label: 'Keep practising', color: '#f43f5e' };
+/** The attempt's difficulty, derived from its own questions rather than a
+ *  new backend field — Subject/Mixed Practice always draw from a single
+ *  chosen difficulty, so a uniform result here is meaningful. Returns null
+ *  (hide the card) when the questions span more than one difficulty, e.g. a
+ *  cross-attempt Retry, where a single label would be misleading. */
+function attemptDifficulty(result: PracticeResult): string | null {
+  const diffs = new Set(result.answers.map(a => a.question.difficulty).filter(Boolean));
+  if (diffs.size !== 1) return null;
+  const d = [...diffs][0]!;
+  return d.charAt(0) + d.slice(1).toLowerCase();
 }
 
 function fmtTime(sec: number) {
@@ -29,10 +31,17 @@ function fmtTime(sec: number) {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
-function fmtDateTime(iso: string | null) {
+function fmtDate(iso: string | null) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString(undefined, {
-    dateStyle: 'medium', timeStyle: 'short',
+  return new Date(iso).toLocaleDateString(undefined, {
+    day: 'numeric', month: 'short', year: 'numeric',
+  });
+}
+
+function fmtTimeOfDay(iso: string | null) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleTimeString(undefined, {
+    hour: 'numeric', minute: '2-digit',
   });
 }
 
@@ -195,8 +204,7 @@ export function PracticeResultPage({ navigate, attemptId }: PracticeResultPagePr
     );
   }
 
-  const pct = Math.round(result.percent);
-  const { label: gradeLabel, color: gradeColor } = grade(pct);
+  const difficulty = attemptDifficulty(result);
 
   return (
     <div className="container" style={{ paddingTop: 24, paddingBottom: 40 }}>
@@ -220,35 +228,14 @@ export function PracticeResultPage({ navigate, attemptId }: PracticeResultPagePr
         {/* ── Attempt details ────────────────────────────────────── */}
         <Card className="p-5 mb-4">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <DetailRow icon={Calendar}   label="Date & Time"     value={fmtDateTime(result.startTime)} />
-            <DetailRow icon={PlayCircle} label="Start Time"      value={fmtDateTime(result.startTime)} />
-            <DetailRow icon={FlagOff}    label="End Time"        value={fmtDateTime(result.endTime)} />
+            <DetailRow icon={Calendar}   label="Date"            value={fmtDate(result.startTime)} />
+            <DetailRow icon={PlayCircle} label="Start Time"      value={fmtTimeOfDay(result.startTime)} />
+            <DetailRow icon={FlagOff}    label="End Time"        value={fmtTimeOfDay(result.endTime)} />
             <DetailRow icon={Hash}       label="Total Questions" value={String(result.questionCount)} />
-            <DetailRow icon={ListChecks} label="Question Type"   value={result.quiz.quizType === 'OLYMPIAD' ? 'Practice Olympiad' : !result.quiz.subject ? 'Mixed Subjects Practice' : 'Subject Practice'} />
+            {difficulty && (
+              <DetailRow icon={BarChart3} label="Difficulty Level" value={difficulty} />
+            )}
             <DetailRow icon={Clock}      label="Time Taken"      value={fmtTime(result.timeTakenSec)} />
-          </div>
-        </Card>
-
-        {/* ── Score hero ─────────────────────────────────────────── */}
-        <Card className="p-6 mb-4 text-center relative overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-64 h-64 rounded-full blur-3xl"
-              style={{ background: `${gradeColor}18` }} />
-          </div>
-
-          <div className="relative">
-            <div
-              className="w-24 h-24 rounded-full border-4 grid place-items-center mx-auto mb-4 font-display text-3xl font-semibold"
-              style={{ borderColor: gradeColor, color: gradeColor }}
-            >
-              {pct}%
-            </div>
-
-            <h2 className="font-display text-2xl font-semibold text-fg1 mb-1">{gradeLabel}</h2>
-            <p className="text-[13px] text-fg3">
-              You scored <strong className="text-fg1">{result.score}</strong> out of{' '}
-              <strong className="text-fg1">{result.totalMarks}</strong> marks
-            </p>
           </div>
         </Card>
 
@@ -267,22 +254,6 @@ export function PracticeResultPage({ navigate, attemptId }: PracticeResultPagePr
             </Card>
           ))}
         </div>
-
-        {/* Progress bar */}
-        <Card className="p-4 mb-4">
-          <div className="flex justify-between text-[12px] text-fg3 mb-2">
-            <span>Score breakdown</span>
-            <span>{pct}%</span>
-          </div>
-          <ProgressBar
-            value={pct}
-            tone={pct >= 75 ? 'emerald' : pct >= 50 ? 'amber' : 'rose'}
-          />
-          <div className="flex justify-between text-[11px] text-fg3 mt-2">
-            <span className="text-emerald-400">✓ {result.correctAnswers} correct</span>
-            <span className="text-rose-400">✗ {result.wrongAnswers} wrong</span>
-          </div>
-        </Card>
 
         {/* ── Actions ────────────────────────────────────────────── */}
         <div className="flex gap-3 mb-6">

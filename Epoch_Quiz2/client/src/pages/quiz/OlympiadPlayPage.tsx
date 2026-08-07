@@ -16,11 +16,6 @@ import { ExamHeader, ExamProgressBar, QuestionPalette, SubmitTestDialog, LeaveEx
 
 interface Props {
   navigate: NavigateFn;
-  /** Present only when resuming a specific paused attempt (from "Resume
-   *  Paused Quizzes") — loads that exact attempt via getAttempt and skips
-   *  straight to the playing phase, instead of starting a brand-new mixed
-   *  quiz via startOlympiad. */
-  resumeAttemptId?: string;
 }
 
 function fmtTime(sec: number) {
@@ -46,20 +41,11 @@ function performanceMessage(pct: number): string {
  * student sees an overview screen first and only moves into question 1 once
  * they click "Start Test" — no extra network call, just a later reveal.
  */
-export const OlympiadPlayPage: React.FC<Props> = ({ navigate, resumeAttemptId }) => {
+export const OlympiadPlayPage: React.FC<Props> = ({ navigate }) => {
   const [session, setSession] = useState<OlympiadAttemptData | null>(null);
   const [error, setError]     = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // Resuming a specific paused attempt skips the instructions/preview screen
-  // entirely — the student has already seen it, and clicked Resume, not
-  // Attempt Olympiad, so land them straight back on their question.
-  const [phase, setPhase]     = useState<'preview' | 'playing'>(resumeAttemptId ? 'playing' : 'preview');
-
-  // Chrome (navbar) hides only once the student is actually answering
-  // questions — not on the pre-test instructions screen — and restores
-  // automatically the moment `phase` leaves 'playing' (result) or on unmount
-  // (Quit).
-  useExamMode(phase === 'playing');
+  const [phase, setPhase]     = useState<'preview' | 'playing'>('preview');
 
   const [idx, setIdx]           = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
@@ -67,6 +53,15 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate, resumeAttemptId })
   const [feedback, setFeedback] = useState<SaveAnswerFeedback | null>(null);
   const [busy, setBusy]         = useState(false);
   const [result, setResult]     = useState<PracticeResult | null>(null);
+
+  // Chrome (navbar) hides only once the student is actually answering
+  // questions — not on the pre-test instructions screen. `phase` itself
+  // never leaves 'playing' once the test starts (there's no separate
+  // 'result' phase — the results screen is just `playing` with `result`
+  // set), so `!result` is what actually restores the navbar the moment
+  // the attempt is submitted; unmounting (Quit) also always restores it,
+  // per useExamMode's own cleanup.
+  useExamMode(phase === 'playing' && !result);
   const [submittedAt, setSubmittedAt] = useState<Date | null>(null);
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
   const startMs = useRef(Date.now());
@@ -77,37 +72,11 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate, resumeAttemptId })
     if (startedRef.current) return;
     startedRef.current = true;
 
-    // Resuming always loads that exact attempt via getAttempt — never
-    // startOlympiad, which always creates a brand-new mixed quiz. Attempt
-    // Olympiad and Resume are deliberately separate actions.
-    const load = resumeAttemptId
-      ? practiceApi.getAttempt(resumeAttemptId).then(data => ({ ...data, mode: 'OLYMPIAD' as const, perSubject: 0, distribution: [] }))
-      : practiceApi.startOlympiad();
-
-    load
+    practiceApi.startOlympiad()
       .then(data => {
         if (!data.questions?.length) { setError('__empty__'); setLoading(false); return; }
         setSession(data);
         startMs.current = Date.now();
-
-        // Resuming: jump straight to the saved question, and if it was
-        // already submitted (paused while looking at its feedback) restore
-        // the locked/graded view; if it only had a draft selection, restore
-        // that as still-editable.
-        const resumeIdx = data.currentQuestionIndex ?? 0;
-        const currentQ  = data.questions[resumeIdx];
-        const saved     = currentQ ? data.savedAnswers?.find(s => s.questionId === currentQ.id) : undefined;
-        if (saved?.isSubmitted && saved.feedback) {
-          setIdx(resumeIdx);
-          setSelected(saved.selectedOption ?? null);
-          setLocked(true);
-          setFeedback({ ok: true, isCorrect: saved.isCorrect, marksAwarded: saved.marksAwarded, feedback: saved.feedback });
-        } else if (saved?.draftSelectedOption) {
-          setIdx(resumeIdx);
-          setSelected(saved.draftSelectedOption);
-        } else if (resumeIdx > 0) {
-          setIdx(resumeIdx);
-        }
         setLoading(false);
       })
       .catch((e: any) => {
@@ -115,7 +84,7 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate, resumeAttemptId })
         setError(/no question|not available|add your subjects/i.test(msg) ? (msg || '__empty__') : (msg || 'Could not start the Olympiad.'));
         setLoading(false);
       });
-  }, [resumeAttemptId]);
+  }, []);
 
   // ── Debounced progress autosave — persists the current question index and
   //     an in-progress (not-yet-locked) draft selection, so a raw refresh
@@ -153,7 +122,7 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate, resumeAttemptId })
     onConfirmLeave: handlePause,
   });
 
-  if (loading) return <Centered><div style={{ fontSize: 14, color: 'var(--fg-3)' }}>{resumeAttemptId ? 'Loading your paused Olympiad…' : 'Building your Olympiad…'}</div></Centered>;
+  if (loading) return <Centered><div style={{ fontSize: 14, color: 'var(--fg-3)' }}>Building your Olympiad…</div></Centered>;
 
   if (error) {
     const empty = error === '__empty__';
@@ -320,14 +289,13 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate, resumeAttemptId })
       : [];
   const correctLetter = feedback?.feedback?.correctAnswer ?? null;
 
-  const submitAnswer = async (skip = false) => {
+  const submitAnswer = async () => {
     if (locked || busy) return;
     setBusy(true);
     try {
       const fb = await practiceApi.saveAnswer(session!.attemptId, {
         questionId: cur.id,
-        selectedOption: skip ? undefined : (selected ?? undefined),
-        isSkipped: skip || !selected,
+        selectedOption: selected ?? undefined,
       });
       setFeedback(fb);
       setLocked(true);
@@ -431,7 +399,7 @@ export const OlympiadPlayPage: React.FC<Props> = ({ navigate, resumeAttemptId })
 
         <div className="flex gap-3">
           {!locked && (
-            <Button className="flex-1" disabled={selected == null || busy} onClick={() => submitAnswer(false)}>
+            <Button className="flex-1" disabled={selected == null || busy} onClick={() => submitAnswer()}>
               {busy ? 'Saving…' : 'Submit Answer'}
             </Button>
           )}

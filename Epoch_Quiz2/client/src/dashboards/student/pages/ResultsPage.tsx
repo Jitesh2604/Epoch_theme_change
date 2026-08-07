@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Award, Trophy, Medal, FileText, TrendingUp, Zap, Clock, CheckCircle2, XCircle, MinusCircle, ChevronRight, SearchX } from 'lucide-react';
 import { PageHeader, Card, Button, StatCard, ProgressBar, Badge, Skeleton, Select, EmptyState } from '../../shared/ui';
-import { StandaloneHeader } from '../../shared/StandaloneHeader';
 import { useMySubmissions } from '../../../hooks/useSubmissions';
 import { useMyStats } from '../../../hooks/useLeaderboard';
 import { useOlympiadAttempts, type OlympiadAttemptSummary } from '../../../hooks/usePracticeQuiz';
@@ -11,7 +10,6 @@ import { sortResults, RESULTS_SORT_OPTIONS, type ResultsSortKey } from '../../..
 function StandalonePage({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-bg text-fg1 font-body">
-      <StandaloneHeader subtitle="Results" />
       <main className="px-5 md:px-8 lg:px-10 py-6 lg:py-8 max-w-[1480px] w-full mx-auto">
         {children}
       </main>

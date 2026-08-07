@@ -5,7 +5,7 @@ import { ApiError } from "../utils/ApiError";
 import { hashPassword, comparePassword } from "../utils/password";
 import { pageMeta, pageToSkipTake } from "../utils/pagination";
 import { suggestStateBoard } from "../lib/educationBoards";
-import { ContentService, ContentMeta } from "./content.service";
+import { ContentService, ContentMeta, UNKNOWN_CLASS_NAME } from "./content.service";
 import { assertMinPasswordLength } from "./settings.service";
 import type { DbUser } from "./auth.service";
 import type {
@@ -69,14 +69,13 @@ export const UserService = {
         orderBy: { createdAt: "desc" },
         skip,
         take,
-        include: { teacherProfile: true, studentProfile: true },
+        include: { studentProfile: true },
       }),
       prisma.user.count({ where }),
     ]);
 
     const items = users.map((u) => ({
       ...toPublicUser(u),
-      ...(u.teacherProfile ? { teacherProfile: u.teacherProfile } : {}),
       ...(u.studentProfile ? { studentProfile: u.studentProfile } : {}),
     }));
 
@@ -86,13 +85,12 @@ export const UserService = {
   async findById(id: string) {
     const user = await prisma.user.findUnique({
       where: { id },
-      include: { teacherProfile: true, studentProfile: true },
+      include: { studentProfile: true },
     });
     if (!user) throw ApiError.notFound("User not found");
 
     return {
       ...toPublicUser(user),
-      ...(user.teacherProfile ? { teacherProfile: user.teacherProfile } : {}),
       ...(user.studentProfile ? { studentProfile: user.studentProfile } : {}),
     };
   },
@@ -119,11 +117,6 @@ export const UserService = {
         status: userStatus,
         avatarHue,
         profileComplete: false,
-        // adminCreateUserSchema rejects role: TEACHER while the Teacher
-        // module is disabled, so no TeacherProfile branch is needed here.
-        // Restore `input.role === Role.TEACHER ? { teacherProfile: { create:
-        // { schoolName: input.schoolName ?? null } } } :` above the STUDENT
-        // check once that validator restriction is lifted.
         ...(input.role === Role.STUDENT
           ? {
               studentProfile: {
@@ -160,32 +153,13 @@ export const UserService = {
     });
 
     if (
-      user.role === Role.TEACHER &&
-      (input.schoolName !== undefined || input.bio !== undefined)
-    ) {
-      const fields = {
-        ...(input.schoolName !== undefined && {
-          schoolName: input.schoolName ?? null,
-        }),
-        ...(input.bio !== undefined && { bio: input.bio ?? null }),
-      };
-      await prisma.teacherProfile.upsert({
-        where: { userId: id },
-        create: { userId: id, ...fields },
-        update: fields,
-      });
-    }
-
-    const teacherCode = (input as { teacherCode?: string | null }).teacherCode;
-    if (
       user.role === Role.STUDENT &&
-      (input.schoolName !== undefined || teacherCode !== undefined)
+      input.schoolName !== undefined
     ) {
       const fields = {
         ...(input.schoolName !== undefined && {
           schoolName: input.schoolName ?? null,
         }),
-        ...(teacherCode !== undefined && { teacherCode: teacherCode ?? null }),
       };
       await prisma.studentProfile.upsert({
         where: { userId: id },
@@ -262,127 +236,18 @@ export const UserService = {
       ...boardFields,
     };
 
-    if (user.role === Role.TEACHER) {
-      const teacherFields = {
+    if (user.role === Role.STUDENT) {
+      const studentFields = {
         ...sharedFields,
         ...(input.boardExternalId !== undefined && {
           boardExternalId: input.boardExternalId,
         }),
-        ...(input.bio !== undefined && { bio: input.bio }),
-      } as Prisma.TeacherProfileUncheckedUpdateInput;
-
-      const tp = await prisma.teacherProfile.upsert({
-        where: { userId },
-        create: {
-          userId,
-          ...teacherFields,
-        } as Prisma.TeacherProfileUncheckedCreateInput,
-        update: teacherFields,
-      });
-
-      if (input.classExternalIds !== undefined) {
-        await prisma.teacherClass.deleteMany({
-          where: { teacherProfileId: tp.id },
-        });
-        if (input.classExternalIds.length)
-          await prisma.teacherClass.createMany({
-            data: input.classExternalIds.map((classExternalId) => ({
-              teacherProfileId: tp.id,
-              classExternalId,
-            })),
-            skipDuplicates: true,
-          });
-      }
-      if (input.subjectExternalIds !== undefined) {
-        await prisma.teacherSubject.deleteMany({
-          where: { teacherProfileId: tp.id },
-        });
-        if (input.subjectExternalIds.length)
-          await prisma.teacherSubject.createMany({
-            data: input.subjectExternalIds.map((subjectExternalId) => ({
-              teacherProfileId: tp.id,
-              subjectExternalId,
-            })),
-            skipDuplicates: true,
-          });
-      }
-      if (input.seriesExternalIds !== undefined) {
-        await prisma.teacherSeries.deleteMany({
-          where: { teacherProfileId: tp.id },
-        });
-        if (input.seriesExternalIds.length)
-          await prisma.teacherSeries.createMany({
-            data: input.seriesExternalIds.map((seriesExternalId) => ({
-              teacherProfileId: tp.id,
-              seriesExternalId,
-            })),
-            skipDuplicates: true,
-          });
-      }
-      if (input.bookExternalIds !== undefined) {
-        await prisma.teacherBook.deleteMany({
-          where: { teacherProfileId: tp.id },
-        });
-        if (input.bookExternalIds.length)
-          await prisma.teacherBook.createMany({
-            data: input.bookExternalIds.map((bookExternalId) => ({
-              teacherProfileId: tp.id,
-              bookExternalId,
-            })),
-            skipDuplicates: true,
-          });
-      }
-    }
-
-    if (user.role === Role.STUDENT) {
-      let inheritedBoardId: string | null | undefined;
-      let inheritedClassId: string | null | undefined;
-      let inheritedSeriesId: string | null | undefined;
-      let inheritedBookIds: string[] | undefined;
-      let normalizedCode: string | null | undefined = input.teacherCode;
-
-      if (input.teacherCode != null && input.teacherCode.trim() !== "") {
-        const code = input.teacherCode.trim().toUpperCase();
-        const teacher = await prisma.teacherProfile.findUnique({
-          where: { teacherCode: code },
-          select: {
-            id: true,
-            boardExternalId: true,
-            classes: { take: 1, select: { classExternalId: true } },
-            teacherSeries: { take: 1, select: { seriesExternalId: true } },
-            books: { select: { bookExternalId: true } },
-          },
-        });
-        if (!teacher)
-          throw ApiError.badRequest(
-            "Invalid teacher code. Please check the code with your teacher.",
-          );
-
-        normalizedCode = code;
-        inheritedBoardId = teacher.boardExternalId ?? null;
-        inheritedClassId = teacher.classes[0]?.classExternalId ?? null;
-        inheritedSeriesId = teacher.teacherSeries[0]?.seriesExternalId ?? null;
-        inheritedBookIds = teacher.books.map((b) => b.bookExternalId);
-      }
-
-      const studentFields = {
-        ...sharedFields,
-        ...(normalizedCode !== undefined && { teacherCode: normalizedCode }),
-        ...(inheritedBoardId !== undefined
-          ? { boardExternalId: inheritedBoardId }
-          : input.boardExternalId !== undefined && {
-              boardExternalId: input.boardExternalId,
-            }),
-        ...(input.classExternalId !== undefined
-          ? { classExternalId: input.classExternalId }
-          : inheritedClassId !== undefined && {
-              classExternalId: inheritedClassId,
-            }),
-        ...(inheritedSeriesId !== undefined
-          ? { seriesExternalId: inheritedSeriesId }
-          : input.seriesExternalId !== undefined && {
-              seriesExternalId: input.seriesExternalId,
-            }),
+        ...(input.classExternalId !== undefined && {
+          classExternalId: input.classExternalId,
+        }),
+        ...(input.seriesExternalId !== undefined && {
+          seriesExternalId: input.seriesExternalId,
+        }),
       } as Prisma.StudentProfileUncheckedUpdateInput;
 
       const sp = await prisma.studentProfile.upsert({
@@ -394,10 +259,7 @@ export const UserService = {
         update: studentFields,
       });
 
-      const bookIds =
-        inheritedBookIds !== undefined
-          ? inheritedBookIds
-          : input.bookExternalIds;
+      const bookIds = input.bookExternalIds;
       if (bookIds !== undefined) {
         await prisma.studentBook.deleteMany({
           where: { studentProfileId: sp.id },
@@ -465,51 +327,6 @@ export const UserService = {
     ]);
   },
 
-  async listTeachers(query: ListProfilesQuery) {
-    const { page, limit, status, search } = query;
-    const { skip, take } = pageToSkipTake(page, limit);
-
-    const where: Prisma.UserWhereInput = {
-      role: Role.TEACHER,
-      ...(status && { status }),
-      ...searchFilter(search),
-    };
-
-    const [rows, total] = await Promise.all([
-      prisma.user.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip,
-        take,
-        include: {
-          teacherProfile: { select: { schoolName: true, bio: true } },
-          _count: { select: { createdAssessments: true } },
-        },
-      }),
-      prisma.user.count({ where }),
-    ]);
-
-    // Teacher-student linking is by matching `teacherCode` strings (see
-    // StudentProfile.teacherCode / TeacherProfile.teacherCode in the schema),
-    // not a foreign key, so a real count needs a join on that code. Left out
-    // for now since the Teacher module is hidden; wire it up here (e.g. a
-    // `prisma.studentProfile.count({ where: { teacherCode: u.teacherProfile?.teacherCode } })`
-    // per row, or a grouped aggregate) when the module is reintroduced.
-    const items = rows.map((u) => ({
-      id: u.id,
-      name: u.name,
-      email: u.email,
-      schoolName: u.teacherProfile?.schoolName ?? null,
-      bio: u.teacherProfile?.bio ?? null,
-      assessments: u._count.createdAssessments,
-      status: u.status,
-      joinedAt: u.createdAt,
-      avatarHue: u.avatarHue,
-    }));
-
-    return { items, meta: pageMeta(total, page, limit) };
-  },
-
   async listStudents(query: ListProfilesQuery) {
     const { page, limit, status, search } = query;
     const { skip, take } = pageToSkipTake(page, limit);
@@ -528,9 +345,9 @@ export const UserService = {
         take,
         include: {
           // classExternalId/educationBoard added for Feature A1 (Admin
-          // Dashboard)'s "Recent Student Registrations" widget — schoolName/
-          // teacherCode were already selected for existing consumers.
-          studentProfile: { select: { schoolName: true, teacherCode: true, classExternalId: true, educationBoard: true } },
+          // Dashboard)'s "Recent Student Registrations" widget — schoolName
+          // was already selected for existing consumers.
+          studentProfile: { select: { schoolName: true, classExternalId: true, educationBoard: true } },
           _count: { select: { submissions: true } },
         },
       }),
@@ -576,8 +393,7 @@ export const UserService = {
         name: u.name,
         email: u.email,
         schoolName: u.studentProfile?.schoolName ?? null,
-        teacherCode: u.studentProfile?.teacherCode ?? null,
-        className: classExternalId ? classNames.get(classExternalId) ?? classExternalId : null,
+        className: classExternalId ? classNames.get(classExternalId) ?? UNKNOWN_CLASS_NAME : null,
         educationBoard: u.studentProfile?.educationBoard ?? null,
         attempted: u._count.submissions,
         avgScore,

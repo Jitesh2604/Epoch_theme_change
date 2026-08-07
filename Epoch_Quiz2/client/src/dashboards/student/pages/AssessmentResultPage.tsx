@@ -5,7 +5,6 @@ import {
   ChevronDown, ChevronUp, ArrowLeft, AlertTriangle, Award, FileText, Percent, HourglassIcon,
 } from 'lucide-react';
 import { Card, Button, Badge, ProgressBar } from '../../shared/ui';
-import { StandaloneHeader } from '../../shared/StandaloneHeader';
 import { assessmentTakeApi, type SubmissionResult, type ResultQuestion } from '../../../hooks/useSubmissionApi';
 
 /** Result is the last page of the standalone Assessment flow — see
@@ -14,7 +13,6 @@ import { assessmentTakeApi, type SubmissionResult, type ResultQuestion } from '.
 function StandalonePage({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-bg text-fg1 font-body">
-      <StandaloneHeader />
       <main className="px-5 md:px-8 lg:px-10 py-6 lg:py-8 max-w-[1480px] w-full mx-auto">
         {children}
       </main>

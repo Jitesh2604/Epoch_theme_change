@@ -4,7 +4,7 @@ import { Button } from './ui';
 /**
  * Shown instead of the assessment list/flow once `SESSION_END_DATE`
  * (config/assessmentSession.ts) has passed — students can still practice,
- * just not start or resume graded assessments until the next session.
+ * just not start graded assessments until the next session.
  */
 export function SessionOverScreen() {
   return (

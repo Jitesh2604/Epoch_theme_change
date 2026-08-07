@@ -25,7 +25,6 @@ interface AnswerState {
   selectedOption?:  string;
   selectedOptions?: string[];
   textAnswer?:      string;
-  isSkipped?:       boolean;
 }
 
 interface FeedbackState {
@@ -270,7 +269,7 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
 
   // ── Submit this question's answer ───────────────────────────────
 
-  const submitAnswer = useCallback(async (skipQuestion = false) => {
+  const submitAnswer = useCallback(async () => {
     if (!q || !attemptId || submitted[q.id]) return;
     setSaving(true);
     try {
@@ -278,7 +277,6 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
       const payload: Parameters<typeof practiceApi.saveAnswer>[1] = {
         questionId:   q.id,
         timeSpentSec: elapsedRef.current,
-        isSkipped:    skipQuestion,
         ...(current.selectedOption  && { selectedOption:  current.selectedOption  }),
         ...(current.selectedOptions?.length && { selectedOptions: current.selectedOptions }),
         ...(current.textAnswer      && { textAnswer:      current.textAnswer      }),
@@ -574,7 +572,7 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
                   ? `Correct! +${feedback.marksAwarded} mark${feedback.marksAwarded !== 1 ? 's' : ''}`
                   : feedback.isCorrect === false
                     ? 'Incorrect'
-                    : 'Skipped'}
+                    : 'Not graded'}
               </span>
             </div>
 
@@ -604,7 +602,7 @@ export function PracticePlayPage({ navigate, attemptId }: PracticePlayPageProps)
           {!qSubmitted && (
             <Button
               className="flex-1"
-              onClick={() => submitAnswer(false)}
+              onClick={() => submitAnswer()}
               disabled={saving || !hasSelection || finishing}
             >
               {saving ? 'Saving…' : 'Submit Answer'}

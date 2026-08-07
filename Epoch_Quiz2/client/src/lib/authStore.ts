@@ -4,8 +4,8 @@ export { getRefreshToken };
 
 // ── Types ────────────────────────────────────────────────────────
 
-export type BackendRole = 'SUPER_ADMIN' | 'PUBLICATION_ADMIN' | 'CONTENT_MANAGER' | 'TEACHER' | 'STUDENT';
-export type UIRole = 'admin' | 'teacher' | 'student';
+export type BackendRole = 'SUPER_ADMIN' | 'PUBLICATION_ADMIN' | 'CONTENT_MANAGER' | 'STUDENT';
+export type UIRole = 'admin' | 'student';
 
 export interface AuthUser {
   id: string;
@@ -34,16 +34,11 @@ export interface ProfileUpdateData {
   stateBoard?: string | null;
   // FK fields (single select)
   boardExternalId?: string | null;
-  classExternalId?: string | null;       // student: single
-  seriesExternalId?: string | null;      // student: single
-  // Many-to-many (arrays of IDs)
-  classExternalIds?: string[];           // teacher: multiple
-  subjectExternalIds?: string[];         // teacher: multiple
-  seriesExternalIds?: string[];          // teacher: multiple
-  bookExternalIds?: string[];            // both: multiple
-  // Role-specific text fields
-  bio?: string | null;           // Teacher only
-  teacherCode?: string | null;   // Student only
+  classExternalId?: string | null;
+  seriesExternalId?: string | null;
+  // Many-to-many (array of IDs)
+  subjectExternalIds?: string[];
+  bookExternalIds?: string[];
 }
 
 const USER_KEY = 'epoch-user';
@@ -51,7 +46,6 @@ const USER_KEY = 'epoch-user';
 // ── Role mapping ─────────────────────────────────────────────────
 
 export function toUIRole(role: BackendRole): UIRole {
-  if (role === 'TEACHER') return 'teacher';
   if (role === 'STUDENT') return 'student';
   return 'admin';
 }
@@ -147,7 +141,7 @@ export async function register(
   name: string,
   email: string,
   password: string,
-  role: 'TEACHER' | 'STUDENT',
+  role: 'STUDENT',
   mobileNo: string,
 ): Promise<{ email: string; expiresInMinutes: number; devCode?: string }> {
   return api.post('/auth/register', { name, email, password, role, mobileNo }, { skipAuth: true });

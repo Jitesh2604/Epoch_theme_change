@@ -6,7 +6,7 @@ import { authorize } from '../middlewares/authorize';
 import { ADMIN_ROLES } from '../utils/roles';
 import { prisma } from '../lib/prisma';
 import { Role, SubmissionStatus, AttemptStatus } from '../lib/enums';
-import { ContentMeta } from '../services/content.service';
+import { ContentMeta, UNKNOWN_SUBJECT_NAME } from '../services/content.service';
 import { AdminDashboardService } from '../services/adminDashboard.service';
 
 const router = new Router();
@@ -20,7 +20,6 @@ router.get(
     const COUNTABLE = { in: [SubmissionStatus.SUBMITTED, SubmissionStatus.GRADED] };
 
     const [
-      teachers,
       students,
       assessments,
       submissions,
@@ -29,7 +28,6 @@ router.get(
       recentSubmissions,
       aggRow,
     ] = await Promise.all([
-      prisma.user.count({ where: { role: Role.TEACHER } }),
       prisma.user.count({ where: { role: Role.STUDENT } }),
       prisma.assessment.count(),
       prisma.submission.count({ where: { status: COUNTABLE } }),
@@ -54,7 +52,7 @@ router.get(
     // Resolve subject external ids to display names from the cached Content API.
     const subjectNames = await ContentMeta.subjects();
     const subjectOf = (extId: string | null) =>
-      extId ? { id: extId, name: subjectNames.get(extId) ?? extId } : null;
+      extId ? { id: extId, name: subjectNames.get(extId) ?? UNKNOWN_SUBJECT_NAME } : null;
 
     const totalScore    = aggRow._sum.score ?? 0;
     const totalPossible = aggRow._sum.totalMarks ?? 0;
@@ -63,7 +61,7 @@ router.get(
       : 0;
 
     ApiResponse.ok(res, {
-      counts: { teachers, students, assessments, submissions, practiceAttempts },
+      counts: { students, assessments, submissions, practiceAttempts },
       completionRate,
       recentAssessments: recentAssessments.map((a) => ({
         id:            a.id,

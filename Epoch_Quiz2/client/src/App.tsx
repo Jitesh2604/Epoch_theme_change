@@ -14,7 +14,6 @@ import { LoginPage } from './pages/auth/LoginPage';
 import { SignupPage } from './pages/auth/SignupPage';
 import { CompleteProfilePage } from './pages/auth/CompleteProfilePage';
 import { CompleteProfileStudentPage } from './pages/auth/CompleteProfileStudentPage';
-import { CompleteProfileTeacherPage } from './pages/auth/CompleteProfileTeacherPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
 import { VerifyEmailPage } from './pages/auth/VerifyEmailPage';
@@ -37,7 +36,7 @@ function PlayGate({ targetRoute }: { targetRoute: string }) {
         Sign up to play
       </h2>
       <p style={{ fontSize: 13.5, color: 'var(--fg-2)', lineHeight: 1.6 }}>
-        Quizzes are for signed-in students and teachers. Redirecting you to sign up — you'll come right back here.
+        Quizzes are for signed-in students. Redirecting you to sign up — you'll come right back here.
       </p>
     </div>
   );
@@ -151,11 +150,6 @@ export default function App() {
       // Dashboard.
       window.location.href = '/results';
       page = null;
-    } else if (parts[1]) {
-      // #/olympiad/:attemptId — resuming a specific paused attempt from
-      // "Resume Paused Quizzes", as opposed to bare #/olympiad (Attempt
-      // Olympiad), which always starts a brand-new mixed quiz.
-      page = <OlympiadPlayPage navigate={navigate} resumeAttemptId={parts[1]} />;
     } else {
       page = <OlympiadPlayPage navigate={navigate} />;
     }
@@ -168,9 +162,8 @@ export default function App() {
   } else if (top === 'signup') {
     page = <SignupPage navigate={navigate} />;
   } else if (top === 'complete-profile') {
-    if (parts[1] === 'student')      page = <CompleteProfileStudentPage navigate={navigate} />;
-    else if (parts[1] === 'teacher') page = <CompleteProfileTeacherPage navigate={navigate} />;
-    else                             page = <CompleteProfilePage navigate={navigate} />;
+    if (parts[1] === 'student') page = <CompleteProfileStudentPage navigate={navigate} />;
+    else                        page = <CompleteProfilePage navigate={navigate} />;
   } else if (top === 'forgot-password') {
     page = <ForgotPasswordPage navigate={navigate} />;
   } else if (top === 'reset-password') {

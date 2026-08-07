@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { ChevronDown, Menu, Search, Sun, Moon, HelpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { signOut } from './auth';
@@ -15,11 +15,10 @@ export function Topbar({ user, onMenuClick }: Props) {
   const [theme, setTheme] = useState(() => (typeof window !== 'undefined' && localStorage.getItem('epoch-theme')) || 'light');
   const ref = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
-  const location = useLocation();
 
-  // Topbar only ever renders for Admin/Teacher now — Student has no
-  // Dashboard (no DashboardLayout, so no Topbar) anymore.
-  const basePath = location.pathname.startsWith('/teacher') ? '/teacher' : '/admin';
+  // Topbar only ever renders for Admin now — Student has no Dashboard (no
+  // DashboardLayout, so no Topbar) anymore.
+  const basePath = '/admin';
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -98,11 +97,9 @@ export function Topbar({ user, onMenuClick }: Props) {
                 className="absolute right-0 top-12 w-56 bg-surface1 border border-line rounded-xl shadow-elev2 z-50 p-1.5"
               >
                 {[
-                  // Admin has no dedicated Profile page/route yet (unlike
-                  // Student/Teacher), so this item is hidden for that role to
-                  // avoid a dead link — add it back here once an Admin
-                  // ProfilePage + `/admin/profile` route exist.
-                  ...(basePath !== '/admin' ? [{ label: 'Profile', action: () => navigate(`${basePath}/profile`) }] : []),
+                  // Admin has no dedicated Profile page/route yet — add a
+                  // Profile item here once an Admin ProfilePage +
+                  // `/admin/profile` route exist.
                   { label: 'Account settings', action: () => navigate(`${basePath}/settings`) },
                 ].map((it, i) => (
                   <button

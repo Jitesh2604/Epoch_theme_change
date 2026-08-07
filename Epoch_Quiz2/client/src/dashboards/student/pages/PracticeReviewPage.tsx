@@ -7,7 +7,6 @@ import {
 import {
   PageHeader, Card, Button, Skeleton, EmptyState, Select, SearchInput, StatCard, useToasts,
 } from '../../shared/ui';
-import { StandaloneHeader } from '../../shared/StandaloneHeader';
 import { practiceApi, type PracticeResult, type PracticeResultAnswer } from '../../../hooks/usePracticeQuiz';
 import { useBookmarks } from '../../../hooks/useBookmarks';
 import { classifyMistake } from '../../../lib/mistakeClassification';
@@ -33,7 +32,6 @@ import { fmtDurationHMS, fmtDate } from '../../../lib/formatters';
 function StandalonePage({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-bg text-fg1 font-body">
-      <StandaloneHeader subtitle="Practice Review" />
       <main className="px-5 md:px-8 lg:px-10 py-6 lg:py-8 max-w-[1200px] w-full mx-auto print:px-0 print:py-0 print:max-w-full">
         {children}
       </main>

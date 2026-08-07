@@ -16,6 +16,9 @@ export const AT_RISK_ACCURACY_THRESHOLD = 50;
 export const AT_RISK_SKIP_RATE_THRESHOLD = 30;
 export const AT_RISK_INACTIVITY_DAYS = 14;
 export const AT_RISK_LOW_CONFIDENCE_THRESHOLD = 40;
+/** Feature 6: low Assessment average — same 50% cutoff as the Practice
+ *  accuracy threshold above, applied to Assessment percentage instead. */
+export const AT_RISK_ASSESSMENT_AVG_THRESHOLD = 50;
 
 export interface AtRiskInput {
   overview: PracticeOverviewData;
@@ -24,6 +27,13 @@ export interface AtRiskInput {
    *  RevisionService.getDashboard was fetched (the Summary Panel), not the
    *  table's cheaper batched revision-streak read. Omit to skip this signal. */
   revisionOverdueCount?: number | null;
+  /** Feature 6: Assessment average percentage (assessmentStats.averagePercentage),
+   *  null/omitted when the student has no completed Assessment submissions —
+   *  a student with no Assessment history is never flagged on this signal. */
+  assessmentAveragePercent?: number | null;
+  /** Feature 6: true when this student's Assessment score trend is
+   *  declining (see assessmentTrendInsights.ts). Omit/false to skip. */
+  assessmentTrendDeclining?: boolean;
   now?: Date;
 }
 
@@ -32,7 +42,9 @@ export interface AtRiskResult {
   reasons: string[];
 }
 
-export function evaluateAtRisk({ overview, confidence, revisionOverdueCount, now = new Date() }: AtRiskInput): AtRiskResult {
+export function evaluateAtRisk({
+  overview, confidence, revisionOverdueCount, assessmentAveragePercent, assessmentTrendDeclining, now = new Date(),
+}: AtRiskInput): AtRiskResult {
   const reasons: string[] = [];
 
   if (overview.accuracyPercent < AT_RISK_ACCURACY_THRESHOLD) {
@@ -59,6 +71,14 @@ export function evaluateAtRisk({ overview, confidence, revisionOverdueCount, now
 
   if (revisionOverdueCount != null && revisionOverdueCount > 0) {
     reasons.push(`${revisionOverdueCount} revision item${revisionOverdueCount === 1 ? '' : 's'} overdue.`);
+  }
+
+  if (assessmentAveragePercent != null && assessmentAveragePercent < AT_RISK_ASSESSMENT_AVG_THRESHOLD) {
+    reasons.push(`Assessment average is ${assessmentAveragePercent}%, below the ${AT_RISK_ASSESSMENT_AVG_THRESHOLD}% at-risk threshold.`);
+  }
+
+  if (assessmentTrendDeclining) {
+    reasons.push('Assessment scores are trending downward.');
   }
 
   return { atRisk: reasons.length > 0, reasons };

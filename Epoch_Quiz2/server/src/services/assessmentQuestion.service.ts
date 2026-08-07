@@ -121,7 +121,6 @@ async function loadQuestionOwned(id: string, actor: Actor, mode: 'read' | 'write
   const row = await prisma.assessmentQuestionBank.findUnique({ where: { id }, include: questionInclude });
   if (!row) throw ApiError.notFound('Question not found');
   if (isAdminRole(actor.role)) return row;
-  if (actor.role === Role.TEACHER && row.createdById === actor.id) return row;
   if (mode === 'write') throw ApiError.forbidden('You can only modify questions you created');
   throw ApiError.forbidden('You do not have access to this question');
 }
@@ -130,7 +129,6 @@ async function loadAssessmentForWrite(id: string, actor: Actor) {
   const a = await prisma.assessment.findUnique({ where: { id }, select: { id: true, status: true, createdById: true } });
   if (!a) throw ApiError.notFound('Assessment not found');
   if (isAdminRole(actor.role)) return a;
-  if (actor.role === Role.TEACHER && a.createdById === actor.id) return a;
   throw ApiError.forbidden('You can only modify assessments you created');
 }
 
@@ -151,8 +149,8 @@ export const AssessmentQuestionService = {
   // ── Bank CRUD (create/list/findById/update/remove) ──────────
 
   async create(actor: Actor, input: CreateAssessmentQuestionInput) {
-    if (actor.role !== Role.TEACHER && !isAdminRole(actor.role)) {
-      throw ApiError.forbidden('Only teachers can create questions');
+    if (!isAdminRole(actor.role)) {
+      throw ApiError.forbidden('Only admins can create questions');
     }
     if (input.subjectExternalId) await ensureSubjectExists(input.subjectExternalId);
     await validateAcademicFks(input);

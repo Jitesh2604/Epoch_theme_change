@@ -4,8 +4,8 @@ import { ApiError } from '../utils/ApiError';
 
 /**
  * Role-based authorization. Must run after `authenticate`.
- *   router.get('/admin/only', authenticate, authorize('ADMIN'), handler)
- *   router.post('/staff',    authenticate, authorize('ADMIN', 'TEACHER'), handler)
+ *   router.get('/admin/only', authenticate, authorize('SUPER_ADMIN'), handler)
+ *   router.post('/staff',    authenticate, authorize(...ADMIN_ROLES), handler)
  */
 export const authorize =
   (...allowed: Role[]) =>

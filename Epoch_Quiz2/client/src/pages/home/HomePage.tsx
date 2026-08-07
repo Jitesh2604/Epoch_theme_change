@@ -112,7 +112,6 @@ export const HomePage: React.FC<HomePageProps> = ({ navigate, tweaks }) => {
           <div className="grid-3">
             {[
               { ic: 'layers',     t: 'Subject-wise Practice', d: 'Pick one subject and difficulty for focused, timed practice, or take on a self-paced mixed Practice Olympiad set across all your subjects.' },
-              { ic: 'pause',      t: 'Pause & Resume',        d: 'Step away mid-practice and pick up right where you left off — your answers and timer are saved automatically.' },
               { ic: 'bolt',       t: 'Instant Practice Results', d: 'Score, correct answers, and worked explanations the moment you submit a Practice or Olympiad attempt.' },
               { ic: 'fileText',   t: 'Official Assessment Mode', d: 'One timed assessment per session, taken in a distraction-free, full-screen exam experience.' },
               { ic: 'clock',      t: 'Results Published by Your School', d: 'Assessment results aren’t instant — they’re reviewed and officially published by your admin once grading is complete.' },

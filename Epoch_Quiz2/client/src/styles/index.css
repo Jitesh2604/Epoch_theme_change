@@ -1377,15 +1377,6 @@ main { flex: 1; position: relative; z-index: 1; }
 }
 .assess-btn:hover:not(:disabled) { filter: brightness(1.12); }
 .assess-btn:active:not(:disabled) { transform: scale(0.98); }
-.assess-btn.resume {
-  background: var(--warm-soft);
-  color: var(--warm);
-  border: 1px solid rgba(123, 82, 212, 0.25);
-}
-.assess-btn.resume:hover:not(:disabled) {
-  background: rgba(123, 82, 212, 0.22);
-  filter: none;
-}
 .assess-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;

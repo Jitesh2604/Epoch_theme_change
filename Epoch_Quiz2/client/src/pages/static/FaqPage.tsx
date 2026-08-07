@@ -11,7 +11,7 @@ interface FaqPageProps {
 
 const SECTIONS = [
   { heading: 'faq.sectionStart',      items: ['start', 'subjectDifficulty', 'answerSubmit', 'results'] },
-  { heading: 'faq.sectionScoring',    items: ['scoreCorrect', 'scoreWrong', 'scoreSkip'] },
+  { heading: 'faq.sectionScoring',    items: ['scoreCorrect', 'scoreWrong'] },
   { heading: 'faq.sectionTimers',     items: ['timerPractice', 'timerOlympiad', 'timerAssessment', 'timerResume'] },
   { heading: 'faq.sectionNavigation', items: ['navBack', 'navQuit'] },
 ] as const;

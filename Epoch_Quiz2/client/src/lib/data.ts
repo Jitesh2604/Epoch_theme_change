@@ -11,7 +11,7 @@ export const HERO_SLIDES: HeroSlide[] = [
   {
     eyebrow: 'Practice anytime',
     title: 'Instant results, <em>every single time</em>.',
-    body: 'Pick a subject and difficulty, or take on a self-paced mixed Practice Olympiad set. See your score, correct answers, and explanations the moment you submit — pause and resume whenever you need to.',
+    body: 'Pick a subject and difficulty, or take on a self-paced mixed Practice Olympiad set. See your score, correct answers, and explanations the moment you submit.',
     cta: 'Start a Practice Olympiad',
     ctaRoute: 'play',
   },

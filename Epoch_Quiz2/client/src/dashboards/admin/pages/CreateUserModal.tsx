@@ -6,7 +6,7 @@ type ToastKind = 'success' | 'danger' | 'info';
 
 interface CreateUserModalProps {
   open: boolean;
-  role: 'TEACHER' | 'STUDENT';
+  role: 'STUDENT';
   onClose: () => void;
   onCreated: () => void;
   push: (t: { kind?: ToastKind; title: string; sub?: string }) => void;
@@ -18,7 +18,7 @@ const inputCls =
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function CreateUserModal({ open, role, onClose, onCreated, push }: CreateUserModalProps) {
-  const noun = role === 'TEACHER' ? 'Teacher' : 'Student';
+  const noun = 'Student';
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

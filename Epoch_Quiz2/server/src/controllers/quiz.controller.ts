@@ -60,19 +60,6 @@ export const QuizController = {
     ApiResponse.ok(res, data);
   }),
 
-  /** The caller's own paused/in-progress attempts — "Resume Paused Quizzes". */
-  listPaused: asyncHandler(async (req: Request, res: Response) => {
-    if (!req.user) throw ApiError.unauthorized();
-    const data = await QuizService.listPaused(req.user.id);
-    ApiResponse.ok(res, data);
-  }),
-
-  discardAttempt: asyncHandler(async (req: Request, res: Response) => {
-    if (!req.user) throw ApiError.unauthorized();
-    const result = await QuizService.discard(param(req, 'id'), req.user.id);
-    ApiResponse.ok(res, result, 'Attempt discarded');
-  }),
-
   /** Admin-only, cross-student report over every Practice/Olympiad attempt. */
   list: asyncHandler(async (req: Request, res: Response) => {
     const data = await QuizService.list(req.query as unknown as ListQuizAttemptsInput);

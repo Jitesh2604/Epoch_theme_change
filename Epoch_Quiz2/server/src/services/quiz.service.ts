@@ -5,7 +5,7 @@ import { PracticeConfig } from '../config/practiceConfig';
 import { parseStrArr, toJson } from '../utils/json';
 import { ApiError } from '../utils/ApiError';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
-import { ContentMeta } from './content.service';
+import { ContentMeta, UNKNOWN_SUBJECT_NAME } from './content.service';
 import { RevisionService } from './revision.service';
 import { REVISION_SECONDS_PER_QUESTION } from '../config/revisionConfig';
 import type {
@@ -124,7 +124,7 @@ async function getOrCreatePracticeQuiz(subjectExternalId: string, subjectName: s
 
   const quiz = await prisma.quiz.create({
     data: {
-      title: `Practice · ${subjectName ?? subjectExternalId}`,
+      title: `Practice · ${subjectName ?? UNKNOWN_SUBJECT_NAME}`,
       quizType: QuizType.PRACTICE, questionSelection: 'AUTO_RANDOM', subjectExternalId,
       status: QuizStatus.PUBLISHED, createdById: admin?.id ?? fallbackUserId, leaderboardEnabled: true, duration: 0,
     },
@@ -353,7 +353,7 @@ async function buildResult(attemptId: string) {
   // with nothing identifying which quiz/attempt this even was.
   const subjectNames = await ContentMeta.subjects();
   const subExtId    = attempt.quiz?.subjectExternalId ?? null;
-  const subjectName = subExtId ? subjectNames.get(subExtId) ?? subExtId : null;
+  const subjectName = subExtId ? subjectNames.get(subExtId) ?? UNKNOWN_SUBJECT_NAME : null;
 
   return {
     attemptId:      attempt.id,
@@ -362,7 +362,7 @@ async function buildResult(attemptId: string) {
       id:       attempt.quiz?.id ?? attempt.quizId,
       title:    attempt.quiz?.title ?? 'Quiz',
       quizType: attempt.quiz?.quizType ?? null,
-      subject:  subExtId ? { id: subExtId, name: subjectName ?? subExtId } : null,
+      subject:  subExtId ? { id: subExtId, name: subjectName ?? UNKNOWN_SUBJECT_NAME } : null,
     },
     startTime:      attempt.startTime,
     endTime:        attempt.endTime,
@@ -410,7 +410,7 @@ async function buildResult(attemptId: string) {
         difficulty:  a.question.difficulty,
         explanation: a.question.explanation,
         subject:     a.question.subjectExternalId
-          ? { id: a.question.subjectExternalId, name: subjectNames.get(a.question.subjectExternalId) ?? a.question.subjectExternalId }
+          ? { id: a.question.subjectExternalId, name: subjectNames.get(a.question.subjectExternalId) ?? UNKNOWN_SUBJECT_NAME }
           : null,
       },
     })),
@@ -506,12 +506,12 @@ export const QuizService = {
 
     // Resolve subject display names from the live (cached) Content API. Subjects
     // no longer exist locally, so a subject with questions but no live catalog
-    // entry falls back to its external id as the name.
+    // entry falls back to UNKNOWN_SUBJECT_NAME, never the raw external id.
     const subjectNames = await ContentMeta.subjects();
 
     return subjectIds
       .map(extId => {
-        const name = subjectNames.get(extId) ?? extId;
+        const name = subjectNames.get(extId) ?? UNKNOWN_SUBJECT_NAME;
         const sc     = counts.filter(c => c.subjectExternalId === extId);
         const easy   = sc.find(c => c.difficulty === 'EASY')?._count._all   ?? 0;
         const medium = sc.find(c => c.difficulty === 'MEDIUM')?._count._all ?? 0;
@@ -527,13 +527,11 @@ export const QuizService = {
    * but creates nothing (no attempt row, no time-limit clock started).
    *
    * Always previews a fresh hypothetical attempt, even if the student has a
-   * paused one open on this subject — Start Quiz always starts new. Resuming
-   * a paused attempt is a separate, explicit action (see listPaused/
-   * getAttempt), never something Start Quiz does automatically.
+   * paused one open on this subject — Start Quiz always starts new.
    */
   async previewPractice(studentId: string, input: PreviewPracticeInput) {
     const subjectNames = await ContentMeta.subjects();
-    const subjectName = subjectNames.get(input.subjectExternalId) ?? null;
+    const subjectName = subjectNames.get(input.subjectExternalId) ?? UNKNOWN_SUBJECT_NAME;
     const mode = await prisma.olympiadMode.findFirst({ where: { id: input.subjectExternalId }, select: { id: true } });
     if (mode) {
       throw ApiError.badRequest('This category is an Olympiad mode — use the Olympiad flow, not subject practice.');
@@ -557,7 +555,7 @@ export const QuizService = {
     const avgMarks      = matching.reduce((s, q) => s + q.marks, 0) / matching.length;
 
     return {
-      subject:          { id: input.subjectExternalId, name: subjectName ?? input.subjectExternalId },
+      subject:          { id: input.subjectExternalId, name: subjectName },
       difficulty:        input.difficulty,
       questionCount,
       timeLimitSec:      config.timeLimitMinutes * 60,
@@ -571,7 +569,7 @@ export const QuizService = {
     // input.subjectExternalId is a Content API subject external id. Resolve its
     // display name and reject Olympiad modes (which are app-owned, not subjects).
     const subjectNames = await ContentMeta.subjects();
-    const subjectName = subjectNames.get(input.subjectExternalId) ?? null;
+    const subjectName = subjectNames.get(input.subjectExternalId) ?? UNKNOWN_SUBJECT_NAME;
     const mode = await prisma.olympiadMode.findFirst({ where: { id: input.subjectExternalId }, select: { id: true } });
     if (mode) {
       throw ApiError.badRequest('This category is an Olympiad mode — use the Olympiad flow, not subject practice.');
@@ -580,10 +578,9 @@ export const QuizService = {
     const quizId = await getOrCreatePracticeQuiz(input.subjectExternalId, subjectName, studentId);
 
     // Always starts a brand-new attempt, even if the student already has one
-    // paused on this subject — Start Quiz and Resume are deliberately
-    // separate actions (see listPaused). Practice/Olympiad have always
-    // allowed multiple attempts over time (attemptNumber increments), so
-    // this is consistent with that, not a new allowance.
+    // paused on this subject. Practice/Olympiad have always allowed multiple
+    // attempts over time (attemptNumber increments), so this is consistent
+    // with that, not a new allowance.
 
     // Scope to the student's class AND board (never other classes/boards).
     const profile = await readStudentProfile(studentId);
@@ -605,7 +602,7 @@ export const QuizService = {
     const config       = PracticeConfig[input.difficulty];
     const timeLimitSec = config.timeLimitMinutes * 60;
 
-    const subject = { id: input.subjectExternalId, name: subjectName ?? input.subjectExternalId, slug: slugify(subjectName ?? input.subjectExternalId), kind: 'SUBJECT' };
+    const subject = { id: input.subjectExternalId, name: subjectName, slug: slugify(subjectName), kind: 'SUBJECT' };
     const selected = shuffleArray(allQuestions).slice(0, config.questionCount);
 
     const { attemptId, attemptNumber } = await createQuizAttempt(quizId, studentId, timeLimitSec);
@@ -898,7 +895,7 @@ export const QuizService = {
     // Mixed Subjects Practice — quizType is what tells the two apart.
     const subExtId    = attempt.quiz?.subjectExternalId ?? null;
     const subjectName = subExtId
-      ? (await ContentMeta.subjects()).get(subExtId) ?? subExtId
+      ? (await ContentMeta.subjects()).get(subExtId) ?? UNKNOWN_SUBJECT_NAME
       : attempt.quiz?.quizType === QuizType.OLYMPIAD ? 'Practice Olympiad' : 'Mixed Subjects Practice';
     const questions   = answers.map((a, i) => sanitizeQuestion(a.question, i + 1));
 
@@ -1072,15 +1069,13 @@ export const QuizService = {
     }
     const subjectNames = await ContentMeta.subjects();
     const subjects = chosen
-      .map(c => ({ id: c.subjectExternalId, name: subjectNames.get(c.subjectExternalId) ?? c.subjectExternalId }))
+      .map(c => ({ id: c.subjectExternalId, name: subjectNames.get(c.subjectExternalId) ?? UNKNOWN_SUBJECT_NAME }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
     const perSubject = input.perSubject ?? await getOlympiadPerSubject();
 
     // Always builds a brand-new mixed set, even if the student already has a
-    // paused Olympiad attempt open — Start/Attempt Olympiad and Resume are
-    // deliberately separate actions (see listPaused). Resuming a specific
-    // paused attempt goes through getAttempt directly, keyed by its own id.
+    // paused Olympiad attempt open.
     const className = await ContentMeta.className(profile.classExternalId);
     const quizId = await getOrCreateOlympiadQuiz(profile.classExternalId, className, studentId);
 
@@ -1175,68 +1170,10 @@ export const QuizService = {
       quizType:       r.quiz.quizType,
       questionCount:  r._count.answers,
       subject:        r.quiz.subjectExternalId
-        ? { id: r.quiz.subjectExternalId, name: subjectNames.get(r.quiz.subjectExternalId) ?? r.quiz.subjectExternalId }
+        ? { id: r.quiz.subjectExternalId, name: subjectNames.get(r.quiz.subjectExternalId) ?? UNKNOWN_SUBJECT_NAME }
         : null,
       difficulty:     r.quiz.title === 'Retry Practice' ? 'MIXED' : (r.answers[0]?.question.difficulty ?? null),
     }));
-  },
-
-  /**
-   * The student's own paused/in-progress attempts, across both Practice and
-   * Olympiad — the data behind the "Resume Paused Quizzes" section. Start
-   * Quiz / Attempt Olympiad never surface or touch these automatically;
-   * resuming one is always an explicit click through this list (see
-   * getAttempt, called directly with the attemptId). Capped at a fixed
-   * count rather than paginated — this is a small home-page widget, not a
-   * full report, but the cap keeps it bounded regardless of how many stack
-   * up over time.
-   */
-  async listPaused(studentId: string) {
-    const rows = await prisma.quizAttempt.findMany({
-      where: { studentId, status: AttemptStatus.IN_PROGRESS },
-      orderBy: { startTime: 'desc' },
-      take: 20,
-      include: {
-        quiz: { select: { id: true, title: true, quizType: true, subjectExternalId: true } },
-        _count: { select: { answers: true } },
-      },
-    });
-    if (!rows.length) return [];
-
-    const subjectNames = await ContentMeta.subjects();
-    return rows.map(r => ({
-      attemptId:            r.id,
-      attemptNumber:        r.attemptNumber,
-      quiz: {
-        id:       r.quiz.id,
-        title:    r.quiz.title,
-        quizType: r.quiz.quizType,
-        subject:  r.quiz.subjectExternalId
-          ? { id: r.quiz.subjectExternalId, name: subjectNames.get(r.quiz.subjectExternalId) ?? r.quiz.subjectExternalId }
-          : null,
-      },
-      startTime:            r.startTime,
-      pausedAt:             r.pausedAt,
-      currentQuestionIndex: r.currentQuestionIndex,
-      timeLimitSec:         r.timeLimitSec,
-      questionCount:        r._count.answers,
-    }));
-  },
-
-  /**
-   * Explicitly abandon a paused attempt (the "Discard" action) — soft-deletes
-   * by status, same as any other abandoned attempt, so it still shows up in
-   * the admin report rather than disappearing. Only the owning student can
-   * discard their own attempt, and only while it's still IN_PROGRESS.
-   */
-  async discard(attemptId: string, studentId: string) {
-    const attempt = await prisma.quizAttempt.findUnique({ where: { id: attemptId }, select: { studentId: true, status: true } });
-    if (!attempt) throw ApiError.notFound('Attempt not found');
-    if (attempt.studentId !== studentId) throw ApiError.forbidden('Not your attempt');
-    if (attempt.status !== AttemptStatus.IN_PROGRESS) throw ApiError.badRequest('Attempt is already finalised');
-
-    await prisma.quizAttempt.update({ where: { id: attemptId }, data: { status: AttemptStatus.ABANDONED } });
-    return { ok: true };
   },
 
   /**
@@ -1298,7 +1235,7 @@ export const QuizService = {
         title:   r.quiz.title,
         quizType: r.quiz.quizType,
         subject: r.quiz.subjectExternalId
-          ? { id: r.quiz.subjectExternalId, name: subjectNames.get(r.quiz.subjectExternalId) ?? r.quiz.subjectExternalId }
+          ? { id: r.quiz.subjectExternalId, name: subjectNames.get(r.quiz.subjectExternalId) ?? UNKNOWN_SUBJECT_NAME }
           : null,
       },
       status:         r.status,

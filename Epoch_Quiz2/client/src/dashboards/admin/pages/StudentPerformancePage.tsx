@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Download, Users, AlertTriangle, TrendingUp, TrendingDown, Flame } from 'lucide-react';
+import {
+  Download, Users, AlertTriangle, TrendingUp, TrendingDown, Flame, Award, Target,
+  Activity, Layers, Sparkles, ClipboardCheck,
+} from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
   PageHeader, Card, Button, Badge, StatCard, SearchInput, Select,
@@ -7,116 +10,33 @@ import {
 } from '../../shared/ui';
 import { RankedBarList } from '../components/DashboardCharts';
 import { exportCsv } from '../../../lib/csv';
+import { fmtDuration } from '../../../lib/formatters';
+import { sortByClassName } from '../../../lib/classOrder';
 import {
-  useStudentCandidates, studentPerformanceApi,
-  type StudentCandidate, type StudentBulkInsight,
+  useStudentCandidates, studentPerformanceApi, type StudentBulkInsight,
 } from '../../../hooks/useStudentPerformance';
-import type { PracticeOverviewData, SubjectStat, QuestionTypeStat } from '../../../hooks/useStudentAnalytics';
-import { computeConfidence } from '../../../lib/confidenceScore';
-import { deriveInsights } from '../../../lib/strengthWeaknessInsights';
-import { deriveAccuracyInsights } from '../../../lib/accuracyInsights';
-import { computeStreak, practiceDatesFromOverview } from '../../../lib/studyPlanEngine';
-import { evaluateAtRisk } from '../../../lib/atRiskDetection';
+import type { PracticeOverviewData } from '../../../hooks/useStudentAnalytics';
+import { practiceDatesFromOverview } from '../../../lib/studyPlanEngine';
+import { computePracticeFrequency } from '../../../lib/consistencyEngine';
+import { buildPlatformInsights, type PlatformInsightRow } from '../../../lib/studentPerformanceInsights';
+import {
+  buildRow, daysSince, ACTIVE_WINDOW_DAYS, INACTIVE_WINDOW_DAYS,
+  type StudentRow,
+} from '../../../lib/studentRowBuilder';
 import { StudentPerformanceSummaryPanel } from './StudentPerformanceSummaryPanel';
 
 /**
- * Admin Analytics — Feature 2: Student Performance Analytics.
+ * Admin Analytics — Feature 2/6: Student Performance Analytics.
  *
- * Practice Olympiad only. Every "smart" number (confidence, strongest/
- * weakest subject, trend, practice streak) is computed by the exact same
- * functions the student's own AnalyticsPage.tsx already imports — this page
- * just calls them once per student instead of once for the logged-in
- * student. See PLAN / analytics.service.ts for the reuse rationale.
+ * Every "smart" number (confidence, strongest/weakest subject, trend,
+ * practice streak, at-risk reasons, grade) is computed by the exact same
+ * functions the student's own AnalyticsPage.tsx and Feature 5's assessment
+ * engine already use — this page only calls them once per student and
+ * merges the two domains' already-computed stats into one row. See
+ * PLAN / studentPerformance.service.ts for the reuse rationale. buildRow()
+ * itself now lives in lib/studentRowBuilder.ts (Feature 8 reuses it to
+ * group the same per-student numbers by class).
  */
-
-type Trend = 'Improving' | 'Stable' | 'Declining';
-
-interface StudentRow {
-  id: string;
-  name: string;
-  email: string;
-  avatarHue: number;
-  className: string | null;
-  hasData: boolean;
-  totalAttempts: number;
-  totalQuestionsSolved: number;
-  averageScore: number;
-  accuracyPercent: number;
-  averageTimePerQuestionSec: number;
-  lastPracticeDate: string | null;
-  practiceStreak: number;
-  revisionStreak: number;
-  confidenceScore: number | null;
-  confidenceBand: string | null;
-  strongestSubject: string | null;
-  weakestSubject: string | null;
-  subjectIds: string[];
-  trend: Trend | null;
-  atRisk: boolean;
-  atRiskReasons: string[];
-}
-
-function buildRow(candidate: StudentCandidate, insight: StudentBulkInsight | undefined): StudentRow {
-  const base = {
-    id: candidate.id, name: candidate.name, email: candidate.email,
-    avatarHue: candidate.avatarHue, className: candidate.className,
-  };
-
-  const overview = insight?.overview;
-  if (!insight || !overview || overview.hasData === false) {
-    return {
-      ...base,
-      hasData: false,
-      totalAttempts: 0, totalQuestionsSolved: 0, averageScore: 0, accuracyPercent: 0,
-      averageTimePerQuestionSec: 0, lastPracticeDate: null,
-      practiceStreak: 0, revisionStreak: insight?.revisionStreak.currentStreak ?? 0,
-      confidenceScore: null, confidenceBand: null,
-      strongestSubject: null, weakestSubject: null, subjectIds: [],
-      trend: null, atRisk: true, atRiskReasons: ['Never practiced'],
-    };
-  }
-
-  const data: PracticeOverviewData = overview;
-  const subjects: SubjectStat[] = insight.subjects;
-  const questionTypes: QuestionTypeStat[] = insight.questionTypes;
-
-  const confidence = computeConfidence(data, subjects, questionTypes);
-  const strengthWeakness = deriveInsights(subjects);
-  const accuracyInsights = deriveAccuracyInsights(data);
-  const practiceDates = practiceDatesFromOverview(data);
-  const streak = computeStreak(practiceDates, new Set(), new Date());
-  const atRisk = evaluateAtRisk({ overview: data, confidence });
-
-  const trend: Trend =
-    accuracyInsights.trendDirection === 'improved' ? 'Improving' :
-    accuracyInsights.trendDirection === 'declined' ? 'Declining' : 'Stable';
-
-  return {
-    ...base,
-    hasData: true,
-    totalAttempts: data.totalAttempts,
-    totalQuestionsSolved: data.totalQuestionsAttempted,
-    averageScore: data.averageScore,
-    accuracyPercent: data.accuracyPercent,
-    averageTimePerQuestionSec: data.averageTimePerQuestionSec,
-    lastPracticeDate: data.lastPracticeDate,
-    practiceStreak: streak.currentStreak,
-    revisionStreak: insight.revisionStreak.currentStreak,
-    confidenceScore: confidence.score,
-    confidenceBand: confidence.band,
-    strongestSubject: strengthWeakness?.strongest.subjectName ?? null,
-    weakestSubject: strengthWeakness?.weakest.subjectName ?? null,
-    subjectIds: subjects.map(s => s.subjectId),
-    trend,
-    atRisk: atRisk.atRisk,
-    atRiskReasons: atRisk.reasons,
-  };
-}
-
-function daysSince(dateIso: string | null, now: number): number | null {
-  if (!dateIso) return null;
-  return Math.floor((now - new Date(dateIso).getTime()) / 86_400_000);
-}
 
 const CONFIDENCE_MIN_OPTIONS = [
   { value: 'all', label: 'Any confidence' },
@@ -140,17 +60,27 @@ const ATTEMPTS_MIN_OPTIONS = [
 const STATUS_OPTIONS = [
   { value: 'all', label: 'All students' },
   { value: 'at-risk', label: 'Needs attention' },
-  { value: 'active', label: 'Active (practiced ≤ 7d)' },
-  { value: 'inactive', label: 'Inactive (> 30d or never)' },
+  { value: 'active', label: `Active (≤ ${ACTIVE_WINDOW_DAYS}d)` },
+  { value: 'inactive', label: `Inactive (> ${INACTIVE_WINDOW_DAYS}d or never)` },
+];
+const GRADE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'all', label: 'Any grade' },
+  { value: 'Excellent', label: 'Excellent' },
+  { value: 'Good', label: 'Good' },
+  { value: 'Average', label: 'Average' },
+  { value: 'Needs Improvement', label: 'Needs Improvement' },
+  { value: 'At Risk', label: 'At Risk' },
 ];
 const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: 'name-asc', label: 'Name (A–Z)' },
   { value: 'accuracy-desc', label: 'Accuracy (high–low)' },
   { value: 'avgScore-desc', label: 'Avg score (high–low)' },
   { value: 'attempts-desc', label: 'Attempts (high–low)' },
+  { value: 'assessmentAttempts-desc', label: 'Assessment attempts (high–low)' },
+  { value: 'assessmentAverage-desc', label: 'Assessment average (high–low)' },
   { value: 'practiceStreak-desc', label: 'Practice streak (high–low)' },
   { value: 'confidence-desc', label: 'Confidence (high–low)' },
-  { value: 'lastPractice-desc', label: 'Last practice (recent first)' },
+  { value: 'lastActive-desc', label: 'Last active (recent first)' },
   { value: 'improvement-desc', label: 'Improvement (best first)' },
 ];
 
@@ -166,6 +96,8 @@ export function StudentPerformancePage() {
   const [insightsError, setInsightsError] = useState<string | null>(null);
   const { push, node: toastNode } = useToasts();
 
+  // Fetch bulk insights whenever the candidate roster changes — identical
+  // to Feature 2's original data-fetch effect.
   useEffect(() => {
     if (!candidates) return;
     if (!candidates.length) { setInsights([]); return; }
@@ -190,7 +122,8 @@ export function StudentPerformancePage() {
     for (const c of candidates ?? []) {
       if (c.classExternalId) map.set(c.classExternalId, c.className ?? c.classExternalId);
     }
-    return [{ value: 'all', label: 'All classes' }, ...[...map.entries()].map(([value, label]) => ({ value, label }))];
+    const options = sortByClassName([...map.entries()].map(([value, label]) => ({ value, label })), o => o.label);
+    return [{ value: 'all', label: 'All classes' }, ...options];
   }, [candidates]);
 
   const subjectOptions = useMemo(() => {
@@ -207,6 +140,9 @@ export function StudentPerformancePage() {
   const [attemptsMin, setAttemptsMin] = useState('all');
   const [confidenceMin, setConfidenceMin] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [gradeFilter, setGradeFilter] = useState('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [sort, setSort] = useState('name-asc');
   const [page, setPage] = useState(1);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
@@ -218,36 +154,56 @@ export function StudentPerformancePage() {
     const accMin = accuracyMin === 'all' ? null : Number(accuracyMin);
     const attMin = attemptsMin === 'all' ? null : Number(attemptsMin);
     const confMin = confidenceMin === 'all' ? null : Number(confidenceMin);
+    const from = dateFrom ? new Date(dateFrom).getTime() : null;
+    const to = dateTo ? new Date(dateTo).getTime() : null;
 
     return rows.filter(r => {
       if (q && !(r.name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q) || (r.className ?? '').toLowerCase().includes(q))) return false;
-      if (subjectFilter !== 'all' && !r.subjectIds.includes(subjectFilter)) return false;
+      if (subjectFilter !== 'all' && !r.subjectIds.includes(subjectFilter) && !r.assessmentSubjectIds.includes(subjectFilter)) return false;
       if (accMin !== null && r.accuracyPercent < accMin) return false;
       if (attMin !== null && r.totalAttempts < attMin) return false;
       if (confMin !== null && (r.confidenceScore ?? -1) < confMin) return false;
+      if (gradeFilter !== 'all' && r.grade !== gradeFilter) return false;
 
-      const days = daysSince(r.lastPracticeDate, now);
+      const activeDays = daysSince(r.lastActiveDate, now);
       if (statusFilter === 'at-risk' && !r.atRisk) return false;
-      if (statusFilter === 'active' && (days === null || days > 7)) return false;
-      if (statusFilter === 'inactive' && !(days === null || days > 30)) return false;
+      if (statusFilter === 'active' && (activeDays === null || activeDays > ACTIVE_WINDOW_DAYS)) return false;
+      if (statusFilter === 'inactive' && !(activeDays === null || activeDays > INACTIVE_WINDOW_DAYS)) return false;
+
+      // Date Range scopes "last active" recency only — see plan's scope note
+      // (Practice's shared analytics engine has no date-window param; a true
+      // within-range recompute would require changing analytics.service.ts,
+      // which the student's own AnalyticsPage also depends on).
+      if (from !== null || to !== null) {
+        if (!r.lastActiveDate) return false;
+        const t = new Date(r.lastActiveDate).getTime();
+        if (from !== null && t < from) return false;
+        if (to !== null && t > to) return false;
+      }
 
       return true;
     });
-  }, [rows, search, subjectFilter, accuracyMin, attemptsMin, confidenceMin, statusFilter, now]);
+  }, [rows, search, subjectFilter, accuracyMin, attemptsMin, confidenceMin, statusFilter, gradeFilter, dateFrom, dateTo, now]);
 
   const sorted = useMemo(() => {
-    const [key, dir] = sort.split('-') as [string, 'asc' | 'desc'];
-    const mul = dir === 'asc' ? 1 : -1;
+    // Sort key can itself contain a dash (assessmentAttempts-desc), so
+    // split on the trailing token only, not the first dash.
+    const dashIdx = sort.lastIndexOf('-');
+    const realKey = sort.slice(0, dashIdx);
+    const realDir = sort.slice(dashIdx + 1) as 'asc' | 'desc';
+    const mul = realDir === 'asc' ? 1 : -1;
     const improvement = (r: StudentRow) => r.trend === 'Improving' ? 1 : r.trend === 'Declining' ? -1 : 0;
     const valueOf = (r: StudentRow): number | string => {
-      switch (key) {
+      switch (realKey) {
         case 'name': return r.name.toLowerCase();
         case 'accuracy': return r.accuracyPercent;
         case 'avgScore': return r.averageScore;
         case 'attempts': return r.totalAttempts;
+        case 'assessmentAttempts': return r.assessmentAttempts;
+        case 'assessmentAverage': return r.assessmentAveragePercent ?? -1;
         case 'practiceStreak': return r.practiceStreak;
         case 'confidence': return r.confidenceScore ?? -1;
-        case 'lastPractice': return r.lastPracticeDate ? new Date(r.lastPracticeDate).getTime() : -Infinity;
+        case 'lastActive': return r.lastActiveDate ? new Date(r.lastActiveDate).getTime() : -Infinity;
         case 'improvement': return improvement(r);
         default: return r.name.toLowerCase();
       }
@@ -263,21 +219,32 @@ export function StudentPerformancePage() {
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const pageRows = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  // ── Summary widgets — different sorts/slices of the same row array ──────
+  // ── KPIs ─────────────────────────────────────────────────────────────────
   const withData = useMemo(() => rows.filter(r => r.hasData), [rows]);
+  const withAssessmentData = useMemo(() => rows.filter(r => r.assessmentCompletedAttempts > 0), [rows]);
+  const activeCount = useMemo(() => rows.filter(r => { const d = daysSince(r.lastActiveDate, now); return d !== null && d <= ACTIVE_WINDOW_DAYS; }).length, [rows, now]);
+  const inactiveCount = useMemo(() => rows.filter(r => { const d = daysSince(r.lastActiveDate, now); return d === null || d > INACTIVE_WINDOW_DAYS; }).length, [rows, now]);
+  const practicingThisWeek = useMemo(() => rows.filter(r => { const d = daysSince(r.lastPracticeDate, now); return d !== null && d <= 7; }).length, [rows, now]);
+  const completingAssessments = useMemo(() => rows.filter(r => r.assessmentCompletedAttempts > 0).length, [rows]);
   const atRiskCount = useMemo(() => rows.filter(r => r.atRisk).length, [rows]);
-  const inactive7 = useMemo(() => rows.filter(r => { const d = daysSince(r.lastPracticeDate, now); return d === null || d > 7; }).length, [rows, now]);
   const inactive14 = useMemo(() => rows.filter(r => { const d = daysSince(r.lastPracticeDate, now); return d === null || d > 14; }).length, [rows, now]);
-  const inactive30 = useMemo(() => rows.filter(r => { const d = daysSince(r.lastPracticeDate, now); return d === null || d > 30; }).length, [rows, now]);
 
+  const avgAccuracy = useMemo(() => withData.length ? Math.round(withData.reduce((s, r) => s + r.accuracyPercent, 0) / withData.length) : 0, [withData]);
+  const avgScore = useMemo(() => withData.length ? Math.round((withData.reduce((s, r) => s + r.averageScore, 0) / withData.length) * 100) / 100 : 0, [withData]);
+  const avgPracticeTimeSec = useMemo(() => withData.length ? Math.round(withData.reduce((s, r) => s + r.totalPracticeTimeSec, 0) / withData.length) : 0, [withData]);
+  const avgAssessmentScore = useMemo(
+    () => withAssessmentData.length ? Math.round((withAssessmentData.reduce((s, r) => s + (r.assessmentAverageScore ?? 0), 0) / withAssessmentData.length) * 100) / 100 : 0,
+    [withAssessmentData],
+  );
+
+  // ── Rank widgets ─────────────────────────────────────────────────────────
   const topByAccuracy = useMemo(
     () => [...withData].sort((a, b) => b.accuracyPercent - a.accuracyPercent).slice(0, 5)
       .map(r => ({ label: r.name, count: r.accuracyPercent })),
     [withData],
   );
   const fastestImproving = useMemo(
-    () => withData.filter(r => r.trend === 'Improving' && r.hasData)
-      .sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0)).slice(0, 5)
+    () => withData.filter(r => r.trend === 'Improving').sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0)).slice(0, 5)
       .map(r => ({ label: r.name, count: r.accuracyPercent })),
     [withData],
   );
@@ -286,19 +253,87 @@ export function StudentPerformancePage() {
       .map(r => ({ label: r.name, count: r.practiceStreak })),
     [withData],
   );
+  const highestAvgScore = useMemo(
+    () => [...withData].sort((a, b) => b.averageScore - a.averageScore).slice(0, 5)
+      .map(r => ({ label: r.name, count: r.averageScore })),
+    [withData],
+  );
+  const mostAttempts = useMemo(
+    () => [...withData].sort((a, b) => b.totalAttempts - a.totalAttempts).slice(0, 5)
+      .map(r => ({ label: r.name, count: r.totalAttempts })),
+    [withData],
+  );
+  const highestAssessmentAverage = useMemo(
+    () => [...withAssessmentData].sort((a, b) => (b.assessmentAveragePercent ?? 0) - (a.assessmentAveragePercent ?? 0)).slice(0, 5)
+      .map(r => ({ label: r.name, count: r.assessmentAveragePercent ?? 0 })),
+    [withAssessmentData],
+  );
+
+  // ── Activity Analytics ──────────────────────────────────────────────────
+  const dau = useMemo(() => rows.filter(r => { const d = daysSince(r.lastLoginAt, now); return d !== null && d <= 0; }).length, [rows, now]);
+  const wau = useMemo(() => rows.filter(r => { const d = daysSince(r.lastLoginAt, now); return d !== null && d <= 7; }).length, [rows, now]);
+  const mau = useMemo(() => rows.filter(r => { const d = daysSince(r.lastLoginAt, now); return d !== null && d <= 30; }).length, [rows, now]);
+  const avgSessionsPerWeek = useMemo(() => {
+    if (!insights?.length) return 0;
+    const freqs = insights
+      .filter(i => i.overview.hasData === true)
+      .map(i => computePracticeFrequency(i.overview as PracticeOverviewData, practiceDatesFromOverview(i.overview as PracticeOverviewData)).avgSessionsPerWeek);
+    return freqs.length ? Math.round((freqs.reduce((s, v) => s + v, 0) / freqs.length) * 10) / 10 : 0;
+  }, [insights]);
+  const assessmentParticipationRate = useMemo(
+    () => rows.length ? Math.round((rows.filter(r => r.assessmentAttempts > 0).length / rows.length) * 100) : 0,
+    [rows],
+  );
+
+  // ── Subject Comparison (platform-wide) ──────────────────────────────────
+  const subjectComparison = useMemo(() => {
+    const bySubject = new Map<string, number[]>();
+    for (const r of withData) {
+      for (const s of r.subjects) {
+        const list = bySubject.get(s.subjectName) ?? [];
+        list.push(s.accuracyPercent);
+        bySubject.set(s.subjectName, list);
+      }
+    }
+    const entries = [...bySubject.entries()].map(([subjectName, vals]) => ({
+      subjectName, avgAccuracy: Math.round(vals.reduce((s, v) => s + v, 0) / vals.length),
+    }));
+    entries.sort((a, b) => b.avgAccuracy - a.avgAccuracy);
+    return { best: entries[0] ?? null, weakest: entries[entries.length - 1] ?? null, entries };
+  }, [withData]);
+
+  // ── AI Insights ──────────────────────────────────────────────────────────
+  const platformInsights = useMemo(() => {
+    const insightRows: PlatformInsightRow[] = rows.map(r => ({
+      id: r.id, name: r.name, className: r.className,
+      hasPracticeData: r.hasData, accuracyPercent: r.hasData ? r.accuracyPercent : null,
+      practiceTrendDirection: r.trend === 'Improving' ? 'improved' : r.trend === 'Declining' ? 'declined' : r.trend === 'Stable' ? 'consistent' : null,
+      practiceTrendDeltaPercent: r.practiceTrendDeltaPercent,
+      lastPracticeDate: r.lastPracticeDate,
+      assessmentAveragePercent: r.assessmentAveragePercent,
+      assessmentTrendDirection: null, // not cheaply available in the bulk view — see plan's scope note
+      atRisk: r.atRisk,
+      subjects: r.subjects,
+    }));
+    return buildPlatformInsights(insightRows);
+  }, [rows]);
 
   // ── Export ───────────────────────────────────────────────────────────────
   const exportHeaders = [
     'Name', 'Email', 'Class', 'Total Attempts', 'Questions Solved', 'Avg Score', 'Avg Accuracy',
     'Avg Time/Question (s)', 'Practice Streak', 'Revision Streak', 'Confidence Score',
-    'Strongest Subject', 'Weakest Subject', 'Last Practice Date', 'Trend', 'Needs Attention',
+    'Strongest Subject', 'Weakest Subject', 'Subjects Practiced', 'Last Practice Date',
+    'Assessment Attempts', 'Assessment Average (%)', 'Assessment Pass Rate (%)', 'Last Assessment Date',
+    'Performance Grade', 'Trend', 'Needs Attention',
   ];
   const exportRows = () => sorted.map(r => [
     r.name, r.email, r.className ?? '', r.totalAttempts, r.totalQuestionsSolved, r.averageScore,
     r.accuracyPercent, r.averageTimePerQuestionSec, r.practiceStreak, r.revisionStreak,
-    r.confidenceScore ?? '', r.strongestSubject ?? '', r.weakestSubject ?? '',
+    r.confidenceScore ?? '', r.strongestSubject ?? '', r.weakestSubject ?? '', r.subjectIds.length,
     r.lastPracticeDate ? new Date(r.lastPracticeDate).toLocaleDateString() : 'Never',
-    r.trend ?? '', r.atRisk ? 'Yes' : 'No',
+    r.assessmentAttempts, r.assessmentAveragePercent ?? '', r.assessmentPassRate ?? '',
+    r.lastAssessmentDate ? new Date(r.lastAssessmentDate).toLocaleDateString() : 'Never',
+    r.grade ?? 'No data', r.trend ?? '', r.atRisk ? 'Yes' : 'No',
   ]);
 
   const handleExportCsv = () => {
@@ -320,9 +355,9 @@ export function StudentPerformancePage() {
     <>
       {toastNode}
       <PageHeader
-        eyebrow="Analytics · Feature 2"
+        eyebrow="Analytics · Feature 6"
         title="Student Performance"
-        subtitle="Every student's Practice Olympiad performance — spot who's improving, struggling, or needs intervention."
+        subtitle="Every student's Practice Olympiad and Assessment performance — spot who's improving, struggling, or needs intervention."
         actions={
           <>
             <Button variant="outline" icon={Download} onClick={handleExportCsv}>Export CSV</Button>
@@ -331,25 +366,74 @@ export function StudentPerformancePage() {
         }
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
-        <StatCard label="Students" value={rows.length} icon={Users} tone="brand" />
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-5">
+        <StatCard label="Total Students" value={rows.length} icon={Users} tone="brand" />
+        <StatCard label="Active Students" value={activeCount} icon={Activity} tone="emerald" />
+        <StatCard label="Inactive Students" value={inactiveCount} icon={TrendingDown} tone="violet" />
+        <StatCard label="Practicing This Week" value={practicingThisWeek} icon={Flame} tone="amber" />
+        <StatCard label="Completing Assessments" value={completingAssessments} icon={ClipboardCheck} tone="brand" />
+        <StatCard label="Avg Student Accuracy" value={`${avgAccuracy}%`} icon={Target} tone="emerald" />
+        <StatCard label="Avg Student Score" value={avgScore} icon={Award} tone="brand" />
+        <StatCard label="Avg Practice Time" value={fmtDuration(avgPracticeTimeSec)} icon={Activity} tone="violet" />
+        <StatCard label="Avg Assessment Score" value={avgAssessmentScore} icon={ClipboardCheck} tone="amber" />
         <StatCard label="Needs Attention" value={atRiskCount} icon={AlertTriangle} tone="amber" />
-        <StatCard label="Inactive 14+ days" value={inactive14} icon={TrendingDown} tone="violet" />
-        <StatCard label="Longest streak" value={longestStreaks[0]?.count ?? 0} icon={Flame} tone="emerald" />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
         <Card className="p-4">
-          <h3 className="text-[13px] font-semibold text-fg1 mb-3">Top Performing (Accuracy)</h3>
+          <h3 className="text-[13px] font-semibold text-fg1 mb-3">Highest Accuracy</h3>
           {topByAccuracy.length ? <RankedBarList items={topByAccuracy} /> : <p className="text-[12px] text-fg3">No data yet.</p>}
         </Card>
         <Card className="p-4">
-          <h3 className="text-[13px] font-semibold text-fg1 mb-3 flex items-center gap-1.5"><TrendingUp size={14} />Fastest Improving</h3>
+          <h3 className="text-[13px] font-semibold text-fg1 mb-3 flex items-center gap-1.5"><TrendingUp size={14} />Best Improvement</h3>
           {fastestImproving.length ? <RankedBarList items={fastestImproving} /> : <p className="text-[12px] text-fg3">No data yet.</p>}
         </Card>
         <Card className="p-4">
           <h3 className="text-[13px] font-semibold text-fg1 mb-3 flex items-center gap-1.5"><Flame size={14} />Longest Practice Streaks</h3>
           {longestStreaks.length ? <RankedBarList items={longestStreaks} /> : <p className="text-[12px] text-fg3">No data yet.</p>}
+        </Card>
+        <Card className="p-4">
+          <h3 className="text-[13px] font-semibold text-fg1 mb-3 flex items-center gap-1.5"><Award size={14} />Highest Average Score</h3>
+          {highestAvgScore.length ? <RankedBarList items={highestAvgScore} /> : <p className="text-[12px] text-fg3">No data yet.</p>}
+        </Card>
+        <Card className="p-4">
+          <h3 className="text-[13px] font-semibold text-fg1 mb-3">Most Practice Attempts</h3>
+          {mostAttempts.length ? <RankedBarList items={mostAttempts} /> : <p className="text-[12px] text-fg3">No data yet.</p>}
+        </Card>
+        <Card className="p-4">
+          <h3 className="text-[13px] font-semibold text-fg1 mb-3 flex items-center gap-1.5"><ClipboardCheck size={14} />Highest Assessment Average</h3>
+          {highestAssessmentAverage.length ? <RankedBarList items={highestAssessmentAverage} /> : <p className="text-[12px] text-fg3">No data yet.</p>}
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+        <Card className="p-4">
+          <h3 className="text-[13px] font-semibold text-fg1 mb-3 flex items-center gap-1.5"><Activity size={14} />Activity Analytics</h3>
+          <div className="grid grid-cols-2 gap-2.5">
+            <MiniStat label="Daily Active" value={dau} />
+            <MiniStat label="Weekly Active" value={wau} />
+            <MiniStat label="Monthly Active" value={mau} />
+            <MiniStat label="Avg Sessions/Week" value={avgSessionsPerWeek} />
+            <MiniStat label="Assessment Participation" value={`${assessmentParticipationRate}%`} />
+            <MiniStat label="Practicing This Week" value={practicingThisWeek} />
+          </div>
+        </Card>
+        <Card className="p-4">
+          <h3 className="text-[13px] font-semibold text-fg1 mb-3 flex items-center gap-1.5"><Layers size={14} />Subject Comparison</h3>
+          {subjectComparison.entries.length ? (
+            <div className="space-y-2">
+              <MiniStat label="Best Subject" value={subjectComparison.best ? `${subjectComparison.best.subjectName} (${subjectComparison.best.avgAccuracy}%)` : '—'} wide />
+              <MiniStat label="Weakest Subject" value={subjectComparison.weakest ? `${subjectComparison.weakest.subjectName} (${subjectComparison.weakest.avgAccuracy}%)` : '—'} wide />
+            </div>
+          ) : <p className="text-[12px] text-fg3">No subject data yet.</p>}
+        </Card>
+        <Card className="p-4">
+          <h3 className="text-[13px] font-semibold text-fg1 mb-3 flex items-center gap-1.5"><Sparkles size={14} />AI Insights</h3>
+          {platformInsights.length ? (
+            <ul className="list-disc list-inside space-y-1.5 text-[12.5px] text-fg2">
+              {platformInsights.map((line, i) => <li key={i}>{line}</li>)}
+            </ul>
+          ) : <p className="text-[12px] text-fg3">Not enough data yet to generate insights.</p>}
         </Card>
       </div>
 
@@ -361,7 +445,13 @@ export function StudentPerformancePage() {
           <Select value={accuracyMin} onChange={v => { setAccuracyMin(v); setPage(1); }} options={ACCURACY_MIN_OPTIONS} />
           <Select value={attemptsMin} onChange={v => { setAttemptsMin(v); setPage(1); }} options={ATTEMPTS_MIN_OPTIONS} />
           <Select value={confidenceMin} onChange={v => { setConfidenceMin(v); setPage(1); }} options={CONFIDENCE_MIN_OPTIONS} />
+          <Select value={gradeFilter} onChange={v => { setGradeFilter(v); setPage(1); }} options={GRADE_OPTIONS} />
           <Select value={statusFilter} onChange={v => { setStatusFilter(v); setPage(1); }} options={STATUS_OPTIONS} />
+          <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} aria-label="Last active from"
+            className="h-10 px-3 rounded-xl border border-line bg-surface1 text-[13px] text-fg1" />
+          <span className="text-fg4 text-[12px]">to</span>
+          <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} aria-label="Last active to"
+            className="h-10 px-3 rounded-xl border border-line bg-surface1 text-[13px] text-fg1" />
           <Select value={sort} onChange={setSort} options={SORT_OPTIONS} className="ml-auto" />
         </div>
         <div className="text-[12px] text-fg3 mt-3">
@@ -402,10 +492,10 @@ export function StudentPerformancePage() {
                   ),
                 },
                 { key: 'className', label: 'Class', render: (r: StudentRow) => <span className="text-fg2">{r.className ?? '—'}</span> },
-                { key: 'totalAttempts', label: 'Attempts', render: (r: StudentRow) => <span className="font-mono">{r.totalAttempts}</span> },
-                { key: 'totalQuestionsSolved', label: 'Solved', render: (r: StudentRow) => <span className="font-mono">{r.totalQuestionsSolved}</span> },
+                { key: 'totalAttempts', label: 'Practice Attempts', render: (r: StudentRow) => <span className="font-mono">{r.totalAttempts}</span> },
+                { key: 'assessmentAttempts', label: 'Assessment Attempts', render: (r: StudentRow) => <span className="font-mono">{r.assessmentAttempts}</span> },
                 {
-                  key: 'accuracyPercent', label: 'Accuracy',
+                  key: 'accuracyPercent', label: 'Practice Accuracy',
                   render: (r: StudentRow) => (
                     <div className="min-w-[100px]">
                       <div className="flex items-center justify-between mb-1"><span className="font-mono text-[12px]">{r.accuracyPercent}%</span></div>
@@ -413,27 +503,38 @@ export function StudentPerformancePage() {
                     </div>
                   ),
                 },
-                { key: 'averageScore', label: 'Avg Score', render: (r: StudentRow) => <span className="font-mono">{r.averageScore}</span> },
-                { key: 'averageTimePerQuestionSec', label: 'Avg Time/Q', render: (r: StudentRow) => <span className="font-mono">{r.averageTimePerQuestionSec}s</span> },
-                { key: 'practiceStreak', label: 'Practice Streak', render: (r: StudentRow) => <span className="font-mono">{r.practiceStreak}d</span> },
-                { key: 'revisionStreak', label: 'Revision Streak', render: (r: StudentRow) => <span className="font-mono">{r.revisionStreak}d</span> },
                 {
-                  key: 'confidenceScore', label: 'Confidence',
-                  render: (r: StudentRow) => r.confidenceScore === null ? <span className="text-fg3">—</span> : (
-                    <Badge tone={r.confidenceScore >= 61 ? 'success' : r.confidenceScore >= 41 ? 'warning' : 'danger'}>{r.confidenceScore}</Badge>
+                  key: 'assessmentAveragePercent', label: 'Assessment Average',
+                  render: (r: StudentRow) => r.assessmentAveragePercent === null ? <span className="text-fg3">—</span> : (
+                    <div className="min-w-[100px]">
+                      <div className="flex items-center justify-between mb-1"><span className="font-mono text-[12px]">{r.assessmentAveragePercent}%</span></div>
+                      <ProgressBar value={r.assessmentAveragePercent} tone={r.assessmentAveragePercent >= 75 ? 'emerald' : r.assessmentAveragePercent >= 50 ? 'amber' : 'rose'} />
+                    </div>
                   ),
                 },
-                { key: 'strongestSubject', label: 'Strongest', render: (r: StudentRow) => <span className="text-fg2">{r.strongestSubject ?? '—'}</span> },
-                { key: 'weakestSubject', label: 'Weakest', render: (r: StudentRow) => <span className="text-fg2">{r.weakestSubject ?? '—'}</span> },
+                { key: 'subjectsCount', label: 'Subjects Practiced', render: (r: StudentRow) => <span className="font-mono">{r.subjectIds.length}</span> },
+                { key: 'practiceStreak', label: 'Practice Streak', render: (r: StudentRow) => <span className="font-mono">{r.practiceStreak}d</span> },
                 {
-                  key: 'lastPracticeDate', label: 'Last Practice',
-                  render: (r: StudentRow) => <span className="text-fg2">{r.lastPracticeDate ? new Date(r.lastPracticeDate).toLocaleDateString() : 'Never'}</span>,
+                  key: 'lastActiveDate', label: 'Last Active',
+                  render: (r: StudentRow) => <span className="text-fg2">{r.lastActiveDate ? new Date(r.lastActiveDate).toLocaleDateString() : 'Never'}</span>,
+                },
+                {
+                  key: 'grade', label: 'Grade',
+                  render: (r: StudentRow) => r.grade === null ? <span className="text-fg3">—</span> : (
+                    <Badge tone={r.grade === 'Excellent' || r.grade === 'Good' ? 'success' : r.grade === 'Average' ? 'warning' : 'danger'}>{r.grade}</Badge>
+                  ),
                 },
                 {
                   key: 'trend', label: 'Trend',
                   render: (r: StudentRow) => r.trend === null ? <span className="text-fg3">—</span> : (
                     <Badge tone={r.trend === 'Improving' ? 'success' : r.trend === 'Declining' ? 'danger' : 'neutral'}>{r.trend}</Badge>
                   ),
+                },
+                {
+                  key: 'atRisk', label: 'Risk Status',
+                  render: (r: StudentRow) => r.atRisk
+                    ? <Badge tone="danger">At Risk</Badge>
+                    : <Badge tone="success">On Track</Badge>,
                 },
               ]}
               rows={pageRows}
@@ -449,5 +550,14 @@ export function StudentPerformancePage() {
         onClose={() => setSelectedStudentId(null)}
       />
     </>
+  );
+}
+
+function MiniStat({ label, value, wide }: { label: string; value: string | number; wide?: boolean }) {
+  return (
+    <div className={`rounded-lg border border-line bg-surface1 px-2.5 py-2 ${wide ? 'col-span-2' : ''}`}>
+      <div className="text-[14px] font-display font-semibold text-fg1">{value}</div>
+      <div className="text-[10.5px] text-fg3">{label}</div>
+    </div>
   );
 }

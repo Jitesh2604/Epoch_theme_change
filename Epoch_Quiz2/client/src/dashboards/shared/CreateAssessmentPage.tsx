@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { ChevronLeft, ArrowRight, Wand2, FilePlus2, Sparkles } from 'lucide-react';
 import { PageHeader, Card, Button } from './ui';
@@ -16,13 +16,9 @@ interface FormData {
   passingMarks: number;
 }
 
-/** Shared between Teacher and Admin — same create flow, only the eyebrow
- *  label and post-create destination differ per role. */
 export function CreateAssessmentPage() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const isAdmin = location.pathname.startsWith('/admin');
-  const assessmentsPath = isAdmin ? '/admin/assessments' : '/teacher/assessments';
+  const assessmentsPath = '/admin/assessments';
   const { register, handleSubmit, formState: { errors }, watch } = useForm<FormData>({
     defaultValues: { title: '', description: '', instructions: '', subjectId: '', duration: 30, passingMarks: 0 },
   });
@@ -58,7 +54,7 @@ export function CreateAssessmentPage() {
         <ChevronLeft size={14} />Back
       </button>
       <PageHeader
-        eyebrow={isAdmin ? 'Admin · Create' : 'Teacher · Create'}
+        eyebrow="Admin · Create"
         title="Create a new assessment"
         subtitle="Define the essentials. You'll add questions in the next step."
       />

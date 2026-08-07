@@ -1,10 +1,5 @@
 import { type Page } from '@playwright/test';
 
-export const TEST_TEACHER = {
-  email:    process.env.E2E_TEACHER_EMAIL    ?? 'test-teacher@epochquiz.test',
-  password: process.env.E2E_TEACHER_PASSWORD ?? 'TestPass@123',
-  name:     'E2E Teacher',
-};
 export const TEST_STUDENT = {
   email:    process.env.E2E_STUDENT_EMAIL    ?? 'test-student@epochquiz.test',
   password: process.env.E2E_STUDENT_PASSWORD ?? 'TestPass@123',

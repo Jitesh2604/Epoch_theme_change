@@ -40,17 +40,17 @@ router.get(
   AssessmentController.getById,
 );
 
-// ── write (TEACHER or ADMIN; STUDENT is rejected by service) ──
+// ── write (ADMIN only; STUDENT is rejected by service) ──
 router.post(
   '/',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(createAssessmentSchema),
   AssessmentController.create,
 );
 
 router.patch(
   '/:id',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
   validate(updateAssessmentSchema),
   AssessmentController.update,
@@ -58,7 +58,7 @@ router.patch(
 
 router.delete(
   '/:id',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
   AssessmentController.remove,
 );
@@ -66,35 +66,35 @@ router.delete(
 // ── status transitions ────────────────────────────────────────
 router.post(
   '/:id/publish',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
   AssessmentController.publish,
 );
 
 router.post(
   '/:id/unpublish',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
   AssessmentController.unpublish,
 );
 
 router.post(
   '/:id/archive',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
   AssessmentController.archive,
 );
 
 router.post(
   '/:id/publish-results',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
   AssessmentController.publishResults,
 );
 
 router.post(
   '/:id/unpublish-results',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
   AssessmentController.unpublishResults,
 );
@@ -102,31 +102,31 @@ router.post(
 // ── assignment (assign to classes / students) ─────────────────
 router.get(
   '/:id/assignments',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
   AssessmentController.getAssignments,
 );
 
 router.post(
   '/:id/assign',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
   validate(assignAssessmentSchema),
   AssessmentController.assign,
 );
 
-// ── nested: /assessments/:id/questions (TEACHER / ADMIN only) ─
+// ── nested: /assessments/:id/questions (ADMIN only) ────────────
 
 router.get(
   '/:id/questions',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
   AssessmentQuestionController.listForAssessment,
 );
 
 router.post(
   '/:id/questions',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
   validate(attachQuestionsSchema),
   AssessmentQuestionController.attach,
@@ -136,7 +136,7 @@ router.post(
 // so Express doesn't treat "reorder" as a questionId.
 router.patch(
   '/:id/questions/reorder',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentIdParamsSchema, 'params'),
   validate(reorderQuestionsSchema),
   AssessmentQuestionController.reorder,
@@ -144,7 +144,7 @@ router.patch(
 
 router.patch(
   '/:id/questions/:questionId',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentQuestionParamsSchema, 'params'),
   validate(updateAssessmentQuestionSchema),
   AssessmentQuestionController.updateAttachment,
@@ -152,7 +152,7 @@ router.patch(
 
 router.delete(
   '/:id/questions/:questionId',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(assessmentQuestionParamsSchema, 'params'),
   AssessmentQuestionController.detach,
 );

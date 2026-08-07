@@ -11,18 +11,10 @@ export const adminCreateUserSchema = z.object({
   name:        nameSchema,
   email:       emailSchema,
   password:    passwordSchema,
-  // The Teacher module is temporarily disabled — TEACHER is rejected here so
-  // admins can't create an account that can never sign in (see the matching
-  // block in AuthService.login/refresh). Drop this .refine() to re-enable
-  // teacher account creation once the module returns; no other change needed.
-  role:        z.nativeEnum(Role).refine(r => r !== Role.TEACHER, {
-    message: 'Teacher accounts cannot be created while the Teacher module is disabled',
-  }),
+  role:        z.nativeEnum(Role),
   status:      z.nativeEnum(UserStatus).optional(),
   avatarHue:   z.number().int().min(0).max(360).optional(),
   schoolName:  z.string().trim().min(1).max(120).optional(),
-  teacherCode: z.string().trim().min(1).max(40).optional(),
-  bio:         z.string().trim().max(1000).optional(),
 });
 
 export const adminUpdateUserSchema = z.object({
@@ -31,8 +23,6 @@ export const adminUpdateUserSchema = z.object({
   status:      z.nativeEnum(UserStatus).optional(),
   avatarHue:   z.number().int().min(0).max(360).optional(),
   schoolName:  z.string().trim().min(1).max(120).optional().nullable(),
-  teacherCode: z.string().trim().min(1).max(40).optional().nullable(),
-  bio:         z.string().trim().max(1000).optional().nullable(),
 }).refine((v) => Object.keys(v).length > 0, { message: 'No fields to update' });
 
 export const updateProfileSchema = z.object({
@@ -54,16 +44,11 @@ export const updateProfileSchema = z.object({
   stateBoard:     z.string().trim().max(120).optional().nullable(),
   // FK fields (single select)
   boardExternalId:   z.string().min(1).optional().nullable(),
-  classExternalId:   z.string().min(1).optional().nullable(),   // student: single
-  seriesExternalId:  z.string().min(1).optional().nullable(),   // student: single
-  // Many-to-many (arrays of IDs)
-  classExternalIds:   z.array(z.string().min(1)).optional(),   // teacher: multiple
-  subjectExternalIds: z.array(z.string().min(1)).optional(),   // teacher: multiple
-  seriesExternalIds:  z.array(z.string().min(1)).optional(),   // teacher: multiple
-  bookExternalIds:    z.array(z.string().min(1)).optional(),   // both: multiple
-  // Role-specific text fields
-  bio:         z.string().trim().max(1000).optional().nullable(),
-  teacherCode: z.string().trim().min(1).max(40).optional().nullable(),
+  classExternalId:   z.string().min(1).optional().nullable(),
+  seriesExternalId:  z.string().min(1).optional().nullable(),
+  // Many-to-many (array of IDs)
+  subjectExternalIds: z.array(z.string().min(1)).optional(),
+  bookExternalIds:    z.array(z.string().min(1)).optional(),
 }).refine((v) => Object.keys(v).length > 0, { message: 'No fields to update' });
 
 export const changePasswordSchema = z.object({

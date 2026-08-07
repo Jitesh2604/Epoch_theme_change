@@ -28,15 +28,8 @@ router.patch('/me',          validate(updateProfileSchema),  UserController.upda
 
 // ── role-targeted listings ────────────────────────────────────
 router.get(
-  '/teachers',
-  authorize(...ADMIN_ROLES),
-  validate(listProfilesQuerySchema, 'query'),
-  UserController.listTeachers,
-);
-
-router.get(
   '/students',
-  authorize(...ADMIN_ROLES, Role.TEACHER),
+  authorize(...ADMIN_ROLES),
   validate(listProfilesQuerySchema, 'query'),
   UserController.listStudents,
 );

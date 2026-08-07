@@ -307,8 +307,8 @@ export const ExcelService = {
     buffer: Buffer,
     opts: { dryRun: boolean; assessmentId?: string; stopOnError: boolean },
   ): Promise<ImportSummary> {
-    if (actor.role !== 'TEACHER' && !isAdminRole(actor.role)) {
-      throw ApiError.forbidden('Only teachers can upload questions');
+    if (!isAdminRole(actor.role)) {
+      throw ApiError.forbidden('Only admins can upload questions');
     }
 
     const rows = parseWorkbook(buffer);
@@ -320,9 +320,6 @@ export const ExcelService = {
       });
       if (!a) throw ApiError.badRequest('assessmentId does not exist');
       if (a.status === 'ARCHIVED') throw ApiError.badRequest('Cannot attach to an archived assessment');
-      if (!isAdminRole(actor.role) && a.createdById !== actor.id) {
-        throw ApiError.forbidden('You can only import into assessments you created');
-      }
       target = { id: a.id, status: a.status };
     }
 
@@ -423,7 +420,7 @@ export const ExcelService = {
     const { page, limit } = query;
     const { skip, take } = pageToSkipTake(page, limit);
 
-    // Teachers see only their own uploads; admins see everyone's.
+    // Non-admins see only their own uploads; admins see everyone's.
     const where = {
       ...(isAdminRole(actor.role) ? {} : { uploadedById: actor.id }),
       ...(query.status && { uploadStatus: query.status }),

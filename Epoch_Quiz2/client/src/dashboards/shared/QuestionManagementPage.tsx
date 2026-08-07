@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   ChevronLeft, Plus, CheckCircle2, GripVertical, Trash2, Library, ArrowUp, ArrowDown, Eye, Pencil, UserPlus,
 } from 'lucide-react';
@@ -16,16 +16,13 @@ import { AssignAssessmentModal } from './AssignAssessmentModal';
 import { EditAssessmentModal } from './EditAssessmentModal';
 
 /**
- * Shared between Teacher (`/teacher/assessments/:id/questions`) and Admin
- * (`/admin/assessments/:id/questions`) — same page, same data/workflows
- * (backed by the Assessment Question Bank, physically separate from
- * Practice/Olympiad's bank), only the "back" destination differs per role.
+ * Admin-only (`/admin/assessments/:id/questions`) — backed by the Assessment
+ * Question Bank, physically separate from Practice/Olympiad's bank.
  */
 export function QuestionManagementPage() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { id: assessmentId } = useParams<{ id: string }>();
-  const backTo = location.pathname.startsWith('/admin') ? '/admin/assessments' : '/teacher/assessments';
+  const backTo = '/admin/assessments';
   const [createOpen, setCreateOpen] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [bankOpen, setBankOpen] = useState(false);

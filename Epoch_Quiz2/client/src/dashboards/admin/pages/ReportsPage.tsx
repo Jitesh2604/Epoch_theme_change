@@ -15,8 +15,6 @@ import { useQuizAttempts, type QuizAttemptSortBy } from '../../../hooks/useQuizA
 import { useRealSubjects } from '../../../hooks/useSubjects';
 import { exportCsv } from '../../../lib/csv';
 
-// Teacher module is temporarily hidden — restore the 'teachers' tab, the
-// useTeachers import above, and every block marked below to bring it back.
 type Tab = 'overview' | 'assessments' | 'students' | 'practice';
 type Range = '7d' | '30d' | '90d' | 'all';
 
@@ -447,38 +445,6 @@ export function ReportsPage() {
         </>
       )}
 
-      {/* Teacher module is temporarily hidden — restore the 'teachers' Tab
-          union member, the useTeachers hook call, and the block below to
-          bring this tab back.
-      {tab === 'teachers' && (
-        <Card className="overflow-hidden">
-          <div className="px-5 py-4 border-b border-line flex items-center justify-between">
-            <h3 className="font-display font-semibold text-[15px] text-fg1">Teacher Activity</h3>
-            <span className="text-[11px] text-fg3">{teachers?.meta?.total ?? 0} teachers</span>
-          </div>
-          {teachLoading ? (
-            <div className="p-4 space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
-          ) : (
-            <Table
-              columns={[
-                { key: 'name',        label: 'Teacher',     render: t => (
-                  <div className="flex items-center gap-2.5">
-                    <Avatar name={t.name} hue={t.avatarHue} />
-                    <div><div className="font-semibold text-fg1 text-[13px]">{t.name}</div><div className="text-[11px] text-fg3">{t.email}</div></div>
-                  </div>
-                )},
-                { key: 'school',      label: 'School',      render: t => <span className="text-fg2">{t.schoolName ?? '—'}</span> },
-                { key: 'assessments', label: 'Assessments',  render: t => <span className="font-mono">{t.assessments}</span> },
-                { key: 'status',      label: 'Status',       render: t => <Badge tone={t.status === 'ACTIVE' ? 'success' : t.status === 'PENDING' ? 'warning' : 'neutral'}>{t.status.toLowerCase()}</Badge> },
-                { key: 'joined',      label: 'Joined',       render: t => <span className="text-[11px] text-fg3">{new Date(t.joinedAt).toLocaleDateString()}</span> },
-              ]}
-              rows={teachers?.items ?? []}
-              empty={<div className="text-center py-12 text-fg3 text-[13px]">No teachers yet</div>}
-            />
-          )}
-        </Card>
-      )}
-      */}
     </>
   );
 }

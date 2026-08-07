@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { Role, UserStatus, AttemptStatus, QuizType, SubmissionStatus } from '../lib/enums';
-import { ContentMeta } from './content.service';
+import { ContentMeta, UNKNOWN_SUBJECT_NAME } from './content.service';
 import { GRADABLE_TYPES } from './quiz.service';
 
 /**
@@ -217,7 +217,7 @@ async function getSubjectPopularityChart() {
 
   const subjectNames = await ContentMeta.subjects();
   return [...bySubject.entries()]
-    .map(([id, count]) => ({ subjectId: id, subjectName: subjectNames.get(id) ?? id, count }))
+    .map(([id, count]) => ({ subjectId: id, subjectName: subjectNames.get(id) ?? UNKNOWN_SUBJECT_NAME, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
 }

@@ -8,7 +8,7 @@ import { rememberPostAuthTarget } from '../../lib/postAuthRedirect';
 export function RequireRole({ role, children }: { role: Role; children: ReactNode }) {
   const current = getRole();
   const user = loadUser();
-  // Teachers/students must finish onboarding before any dashboard is reachable.
+  // Students must finish onboarding before any dashboard is reachable.
   const needsProfile = !!user && toUIRole(user.role) !== 'admin' && !user.profileComplete;
 
   useEffect(() => {

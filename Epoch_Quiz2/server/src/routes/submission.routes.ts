@@ -27,7 +27,7 @@ router.get(
 
 router.get(
   '/',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(listSubmissionsQuerySchema, 'query'),
   SubmissionController.list,
 );
@@ -56,7 +56,7 @@ router.post(
 
 router.patch(
   '/:id/answers/:questionId/grade',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(submissionAnswerParamsSchema, 'params'),
   validate(gradeAnswerSchema),
   SubmissionController.grade,

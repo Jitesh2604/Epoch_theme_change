@@ -132,7 +132,7 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
               dashboard-app tree (react-router-dom, mounted at a different
               root — see main.tsx), so these are real navigations (<a
               href>), not the hash-router's navigate(). Shown only to
-              logged-in students — Teacher/Admin have their own,
+              logged-in students — Admin has its own,
               differently-scoped pages elsewhere. There is no Student
               Dashboard — these are standalone top-level routes, not nested
               under a dashboard shell (see DashboardApp.tsx). */}
@@ -140,7 +140,6 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
             <>
               {NAV_ENABLED.assessment && <a href="/assessment" className="nav-link">Assessment</a>}
               <a href="/results" className="nav-link">Results</a>
-              <a href="/analytics" className="nav-link">Analytics</a>
               {resultsPublished && <a href="/leaderboard" className="nav-link">Leaderboard</a>}
             </>
           )}
@@ -172,10 +171,13 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
             <ProfileMenu
               user={user}
               // There is no Student Dashboard — for students this opens
-              // their standalone Profile page instead. Admin/Teacher keep
-              // their existing Dashboard link.
+              // their standalone Profile page instead. Admin keeps its
+              // existing Dashboard link.
               menuLabel={toUIRole(user.role) === 'student' ? 'Profile' : 'Dashboard'}
               menuHref={toUIRole(user.role) === 'student' ? '/profile' : `/${toUIRole(user.role)}`}
+              // Analytics moved here from the top nav — students only, same
+              // as the top-nav Analytics link used to be scoped.
+              showAnalytics={toUIRole(user.role) === 'student'}
               open={profileOpen}
               setOpen={setProfileOpen}
               onLogout={handleLogout}
@@ -240,14 +242,6 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
               >
                 Results
               </a>
-              <a
-                href="/analytics"
-                className="nav-link"
-                style={{ textAlign: 'left', display: 'block', textDecoration: 'none' }}
-                onClick={() => setMobileOpen(false)}
-              >
-                Analytics
-              </a>
               {resultsPublished && (
                 <a
                   href="/leaderboard"
@@ -298,7 +292,7 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
                 </div>
                 <div style={{ padding: '4px 14px 8px' }}>
                   {/* No Student Dashboard — students get their standalone
-                      Profile page here instead; Admin/Teacher keep their
+                      Profile page here instead; Admin keeps its
                       existing Dashboard link. */}
                   <a
                     href={toUIRole(user.role) === 'student' ? '/profile' : `/${toUIRole(user.role)}`}
@@ -310,6 +304,16 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
                     {toUIRole(user.role) === 'student' ? 'My Profile' : 'My Dashboard'}
                   </a>
                 </div>
+                {toUIRole(user.role) === 'student' && (
+                  <a
+                    href="/analytics"
+                    className="nav-link"
+                    style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    <Icon name="chart" size={14} /> Analytics
+                  </a>
+                )}
                 <button
                   className="nav-link"
                   style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--danger)' }}
@@ -337,13 +341,14 @@ interface ProfileMenuProps {
   user: AuthUser;
   menuLabel: string;
   menuHref: string;
+  showAnalytics: boolean;
   open: boolean;
   setOpen: (v: boolean | ((p: boolean) => boolean)) => void;
   onLogout: () => void;
   stop: (e: React.MouseEvent) => void;
 }
 
-const ProfileMenu: React.FC<ProfileMenuProps> = ({ user, menuLabel, menuHref, open, setOpen, onLogout, stop }) => (
+const ProfileMenu: React.FC<ProfileMenuProps> = ({ user, menuLabel, menuHref, showAnalytics, open, setOpen, onLogout, stop }) => (
   <div style={{ position: 'relative' }} onClick={stop}>
     <button
       className="nav-profile-btn"
@@ -378,6 +383,11 @@ const ProfileMenu: React.FC<ProfileMenuProps> = ({ user, menuLabel, menuHref, op
         <a className="dropdown-item" href={menuHref} style={{ textDecoration: 'none' }}>
           <Icon name="sparkles" size={14} /> {menuLabel}
         </a>
+        {showAnalytics && (
+          <a className="dropdown-item" href="/analytics" style={{ textDecoration: 'none' }}>
+            <Icon name="chart" size={14} /> Analytics
+          </a>
+        )}
         <button className="dropdown-item" onClick={onLogout} style={{ color: 'var(--danger, #FF6B6B)' }}>
           <Icon name="logout" size={14} /> Log out
         </button>

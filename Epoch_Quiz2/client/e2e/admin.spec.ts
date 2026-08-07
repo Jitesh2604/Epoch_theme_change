@@ -23,14 +23,7 @@ test.describe('Admin Dashboard', () => {
   });
 
   test('renders admin overview with stat cards', async ({ page }) => {
-    await expect(page.locator('text=Total Teachers')).toBeVisible({ timeout: 5_000 });
-    await expect(page.locator('text=Total Students')).toBeVisible();
-  });
-
-  test('Teachers page renders table', async ({ page }) => {
-    await page.getByRole('link', { name: 'Teachers', exact: true }).click();
-    await page.waitForURL('**/admin/teachers', { timeout: 5_000 });
-    await expect(page.getByRole('heading', { name: 'Teachers' })).toBeVisible();
+    await expect(page.locator('text=Total Students')).toBeVisible({ timeout: 5_000 });
   });
 
   test('Students page renders table', async ({ page }) => {

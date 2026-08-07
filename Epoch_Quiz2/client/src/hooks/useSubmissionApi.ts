@@ -103,7 +103,7 @@ export interface SubmissionResult {
 // ── API ───────────────────────────────────────────────────────────
 
 export const assessmentTakeApi = {
-  /** Start (or resume) an assessment.  Returns TakeSubmission when still open,
+  /** Start an assessment. Returns TakeSubmission when still open,
    *  or { autoSubmitted: true, submission: SubmissionResult } if time already expired. */
   start: (assessmentId: string) =>
     api.post<{ submission: TakeSubmission | SubmissionResult; autoSubmitted?: boolean }>(

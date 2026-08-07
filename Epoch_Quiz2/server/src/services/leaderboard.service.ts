@@ -25,7 +25,7 @@ function resultsVisibleFilter(): Prisma.AssessmentWhereInput {
   return { OR: [{ resultsPublished: true }, { resultPublishAt: { lte: new Date() } }] };
 }
 
-function pct(score: number, total: number): number {
+export function pct(score: number, total: number): number {
   if (total <= 0) return 0;
   return Math.round((score / total) * 10000) / 100;
 }
@@ -38,9 +38,6 @@ export const LeaderboardService = {
     });
     if (!assessment) throw ApiError.notFound('Assessment not found');
 
-    if (actor.role === Role.TEACHER && assessment.createdById !== actor.id) {
-      throw ApiError.forbidden('You can only view leaderboards for your own assessments');
-    }
     if (actor.role === Role.STUDENT) {
       if (assessment.status !== AssessmentStatus.PUBLISHED) throw ApiError.notFound('Assessment not found');
       const own = await prisma.submission.findUnique({
@@ -54,14 +51,24 @@ export const LeaderboardService = {
     const { page, limit } = query;
     const { skip, take } = pageToSkipTake(page, limit);
 
+    // resultsVisibleFilter() is a student-facing gate — a student can't see
+    // rankings before results are published. Admin needs the opposite: the
+    // whole point of an internal leaderboard/analytics view is deciding
+    // whether to publish, so it must show real data regardless of
+    // publish state. Only STUDENT actors are gated by it.
+    const where = {
+      assessmentId, status: COUNTABLE,
+      ...(actor.role === Role.STUDENT && { assessment: resultsVisibleFilter() }),
+    };
+
     const [rows, total] = await Promise.all([
       prisma.submission.findMany({
-        where: { assessmentId, status: COUNTABLE, assessment: resultsVisibleFilter() },
+        where,
         orderBy: [{ score: 'desc' }, { timeTakenSec: 'asc' }, { submittedAt: 'asc' }],
         skip, take,
         select: { studentId: true, score: true, totalMarks: true, timeTakenSec: true, submittedAt: true, status: true, student: { select: { name: true, avatarHue: true } } },
       }),
-      prisma.submission.count({ where: { assessmentId, status: COUNTABLE, assessment: resultsVisibleFilter() } }),
+      prisma.submission.count({ where }),
     ]);
 
     const items = rows.map((s, i) => ({
@@ -128,7 +135,7 @@ export const LeaderboardService = {
 
     const students = await prisma.user.findMany({
       where: { id: { in: page_.map((r) => r.studentId) } },
-      select: { id: true, name: true, avatarHue: true, studentProfile: { select: { schoolName: true, teacherCode: true } } },
+      select: { id: true, name: true, avatarHue: true, studentProfile: { select: { schoolName: true } } },
     });
     const byId = new Map(students.map((s) => [s.id, s]));
 
@@ -140,7 +147,6 @@ export const LeaderboardService = {
         studentName:   s?.name ?? 'Unknown',
         avatarHue:     s?.avatarHue ?? 180,
         schoolName:    s?.studentProfile?.schoolName ?? null,
-        teacherCode:   s?.studentProfile?.teacherCode ?? null,
         attempted:     r.attempted,
         totalScore:    r.totalScore,
         totalPossible: r.totalPossible,
@@ -176,26 +182,6 @@ export const LeaderboardService = {
         avgPercent:  pct(totalScore, totalPossible),
         totalTimeSec,
         rank:        higher + 1,
-      };
-    }
-
-    if (actor.role === Role.TEACHER) {
-      const [assessmentsCount, mySubmissions, mySubmissionAgg] = await Promise.all([
-        prisma.assessment.count({ where: { createdById: actor.id } }),
-        prisma.submission.count({ where: { assessment: { createdById: actor.id }, status: COUNTABLE } }),
-        prisma.submission.aggregate({
-          where: { assessment: { createdById: actor.id }, status: COUNTABLE },
-          _avg: { score: true, timeTakenSec: true }, _sum: { score: true, totalMarks: true },
-        }),
-      ]);
-
-      return {
-        role:               'TEACHER',
-        assessmentsCreated: assessmentsCount,
-        totalSubmissions:   mySubmissions,
-        avgScore:           mySubmissionAgg._avg.score ?? 0,
-        avgTimeSec:         mySubmissionAgg._avg.timeTakenSec ?? 0,
-        avgPercent:         pct(mySubmissionAgg._sum.score ?? 0, mySubmissionAgg._sum.totalMarks ?? 0),
       };
     }
 

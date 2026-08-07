@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Plus, BookOpen, Upload, Trash2 } from 'lucide-react';
 import { PageHeader, Card, Button, SearchInput, Select, Badge, Skeleton } from '../../shared/ui';
 import { useQuestions, questionApi } from '../../../hooks/useQuestions';
@@ -18,7 +18,6 @@ const TYPE_LABEL: Record<string, string> = {
 
 export function QuestionBankPage() {
   const navigate = useNavigate();
-  const location = useLocation();
   const [q, setQ] = useState('');
   const [type, setType] = useState('all');
   const [diff, setDiff] = useState('all');
@@ -50,7 +49,7 @@ export function QuestionBankPage() {
     refetch();
   };
 
-  const uploadPath = location.pathname.startsWith('/teacher') ? '/teacher/upload-questions' : '/admin/upload-questions';
+  const uploadPath = '/admin/upload-questions';
 
   return (
     <>

@@ -47,7 +47,6 @@ model User {
   refreshTokens              RefreshToken[]
   studentProfile             StudentProfile?
   submissions                Submission[]
-  teacherProfile             TeacherProfile?
   bookmarks                  Bookmark[]                  @relation("StudentBookmarks")
   revisionItems              RevisionItem[]              @relation("StudentRevisionItems")
   revisionStreak             RevisionStreakState?        @relation("StudentRevisionStreak")
@@ -55,35 +54,6 @@ model User {
   @@index([role])
   @@index([status])
   @@map("users")
-}
-
-model TeacherProfile {
-  id              String           @id @default(cuid())
-  userId          String           @unique
-  mobileNo        String?
-  dob             DateTime?
-  schoolName      String?
-  educationBoard  String?
-  stateBoard      String?
-  teacherCode     String?          @unique
-  address         String?          @db.Text
-  country         String?
-  state           String?
-  city            String?
-  zip             String?
-  imageUrl        String?          @db.MediumText
-  bio             String?          @db.Text
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  boardExternalId String?
-  books           TeacherBook[]
-  classes         TeacherClass[]
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  teacherSeries   TeacherSeries[]
-  subjects        TeacherSubject[]
-
-  @@index([boardExternalId])
-  @@map("teacher_profiles")
 }
 
 model StudentProfile {
@@ -94,7 +64,6 @@ model StudentProfile {
   schoolName       String?
   educationBoard   String?
   stateBoard       String?
-  teacherCode      String?
   address          String?          @db.Text
   country          String?
   state            String?
@@ -138,46 +107,6 @@ model StudentBook {
   @@id([studentProfileId, bookExternalId])
   @@index([bookExternalId])
   @@map("student_books")
-}
-
-model TeacherClass {
-  teacherProfileId String
-  classExternalId  String
-  teacherProfile   TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
-
-  @@id([teacherProfileId, classExternalId])
-  @@index([classExternalId])
-  @@map("teacher_classes")
-}
-
-model TeacherSubject {
-  teacherProfileId  String
-  subjectExternalId String
-  teacherProfile    TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
-
-  @@id([teacherProfileId, subjectExternalId])
-  @@index([subjectExternalId])
-  @@map("teacher_subjects")
-}
-
-model TeacherSeries {
-  teacherProfileId String
-  seriesExternalId String
-  teacherProfile   TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
-
-  @@id([teacherProfileId, seriesExternalId])
-  @@index([seriesExternalId])
-  @@map("teacher_series")
-}
-
-model TeacherBook {
-  teacherProfileId String
-  bookExternalId   String
-  teacherProfile   TeacherProfile @relation(fields: [teacherProfileId], references: [id], onDelete: Cascade)
-
-  @@id([teacherProfileId, bookExternalId])
-  @@index([bookExternalId])
-  @@map("teacher_books")
 }
 
 model StudentSubject {
@@ -799,7 +728,6 @@ enum Role {
   SUPER_ADMIN
   PUBLICATION_ADMIN
   CONTENT_MANAGER
-  TEACHER
   STUDENT
 }
 

@@ -553,11 +553,7 @@ export const SubmissionService = {
     if (!s) throw ApiError.notFound('Submission not found');
 
     if (!isAdminRole(actor.role)) {
-      if (actor.role === Role.TEACHER) {
-        if (s.aCreatedById !== actor.id) throw ApiError.forbidden('You can only view submissions for your own assessments');
-      } else {
-        if (s.studentId !== actor.id) throw ApiError.notFound('Submission not found');
-      }
+      if (s.studentId !== actor.id) throw ApiError.notFound('Submission not found');
     }
 
     const inProgress = s.status === SubmissionStatus.IN_PROGRESS;
@@ -619,7 +615,6 @@ export const SubmissionService = {
       ...(status && { status }),
       ...(assessmentId && { assessmentId }),
       ...(studentId && { studentId }),
-      ...(actor.role === Role.TEACHER && { assessment: { createdById: actor.id } }),
     };
     const { skip, take } = pageToSkipTake(page, limit);
 
@@ -648,17 +643,14 @@ export const SubmissionService = {
   },
 
   async grade(actor: Actor, submissionId: string, questionId: string, input: GradeAnswerInput) {
-    if (actor.role !== Role.TEACHER && !isAdminRole(actor.role)) {
-      throw ApiError.forbidden('Only teachers can grade');
+    if (!isAdminRole(actor.role)) {
+      throw ApiError.forbidden('Only admins can grade');
     }
     const submission = await prisma.submission.findUnique({
       where: { id: submissionId },
       select: { id: true, status: true, assessmentId: true, assessment: { select: { createdById: true } } },
     });
     if (!submission) throw ApiError.notFound('Submission not found');
-    if (actor.role === Role.TEACHER && submission.assessment.createdById !== actor.id) {
-      throw ApiError.forbidden('You can only grade submissions for your own assessments');
-    }
     if (submission.status === SubmissionStatus.IN_PROGRESS) {
       throw ApiError.badRequest('Cannot grade a submission that is still in progress');
     }

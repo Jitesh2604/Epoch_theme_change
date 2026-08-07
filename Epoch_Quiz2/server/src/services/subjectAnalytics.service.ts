@@ -1,7 +1,13 @@
-import { Prisma } from '@prisma/client';
+import { Difficulty } from '../lib/enums';
+import { ContentMeta, UNKNOWN_SUBJECT_NAME, UNKNOWN_TOPIC_NAME } from './content.service';
+import {
+  fetchPracticeAnswerRows, buildAttemptTotals, round,
+  startOfWeek, weekKey, monthKey, addWeeks, addMonths,
+  WEEKLY_BUCKETS, MONTHLY_BUCKETS,
+  type PracticeAnalyticsFilters, type PracticeAnswerRow, type TrendPoint,
+} from './practiceAnalyticsShared.service';
 import { prisma } from '../lib/prisma';
-import { AttemptStatus, QuizType, Role, Difficulty } from '../lib/enums';
-import { ContentMeta } from './content.service';
+import { Role } from '../lib/enums';
 
 /**
  * Admin Analytics — Feature 3: Subject Analytics.
@@ -15,79 +21,19 @@ import { ContentMeta } from './content.service';
  * of one. Practice Olympiad only (quizType !== OLYMPIAD, status ===
  * SUBMITTED) — never touches Submission (Assessment) or leaderboard data.
  *
- * One bulk AttemptAnswer fetch per filter combination feeds every
- * sub-computation (overview, difficulty breakdown, growth %) in a single
- * pass — chapter breakdown and full trend series are separate, lazy,
- * per-subject-on-demand fetches (only when an admin expands one subject),
- * so nothing here is O(subjects x heavy-computation) up front.
+ * The bulk fetch, per-attempt time bookkeeping, and week/month bucketing are
+ * shared with Feature 4 (Question Analytics) via
+ * practiceAnalyticsShared.service.ts — see that file's header for why.
  */
 
-export interface SubjectAnalyticsFilters {
-  classExternalId?: string;
-  boardExternalId?: string;
-  dateFrom?: string;
-  dateTo?: string;
+export type SubjectAnalyticsFilters = PracticeAnalyticsFilters;
+
+function sliceAccuracy(s: { correct: number; wrong: number }): number {
+  const ans = s.correct + s.wrong;
+  return ans > 0 ? round((s.correct / ans) * 100) : 0;
 }
 
-function round(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-function studentProfileFilter(filters: SubjectAnalyticsFilters): Prisma.UserWhereInput | undefined {
-  if (!filters.classExternalId && !filters.boardExternalId) return undefined;
-  return {
-    studentProfile: {
-      ...(filters.classExternalId && { classExternalId: filters.classExternalId }),
-      ...(filters.boardExternalId && { boardExternalId: filters.boardExternalId }),
-    },
-  };
-}
-
-function buildAttemptWhere(filters: SubjectAnalyticsFilters): Prisma.QuizAttemptWhereInput {
-  const studentFilter = studentProfileFilter(filters);
-  return {
-    status: AttemptStatus.SUBMITTED,
-    quiz: { quizType: { not: QuizType.OLYMPIAD } },
-    ...((filters.dateFrom || filters.dateTo) && {
-      startTime: {
-        ...(filters.dateFrom && { gte: new Date(filters.dateFrom) }),
-        ...(filters.dateTo && { lte: new Date(filters.dateTo) }),
-      },
-    }),
-    ...(studentFilter && { student: studentFilter }),
-  };
-}
-
-async function fetchRows(filters: SubjectAnalyticsFilters, subjectExternalId?: string) {
-  return prisma.attemptAnswer.findMany({
-    where: {
-      attempt: buildAttemptWhere(filters),
-      ...(subjectExternalId && { question: { subjectExternalId } }),
-    },
-    select: {
-      isCorrect: true, isSkipped: true, marksAwarded: true, attemptId: true,
-      attempt: { select: { studentId: true, startTime: true, timeTakenSec: true } },
-      question: { select: { subjectExternalId: true, marks: true, difficulty: true, chapterExternalId: true, bookExternalId: true } },
-    },
-  });
-}
-
-type AnswerRow = Awaited<ReturnType<typeof fetchRows>>[number];
-
-interface AttemptTotals { questionCount: number; timeTakenSec: number }
-
-/** Per-attempt question count + timeTakenSec — same bookkeeping helper as
- *  analytics.service.ts's buildAttemptTotals, used to proportionally split
- *  a Mixed attempt's real total time across whichever subject it touched. */
-function buildAttemptTotals(rows: AnswerRow[]): Map<string, AttemptTotals> {
-  const totals = new Map<string, AttemptTotals>();
-  for (const r of rows) {
-    const cur = totals.get(r.attemptId);
-    if (cur) cur.questionCount += 1;
-    else totals.set(r.attemptId, { questionCount: 1, timeTakenSec: r.attempt.timeTakenSec });
-  }
-  return totals;
-}
+const DIFFICULTY_BANDS: Difficulty[] = [Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD];
 
 interface SubjectAttemptSlice {
   subjectExternalId: string;
@@ -103,7 +49,7 @@ interface SubjectAttemptSlice {
  *  studentId. A Mixed Subjects Practice attempt naturally splits across
  *  every subject it touched; a single-subject attempt's questions all
  *  share one subject — both fall out of the same grouping. */
-function buildSubjectSlices(rows: AnswerRow[]): Map<string, SubjectAttemptSlice> {
+function buildSubjectSlices(rows: PracticeAnswerRow[]): Map<string, SubjectAttemptSlice> {
   const slices = new Map<string, SubjectAttemptSlice>();
   for (const r of rows) {
     const subjectExternalId = r.question.subjectExternalId;
@@ -125,13 +71,6 @@ function buildSubjectSlices(rows: AnswerRow[]): Map<string, SubjectAttemptSlice>
   }
   return slices;
 }
-
-function sliceAccuracy(s: { correct: number; wrong: number }): number {
-  const ans = s.correct + s.wrong;
-  return ans > 0 ? round((s.correct / ans) * 100) : 0;
-}
-
-const DIFFICULTY_BANDS: Difficulty[] = [Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD];
 
 export interface SubjectOverviewRow {
   subjectId: string;
@@ -155,9 +94,11 @@ export interface SubjectOverviewRow {
 const GROWTH_WINDOW_DAYS = 30;
 
 async function getSubjectOverview(filters: SubjectAnalyticsFilters): Promise<{ subjects: SubjectOverviewRow[]; totalStudentsOnPlatform: number }> {
-  const studentFilter = studentProfileFilter(filters);
+  const studentFilter = (filters.classExternalId || filters.boardExternalId)
+    ? { studentProfile: { ...(filters.classExternalId && { classExternalId: filters.classExternalId }), ...(filters.boardExternalId && { boardExternalId: filters.boardExternalId }) } }
+    : undefined;
   const [rows, totalStudentsOnPlatform, subjectNames] = await Promise.all([
-    fetchRows(filters),
+    fetchPracticeAnswerRows(filters),
     prisma.user.count({ where: { role: Role.STUDENT, ...studentFilter } }),
     ContentMeta.subjects(),
   ]);
@@ -240,7 +181,7 @@ async function getSubjectOverview(filters: SubjectAnalyticsFilters): Promise<{ s
 
     return {
       subjectId: subjectExternalId,
-      subjectName: subjectNames.get(subjectExternalId) ?? subjectExternalId,
+      subjectName: subjectNames.get(subjectExternalId) ?? UNKNOWN_SUBJECT_NAME,
       totalStudentsPracticed,
       totalStudentsNeverPracticed: Math.max(0, totalStudentsOnPlatform - totalStudentsPracticed),
       totalAttempts,
@@ -270,7 +211,7 @@ export interface SubjectChapterRow {
  *  getTopicBreakdown, scoped to one subject and platform-wide instead of
  *  per-student. Sorted strongest -> weakest by accuracy. */
 async function getSubjectChapters(subjectId: string, filters: SubjectAnalyticsFilters): Promise<SubjectChapterRow[]> {
-  const rows = await fetchRows(filters, subjectId);
+  const rows = await fetchPracticeAnswerRows({ ...filters, subjectExternalId: subjectId });
   if (!rows.length) return [];
 
   const attemptTotals = buildAttemptTotals(rows);
@@ -327,7 +268,7 @@ async function getSubjectChapters(subjectId: string, filters: SubjectAnalyticsFi
 
     return {
       topicId: chapterExternalId,
-      topicName: chapterNames.get(chapterExternalId) ?? chapterExternalId,
+      topicName: chapterNames.get(chapterExternalId) ?? UNKNOWN_TOPIC_NAME,
       totalAttempts, accuracyPercent, averageScore, averageTimePerQuestionSec,
     };
   });
@@ -337,39 +278,7 @@ async function getSubjectChapters(subjectId: string, filters: SubjectAnalyticsFi
 
 // ── Trends ────────────────────────────────────────────────────────────────
 
-function startOfWeek(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  const day = x.getDay(); // 0 = Sunday
-  const diffToMonday = (day + 6) % 7;
-  x.setDate(x.getDate() - diffToMonday);
-  return x;
-}
-
-function weekKey(d: Date): string {
-  return startOfWeek(d).toISOString().slice(0, 10);
-}
-
-function monthKey(d: Date): string {
-  return d.toISOString().slice(0, 7);
-}
-
-function addWeeks(d: Date, n: number): Date {
-  const x = new Date(d);
-  x.setDate(x.getDate() + n * 7);
-  return x;
-}
-
-function addMonths(d: Date, n: number): Date {
-  const x = new Date(d);
-  x.setMonth(x.getMonth() + n);
-  return x;
-}
-
-const WEEKLY_BUCKETS = 12;
-const MONTHLY_BUCKETS = 6;
-
-export interface TrendPoint { date: string; count: number }
+export type { TrendPoint };
 export interface SubjectTrends {
   accuracyOverTime: TrendPoint[];
   attemptsOverTime: TrendPoint[];
@@ -380,7 +289,7 @@ export interface SubjectTrends {
  *  getSubjectOverview builds, just for a single subject, then bucketed by
  *  calendar week/month for the trend charts. */
 async function getSubjectTrends(subjectId: string, granularity: 'weekly' | 'monthly', filters: SubjectAnalyticsFilters): Promise<SubjectTrends> {
-  const rows = await fetchRows(filters, subjectId);
+  const rows = await fetchPracticeAnswerRows({ ...filters, subjectExternalId: subjectId });
   const slices = buildSubjectSlices(rows);
   const attemptSlices = [...slices.values()];
 

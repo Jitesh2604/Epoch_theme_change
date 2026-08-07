@@ -16,9 +16,8 @@ export const CompleteProfilePage: React.FC<Props> = ({ navigate }) => {
     if (!user) { navigate('login'); return; }
     const uiRole = toUIRole(user.role);
     if (user.profileComplete) { window.location.href = `/${uiRole}`; return; }
-    if (user.role === 'TEACHER')      navigate('complete-profile/teacher');
-    else if (user.role === 'STUDENT') navigate('complete-profile/student');
-    else                              window.location.href = `/${uiRole}`; // admins skip onboarding
+    if (user.role === 'STUDENT') navigate('complete-profile/student');
+    else                         window.location.href = `/${uiRole}`; // admins skip onboarding
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return null;

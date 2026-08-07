@@ -9,8 +9,8 @@ import {
   Card, Button, Badge, Modal, Skeleton, EmptyState, useToasts,
 } from '../../dashboards/shared/ui';
 import {
-  usePracticeSubjects, usePausedAttempts, practiceApi,
-  type PracticeSubject, type PracticePreview, type PausedAttempt,
+  usePracticeSubjects, practiceApi,
+  type PracticeSubject, type PracticePreview,
 } from '../../hooks/usePracticeQuiz';
 import { Footer } from '../../components/layout/Footer';
 import { PageHead } from '../../components/layout/PageHead';
@@ -143,30 +143,6 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate, initialSub
     mediumCount:   subjects.reduce((s, x) => s + x.mediumCount, 0),
     hardCount:     subjects.reduce((s, x) => s + x.hardCount, 0),
   } : null;
-
-  // "Resume Paused Quizzes" — kept deliberately separate from the subject
-  // grid below: picking a subject there always starts a brand-new attempt,
-  // this is the only explicit path back into one already paused (Practice
-  // or Olympiad). A student can have several open at once, so this renders
-  // as a list, not a single banner.
-  const { data: paused, refetch: refetchPaused } = usePausedAttempts();
-  const [confirmDiscardId, setConfirmDiscardId] = useState<string | null>(null);
-  const [discardingId, setDiscardingId] = useState<string | null>(null);
-
-  const resumePaused = (a: PausedAttempt) => {
-    navigate(a.quiz.quizType === 'OLYMPIAD' ? `olympiad/${a.attemptId}` : `play/quiz/${a.attemptId}`);
-  };
-
-  const discardPaused = async (attemptId: string) => {
-    setDiscardingId(attemptId);
-    try {
-      await practiceApi.discardAttempt(attemptId);
-      await refetchPaused();
-    } finally {
-      setDiscardingId(null);
-      setConfirmDiscardId(null);
-    }
-  };
 
   const [selected,   setSelected]   = useState<PracticeSubject | null>(null);
   const [difficulty, setDifficulty] = useState<'EASY' | 'MEDIUM' | 'HARD' | ''>('');
@@ -316,7 +292,7 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate, initialSub
                 </div>
                 <ul className="space-y-2 text-[12.5px] text-fg2 leading-relaxed list-disc pl-4">
                   <li>Read each question carefully before answering.</li>
-                  <li>Select an option and submit, or skip if you're unsure.</li>
+                  <li>Select an option and submit.</li>
                   <li>Explanations are shown right after each answer.</li>
                   <li>Passing criteria and scheduled date/time do not apply — this is a self-paced practice quiz.</li>
                 </ul>
@@ -330,7 +306,6 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate, initialSub
                 <ul className="space-y-2 text-[12.5px] text-fg2 leading-relaxed list-disc pl-4">
                   <li>Once submitted, an answer is locked — you cannot go back to a previous question.</li>
                   <li>Your progress is saved automatically as you go.</li>
-                  <li>You can pause anytime — find it later under "Resume Paused Quizzes" on the home page, with the timer picking up from where you left off.</li>
                   <li>Wrong answers are not negatively marked.</li>
                 </ul>
               </Card>
@@ -367,55 +342,6 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate, initialSub
         title={t('page.chooseCategory')}
         body={t('page.twoQuizModes')}
       />
-
-      {/* RESUME PAUSED QUIZZES — picking a subject below always starts a
-          brand-new attempt; this is the only explicit way back into one
-          already paused. Hidden while the difficulty modal is open, same as
-          the subject grid below. */}
-      {!selected && !!paused?.length && (
-        <section className="container" style={{ paddingBottom: 24 }}>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display font-semibold text-[16px] text-fg1">Resume Paused Quizzes</h2>
-            <span className="text-[11px] text-fg3">{paused.length} paused</span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {paused.map(a => (
-              <Card key={a.attemptId} className="p-5 flex flex-col gap-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="w-11 h-11 rounded-xl bg-brand-soft text-brand grid place-items-center shrink-0">
-                    {a.quiz.quizType === 'OLYMPIAD' ? <Trophy size={20} /> : <BookOpen size={20} />}
-                  </div>
-                  <Badge tone="warning" dot={false} className="text-[10px]">Paused</Badge>
-                </div>
-                <div>
-                  <h3 className="font-display font-semibold text-[15px] text-fg1 leading-tight">
-                    {a.quiz.subject?.name ?? a.quiz.title}
-                  </h3>
-                  <p className="text-[11.5px] text-fg3 mt-1">
-                    {a.quiz.quizType === 'OLYMPIAD' ? 'Mixed quiz' : 'Subject Practice'}
-                    {' · '}Question {a.currentQuestionIndex + 1} of {a.questionCount}
-                  </p>
-                </div>
-                {confirmDiscardId === a.attemptId ? (
-                  <div className="flex gap-2 mt-auto">
-                    <Button variant="ghost" size="sm" className="flex-1" disabled={discardingId === a.attemptId} onClick={() => setConfirmDiscardId(null)}>
-                      Cancel
-                    </Button>
-                    <Button variant="danger" size="sm" className="flex-1" disabled={discardingId === a.attemptId} onClick={() => discardPaused(a.attemptId)}>
-                      {discardingId === a.attemptId ? 'Discarding…' : 'Confirm'}
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2 mt-auto">
-                    <Button size="sm" className="flex-1" onClick={() => resumePaused(a)}>Resume</Button>
-                    <Button variant="ghost" size="sm" onClick={() => setConfirmDiscardId(a.attemptId)}>Discard</Button>
-                  </div>
-                )}
-              </Card>
-            ))}
-          </div>
-        </section>
-      )}
 
       <section className="container" style={{ paddingBottom: 80 }}>
         {/* Hidden while the difficulty modal is open — otherwise the same
@@ -455,7 +381,7 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate, initialSub
               <EmptyState
                 icon={BookOpen}
                 title="No subjects available"
-                desc="The question bank is empty. Ask a teacher or admin to add questions."
+                desc="The question bank is empty. Ask an admin to add questions."
               />
             </Card>
           )

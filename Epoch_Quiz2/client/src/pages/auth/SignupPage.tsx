@@ -8,49 +8,16 @@ import { ApiError } from '../../lib/api';
 
 interface SignupPageProps { navigate: NavigateFn; }
 
-type Role = 'TEACHER' | 'STUDENT';
+type Role = 'STUDENT';
 
-// Student is the only signup role while Teacher signup is hidden, so there's
-// nothing for a user to actually choose — the role picker below is removed
-// rather than shown with one pre-selected option. Restore both the picker
-// UI and the `role`/`setRole` state (replacing the constant a few lines
-// down) once a second signup role (e.g. Teacher) is enabled again:
-//
-// const ROLES: { id: Role; label: string; sub: string; icon: string }[] = [
-//   { id: 'TEACHER', label: 'Teacher', sub: 'Create & grade assessments',  icon: 'user' },
-//   { id: 'STUDENT', label: 'Student', sub: 'Take quizzes & track scores', icon: 'graduation' },
-// ];
-//
-// <div className="auth-field">
-//   <label className="auth-label">I am a…</label>
-//   <div className="role-grid">
-//     {ROLES.map(r => (
-//       <button
-//         key={r.id}
-//         type="button"
-//         onClick={() => setRole(r.id)}
-//         className={`role-card ${role === r.id ? 'selected' : ''}`}
-//         aria-pressed={role === r.id}
-//       >
-//         <span className="role-ico"><Icon name={r.icon} size={18} /></span>
-//         <span className="role-text">
-//           <span className="role-name">{r.label}</span>
-//           <span className="role-sub">{r.sub}</span>
-//         </span>
-//         <span className="role-check">
-//           {role === r.id && <Icon name="check" size={14} />}
-//         </span>
-//       </button>
-//     ))}
-//   </div>
-// </div>
+// Student is the only role in this platform, so there's nothing for a user
+// to actually choose — no role picker is shown.
 
 export const SignupPage: React.FC<SignupPageProps> = ({ navigate }) => {
   const [name, setName]         = useState('');
   const [mobileNo, setMobileNo] = useState('');
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  // Fixed — see the note above the (currently hidden) role picker.
   const role: Role = 'STUDENT';
   const [agreed, setAgreed]     = useState(false);
   const [errors, setErrors]     = useState<Record<string, string>>({});

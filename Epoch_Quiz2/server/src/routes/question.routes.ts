@@ -21,13 +21,13 @@ router.use(authenticate);
 
 router.get(
   '/upload/template',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   UploadController.downloadTemplate,
 );
 
 router.post(
   '/upload',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(uploadQuerySchema, 'query'),
   excelUpload,
   UploadController.importQuestions,
@@ -37,35 +37,35 @@ router.post(
 // ExcelService.listUploads.
 router.get(
   '/upload/history',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(listUploadsQuerySchema, 'query'),
   UploadController.listUploads,
 );
 
 router.get(
   '/',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(listQuestionsQuerySchema, 'query'),
   QuestionController.list,
 );
 
 router.post(
   '/',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(createQuestionSchema),
   QuestionController.create,
 );
 
 router.get(
   '/:id',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(questionIdParamsSchema, 'params'),
   QuestionController.getById,
 );
 
 router.patch(
   '/:id',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(questionIdParamsSchema, 'params'),
   validate(updateQuestionSchema),
   QuestionController.update,
@@ -73,7 +73,7 @@ router.patch(
 
 router.delete(
   '/:id',
-  authorize(Role.TEACHER, ...ADMIN_ROLES),
+  authorize(...ADMIN_ROLES),
   validate(questionIdParamsSchema, 'params'),
   QuestionController.remove,
 );

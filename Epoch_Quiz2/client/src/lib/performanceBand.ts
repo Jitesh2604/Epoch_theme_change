@@ -12,6 +12,29 @@ export interface PerformanceBand {
   pillClass: string;
 }
 
+/** Simplified 3-tier status (Subject-wise Performance's per-subject badge) —
+ *  a coarser read than the 5-tier PerformanceBand above, for a badge meant
+ *  to be understood at a glance by students and parents alike. Reuses the
+ *  same 70%/80% cutoffs already established elsewhere (see
+ *  ATTENTION_ACCURACY_THRESHOLD in strengthWeaknessInsights.ts and
+ *  ACCURATE_THRESHOLD in speedInsights.ts) rather than inventing new ones. */
+export interface StrengthStatus {
+  label: 'Strong' | 'Average' | 'Needs Improvement';
+  emoji: string;
+  barColorClass: string;
+  pillClass: string;
+}
+
+export function getStrengthStatus(accuracyPercent: number): StrengthStatus {
+  if (accuracyPercent >= 80) {
+    return { label: 'Strong', emoji: '🟢', barColorClass: 'bg-emerald-400', pillClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/25' };
+  }
+  if (accuracyPercent >= 70) {
+    return { label: 'Average', emoji: '🟡', barColorClass: 'bg-amber-400', pillClass: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/25' };
+  }
+  return { label: 'Needs Improvement', emoji: '🔴', barColorClass: 'bg-rose-400', pillClass: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/25' };
+}
+
 export function getPerformanceBand(accuracyPercent: number): PerformanceBand {
   if (accuracyPercent >= 90) {
     return { label: 'Excellent', emoji: '🟢', barColorClass: 'bg-emerald-400', pillClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/25' };

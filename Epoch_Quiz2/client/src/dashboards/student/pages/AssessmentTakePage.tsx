@@ -22,6 +22,15 @@ interface DraftAnswer {
   textAnswer?:      string;
 }
 
+function hasDraft(d?: DraftAnswer): boolean {
+  if (!d) return false;
+  return (
+    d.selectedOption !== undefined && d.selectedOption !== null ||
+    d.selectedBoolean !== undefined && d.selectedBoolean !== null ||
+    (d.textAnswer !== undefined && d.textAnswer.trim().length > 0)
+  );
+}
+
 // ── Countdown timer hook ──────────────────────────────────────────
 
 function useCountdown(expiresAtMs: number | null) {
@@ -264,6 +273,56 @@ function QuestionCard({
   );
 }
 
+// ── Question index ───────────────────────────────────────────────
+// A compact per-question number strip replacing a text "Current/Answered/
+// Unanswered" legend — three visual states (current/answered/unanswered)
+// read from the exact same `drafts` + `hasDraft` the progress bar above
+// already uses, so it can never disagree with it. Clicking a number just
+// jumps `idx` directly — the same mechanism Previous/Next already use, not
+// a new navigation capability (nothing in this exam enforces answering in
+// order or blocks revisiting a question). Sticky so it stays visible even
+// if a long question (Descriptive, Match the Following) pushes the card
+// tall enough to scroll.
+
+function QuestionIndex({
+  questions, currentIdx, drafts, onJump, disabled,
+}: {
+  questions: TakeQuestion[];
+  currentIdx: number;
+  drafts: Record<string, DraftAnswer>;
+  onJump: (i: number) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="sticky top-0 z-10 bg-bg pt-1 pb-3 mb-2 -mx-4 px-4">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+        {questions.map((q, i) => {
+          const isCurrent = i === currentIdx;
+          const answered  = hasDraft(drafts[q.questionId]);
+          const state = isCurrent
+            ? 'bg-brand text-brand-ink border-brand'
+            : answered
+              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+              : 'bg-surface1 text-fg3 border-line hover:border-brand/40';
+
+          return (
+            <button
+              key={q.questionId}
+              onClick={() => onJump(i)}
+              disabled={disabled}
+              aria-current={isCurrent ? 'step' : undefined}
+              aria-label={`Question ${i + 1}${isCurrent ? ' (current)' : answered ? ' (answered)' : ' (unanswered)'}`}
+              className={`shrink-0 w-8 h-8 rounded-lg border text-[12px] font-mono font-semibold grid place-items-center transition disabled:opacity-60 disabled:cursor-not-allowed ${state}`}
+            >
+              {i + 1}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────
 
 export function AssessmentTakePage() {
@@ -328,15 +387,6 @@ export function AssessmentTakePage() {
     () => questions.filter((q) => hasDraft(drafts[q.questionId])).length,
     [questions, drafts],
   );
-
-  function hasDraft(d?: DraftAnswer) {
-    if (!d) return false;
-    return (
-      d.selectedOption !== undefined && d.selectedOption !== null ||
-      d.selectedBoolean !== undefined && d.selectedBoolean !== null ||
-      (d.textAnswer !== undefined && d.textAnswer.trim().length > 0)
-    );
-  }
 
   // ── Answer change + autosave ──────────────────────────────────────
   const handleChange = useCallback(
@@ -517,6 +567,15 @@ export function AssessmentTakePage() {
           <span>{unanswered} remaining</span>
         </div>
       </div>
+
+      {/* ── Question index ──────────────────────────────────────── */}
+      <QuestionIndex
+        questions={questions}
+        currentIdx={idx}
+        drafts={drafts}
+        onJump={setIdx}
+        disabled={submitting}
+      />
 
       {/* Timer danger banner */}
       {timer.isDanger && !timedOut && (

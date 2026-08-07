@@ -102,9 +102,6 @@ export interface LearningInsights {
 // data or issuing a new query. Same scoring rule applied to whichever
 // granularity is available.
 
-// Exported — Feature 11's practiceRecommendationEngine.ts reuses the same
-// "declining" bar rather than defining its own, so the two features never
-// disagree on what counts as a decline.
 export const DECLINE_THRESHOLD = -5; // accuracy points, latest vs first
 // Exported — Feature 9's studyPlanEngine.ts reuses the same "weak" bar
 // rather than defining its own, so the two features never disagree on what

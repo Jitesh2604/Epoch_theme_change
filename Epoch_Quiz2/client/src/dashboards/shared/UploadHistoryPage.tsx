@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ChevronDown, ChevronUp, FileSpreadsheet } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, Skeleton, EmptyState } from './ui';
 import { useUploadHistory, type UploadHistoryItem } from '../../hooks/useQuestions';
@@ -59,10 +59,8 @@ function UploadRow({ item }: { item: UploadHistoryItem }) {
 }
 
 export function UploadHistoryPage() {
-  const location = useLocation();
   const navigate = useNavigate();
-  const roleLabel = location.pathname.startsWith('/teacher') ? 'Teacher' : 'Admin';
-  const uploadPath = location.pathname.startsWith('/teacher') ? '/teacher/upload-questions' : '/admin/upload-questions';
+  const uploadPath = '/admin/upload-questions';
 
   const [page, setPage] = useState(1);
   const { data, loading, error } = useUploadHistory({ page, limit: 20 });
@@ -70,7 +68,7 @@ export function UploadHistoryPage() {
   return (
     <>
       <PageHeader
-        eyebrow={`${roleLabel} · Bulk Import`}
+        eyebrow="Admin · Bulk Import"
         title="Upload History"
         subtitle="Every Excel import you've run, with row counts and any validation errors."
         actions={<Button variant="outline" icon={ArrowLeft} onClick={() => navigate(uploadPath)}>Back to upload</Button>}

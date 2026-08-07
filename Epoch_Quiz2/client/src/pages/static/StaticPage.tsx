@@ -34,9 +34,9 @@ export const StaticPage: React.FC<StaticPageProps> = ({ navigate, kind }) => {
       title: 'A practice platform built for students preparing for olympiads and exams.',
       body: 'We built the practice tool we wished existed — organized by subject, board, and difficulty, with real feedback after every question.',
       sections: [
-        { h: 'What we make',    p: 'Olympiad Epoch Quiz lets students practice by subject and difficulty, take mixed Practice Olympiad quizzes, and attempt assessments assigned by their teachers — with instant results and explanations after every question.' },
-        { h: 'Who we are',      p: 'A small team building tools for students, teachers, and admins preparing for olympiads and board exams.' },
-        { h: 'Why we built this', p: "Because most quiz apps either feel like a game or a corporate LMS. We wanted one that respects the people using it — students, teachers, and admins — and gets out of the way of actual practice." },
+        { h: 'What we make',    p: 'Olympiad Epoch Quiz lets students practice by subject and difficulty, take mixed Practice Olympiad quizzes, and attempt assessments assigned by their admins — with instant results and explanations after every question.' },
+        { h: 'Who we are',      p: 'A small team building tools for students and admins preparing for olympiads and board exams.' },
+        { h: 'Why we built this', p: "Because most quiz apps either feel like a game or a corporate LMS. We wanted one that respects the people using it — students and admins — and gets out of the way of actual practice." },
       ],
     },
     contact: {

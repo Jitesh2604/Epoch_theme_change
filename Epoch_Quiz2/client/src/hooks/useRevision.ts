@@ -1,8 +1,7 @@
-import { useAsync } from './useApi';
-import { api } from '../lib/api';
-import type { PracticeAttemptData } from './usePracticeQuiz';
-
-// Feature 13: Revision Center & Spaced Revision.
+// Feature 13: Revision Center & Spaced Revision. The UI itself (and its
+// client fetch/API calls) has been removed — these types remain because
+// the admin-side student performance view (useStudentPerformance.ts)
+// still reuses the RevisionDashboard shape for its own data.
 
 export type RevisionDueStatus = 'OVERDUE' | 'DUE_TODAY' | 'UPCOMING';
 export type RevisionPriority = 'HIGH' | 'MEDIUM' | 'LOW';
@@ -53,14 +52,3 @@ export interface RevisionDashboard {
     lastSessionDate: string | null;
   };
 }
-
-export function useRevisionDashboard() {
-  return useAsync<RevisionDashboard>(() => api.get('/revision/dashboard'), []);
-}
-
-export const revisionApi = {
-  /** "Start Today's Revision" — reuses the existing Practice player (same
-   *  PracticeAttemptData shape startPractice/startRetry return), no new
-   *  Question records. */
-  start: () => api.post<PracticeAttemptData>('/revision/start'),
-};
