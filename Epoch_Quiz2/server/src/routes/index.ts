@@ -22,6 +22,9 @@ import studentPerformanceRoutes from './studentPerformance.routes';
 import subjectAnalyticsRoutes from './subjectAnalytics.routes';
 import questionAnalyticsRoutes from './questionAnalytics.routes';
 import assessmentAnalyticsRoutes from './assessmentAnalytics.routes';
+import schoolRoutes         from './school.routes';
+import schoolStateRoutes    from './schoolState.routes';
+import schoolBranchRoutes   from './schoolBranch.routes';
 
 const router = new Router();
 
@@ -57,5 +60,8 @@ router.use('/admin-analytics', studentPerformanceRoutes);
 router.use('/admin-analytics', subjectAnalyticsRoutes);
 router.use('/admin-analytics', questionAnalyticsRoutes);
 router.use('/admin-analytics', assessmentAnalyticsRoutes);
+router.use('/schools',        schoolRoutes);
+router.use('/school-states',  schoolStateRoutes);
+router.use('/school-branches', schoolBranchRoutes);
 
 export default router;

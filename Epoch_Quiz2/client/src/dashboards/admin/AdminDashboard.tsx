@@ -6,6 +6,7 @@ import { Route, Routes, Navigate } from 'react-router-dom';
 import { DashboardLayout } from '../shared/DashboardLayout';
 import { DashboardOverviewPage } from './pages/DashboardOverviewPage';
 import { StudentsPage } from './pages/StudentsPage';
+import { SchoolsCatalogPage } from './pages/SchoolsCatalogPage';
 import { StudentPerformancePage } from './pages/StudentPerformancePage';
 import { ClassAnalyticsPage } from './pages/ClassAnalyticsPage';
 import { SubjectAnalyticsPage } from './pages/SubjectAnalyticsPage';
@@ -37,6 +38,7 @@ export function AdminDashboard() {
             navItems={[
               { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
               { to: '/admin/students', label: 'Students', icon: GraduationCap },
+              { to: '/admin/schools', label: 'Schools', icon: School },
               { to: '/admin/student-performance', label: 'Student Performance', icon: TrendingUp },
               { to: '/admin/class-analytics', label: 'Class Analytics', icon: School },
               { to: '/admin/subject-analytics', label: 'Subject Analytics', icon: Layers },
@@ -62,6 +64,7 @@ export function AdminDashboard() {
       >
         <Route index element={<DashboardOverviewPage />} />
         <Route path="students" element={<StudentsPage />} />
+        <Route path="schools" element={<SchoolsCatalogPage />} />
         <Route path="student-performance" element={<StudentPerformancePage />} />
         <Route path="class-analytics" element={<ClassAnalyticsPage />} />
         <Route path="subject-analytics" element={<SubjectAnalyticsPage />} />

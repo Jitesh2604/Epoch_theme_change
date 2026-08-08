@@ -147,6 +147,12 @@ export const AuthService = {
     if (!user) throw ApiError.unauthorized('Invalid email or password');
 
     if (user.status === UserStatus.PENDING) {
+      // SCHOOL_ADMIN accounts skip email-OTP verification entirely (see
+      // SchoolService.register) — PENDING for them means "awaiting admin
+      // approval", not "unverified email", so they get a distinct message.
+      if (user.role === Role.SCHOOL_ADMIN) {
+        throw new ApiError(403, 'Your school registration is awaiting admin approval.', { code: 'SCHOOL_PENDING_APPROVAL' });
+      }
       throw new ApiError(403, 'Please verify your email before signing in.', { code: 'EMAIL_NOT_VERIFIED' });
     }
     if (user.status === UserStatus.INACTIVE) throw ApiError.forbidden('Account is inactive');
@@ -275,7 +281,7 @@ export const AuthService = {
     ]);
   },
 
-  async getMe(userId: string): Promise<PublicUser & { studentProfile?: unknown }> {
+  async getMe(userId: string): Promise<PublicUser & { studentProfile?: unknown; schoolRegistration?: unknown }> {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw ApiError.notFound('User not found');
 
@@ -296,9 +302,26 @@ export const AuthService = {
       studentWithSubjects = { ...studentProfile, subjects };
     }
 
+    let schoolRegistration: Record<string, unknown> | null = null;
+    if (user.role === Role.SCHOOL_ADMIN) {
+      const reg = await prisma.schoolRegistration.findUnique({
+        where: { userId },
+        include: { school: true, state: true, branch: true },
+      });
+      if (reg) {
+        schoolRegistration = {
+          ...reg,
+          schoolName: reg.school.name,
+          stateName:  reg.state.name,
+          branchName: reg.branch.name,
+        };
+      }
+    }
+
     return {
       ...toPublicUser(user),
       ...(studentWithSubjects ? { studentProfile: studentWithSubjects } : {}),
+      ...(schoolRegistration ? { schoolRegistration } : {}),
     };
   },
 };

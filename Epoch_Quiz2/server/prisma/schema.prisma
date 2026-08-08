@@ -50,6 +50,7 @@ model User {
   bookmarks                  Bookmark[]                  @relation("StudentBookmarks")
   revisionItems              RevisionItem[]              @relation("StudentRevisionItems")
   revisionStreak             RevisionStreakState?        @relation("StudentRevisionStreak")
+  schoolRegistration         SchoolRegistration?
 
   @@index([role])
   @@index([status])
@@ -724,11 +725,91 @@ model Setting {
   @@map("settings")
 }
 
+// ── School Panel (self-registration) ─────────────────────────────────────
+// Admin-managed catalog backing the School/State/Branch dropdowns on the
+// public School registration form — deliberately real tables (not a
+// hardcoded list like lib/educationBoards.ts) since schools/states/branches
+// aren't a small fixed set the way education boards are, and must be
+// manageable from the Admin panel without a code deploy. Hierarchy is
+// School -> State -> Branch: a Branch belongs to exactly one School+State
+// pair (see SchoolBranch's @@unique), and the registration form's State
+// dropdown is scoped to states that School actually has a Branch in (see
+// SchoolStateService.list), not the full global list.
+model School {
+  id            String               @id @default(cuid())
+  name          String               @unique
+  isActive      Boolean              @default(true)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  branches      SchoolBranch[]
+  registrations SchoolRegistration[]
+
+  @@map("schools")
+}
+
+model SchoolState {
+  id            String               @id @default(cuid())
+  name          String               @unique
+  isActive      Boolean              @default(true)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  branches      SchoolBranch[]
+  registrations SchoolRegistration[]
+
+  @@map("school_states")
+}
+
+model SchoolBranch {
+  id            String               @id @default(cuid())
+  schoolId      String
+  stateId       String
+  name          String
+  isActive      Boolean              @default(true)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  school        School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  state         SchoolState          @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  registrations SchoolRegistration[]
+
+  @@unique([schoolId, stateId, name])
+  @@index([schoolId, stateId])
+  @@map("school_branches")
+}
+
+// One row per SCHOOL_ADMIN user — the school-side analog of StudentProfile.
+// Created together with its User (status PENDING) by SchoolService.register;
+// login stays blocked until an admin flips the User's status to ACTIVE via
+// the existing admin user endpoints (no separate approval table needed).
+model SchoolRegistration {
+  id                String       @id @default(cuid())
+  userId            String       @unique
+  schoolId          String
+  stateId           String
+  branchId          String
+  contactPersonName String?
+  contactPhone      String?
+  address           String?      @db.Text
+  city              String?
+  pincode           String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school            School       @relation(fields: [schoolId], references: [id])
+  state             SchoolState  @relation(fields: [stateId], references: [id])
+  branch            SchoolBranch @relation(fields: [branchId], references: [id])
+
+  @@index([schoolId])
+  @@index([stateId])
+  @@index([branchId])
+  @@map("school_registrations")
+}
+
 enum Role {
   SUPER_ADMIN
   PUBLICATION_ADMIN
   CONTENT_MANAGER
   STUDENT
+  SCHOOL_ADMIN
 }
 
 enum UserStatus {

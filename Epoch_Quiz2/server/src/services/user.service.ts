@@ -45,6 +45,18 @@ function toPublicUser(u: DbUser): PublicUser {
   };
 }
 
+// Flattens SchoolRegistration's school/state/branch relations to display
+// names — same shape AuthService.getMe returns for a school's own /me call,
+// reused here so the admin approvals list and a school's own profile agree.
+function toSchoolRegistrationView(reg: {
+  school: { name: string };
+  state:  { name: string };
+  branch: { name: string };
+  [key: string]: unknown;
+}) {
+  return { ...reg, schoolName: reg.school.name, stateName: reg.state.name, branchName: reg.branch.name };
+}
+
 /** Build a case-insensitive name/email search filter. */
 function searchFilter(search?: string): Prisma.UserWhereInput {
   return search
@@ -69,7 +81,10 @@ export const UserService = {
         orderBy: { createdAt: "desc" },
         skip,
         take,
-        include: { studentProfile: true },
+        include: {
+          studentProfile: true,
+          schoolRegistration: { include: { school: true, state: true, branch: true } },
+        },
       }),
       prisma.user.count({ where }),
     ]);
@@ -77,6 +92,7 @@ export const UserService = {
     const items = users.map((u) => ({
       ...toPublicUser(u),
       ...(u.studentProfile ? { studentProfile: u.studentProfile } : {}),
+      ...(u.schoolRegistration ? { schoolRegistration: toSchoolRegistrationView(u.schoolRegistration) } : {}),
     }));
 
     return { items, meta: pageMeta(total, page, limit) };
@@ -85,13 +101,17 @@ export const UserService = {
   async findById(id: string) {
     const user = await prisma.user.findUnique({
       where: { id },
-      include: { studentProfile: true },
+      include: {
+        studentProfile: true,
+        schoolRegistration: { include: { school: true, state: true, branch: true } },
+      },
     });
     if (!user) throw ApiError.notFound("User not found");
 
     return {
       ...toPublicUser(user),
       ...(user.studentProfile ? { studentProfile: user.studentProfile } : {}),
+      ...(user.schoolRegistration ? { schoolRegistration: toSchoolRegistrationView(user.schoolRegistration) } : {}),
     };
   },
 

@@ -19,6 +19,22 @@ interface NestedProfile {
   updatedAt?: string;
 }
 
+interface NestedSchoolRegistration {
+  id?: string;
+  schoolId: string;
+  stateId: string;
+  branchId: string;
+  schoolName: string;
+  stateName: string;
+  branchName: string;
+  contactPersonName?: string | null;
+  contactPhone?: string | null;
+  address?: string | null;
+  city?: string | null;
+  pincode?: string | null;
+  createdAt?: string;
+}
+
 export interface FullProfile {
   id: string;
   name: string;
@@ -31,6 +47,7 @@ export interface FullProfile {
   updatedAt?: string | null;
   mobileNo?: string | null;
   studentProfile?: NestedProfile | null;
+  schoolRegistration?: NestedSchoolRegistration | null;
 }
 
 export function useMyProfile() {
@@ -62,6 +79,16 @@ interface UsersPage<T> {
 export function useStudents(params: { page?: number; limit?: number; search?: string; status?: string } = {}) {
   return useAsync<UsersPage<StudentRow>>(
     () => api.getWithQuery('/users/students', { page: 1, limit: 30, ...params }),
+    [JSON.stringify(params)],
+  );
+}
+
+// Generic admin user listing (GET /users) — role/status filters already
+// supported server-side (see listUsersQuerySchema); used for the Schools
+// Panel's "Pending School Approvals" list (role=SCHOOL_ADMIN&status=PENDING).
+export function useAdminUsers(params: { page?: number; limit?: number; role?: string; status?: string; search?: string } = {}) {
+  return useAsync<UsersPage<FullProfile>>(
+    () => api.getWithQuery('/users', { page: 1, limit: 50, ...params }),
     [JSON.stringify(params)],
   );
 }

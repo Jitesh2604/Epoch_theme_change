@@ -91,10 +91,11 @@ interface SelectFieldProps {
   placeholder?: string;
   error?: string;
   hint?: string;
+  disabled?: boolean;
 }
 
 export const SelectField: React.FC<SelectFieldProps> = ({
-  label, value, onChange, options, icon, optional, placeholder, error, hint,
+  label, value, onChange, options, icon, optional, placeholder, error, hint, disabled,
 }) => (
   <div className="auth-field">
     <div className="auth-field-header">
@@ -103,13 +104,14 @@ export const SelectField: React.FC<SelectFieldProps> = ({
         {optional && <span className="auth-optional"> (optional)</span>}
       </label>
     </div>
-    <div className={`auth-input-wrap ${error ? 'error' : ''}`} style={{ position: 'relative' }}>
+    <div className={`auth-input-wrap ${error ? 'error' : ''}`} style={{ position: 'relative', opacity: disabled ? 0.6 : 1 }}>
       <span className="auth-input-icon"><Icon name={icon} size={16} /></span>
       <select
         className="auth-input"
         value={value}
         onChange={e => onChange(e.target.value)}
-        style={{ appearance: 'none', WebkitAppearance: 'none', paddingRight: 32, cursor: 'pointer' }}
+        disabled={disabled}
+        style={{ appearance: 'none', WebkitAppearance: 'none', paddingRight: 32, cursor: disabled ? 'not-allowed' : 'pointer' }}
       >
         <option value="">{placeholder ?? '— Select —'}</option>
         {options.map(o => (

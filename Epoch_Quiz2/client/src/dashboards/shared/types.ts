@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'student';
+export type Role = 'admin' | 'student' | 'school';
 
 export type QuestionType = 'mcq' | 'truefalse' | 'descriptive';
 

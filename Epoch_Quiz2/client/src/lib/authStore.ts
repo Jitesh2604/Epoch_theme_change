@@ -4,8 +4,8 @@ export { getRefreshToken };
 
 // ── Types ────────────────────────────────────────────────────────
 
-export type BackendRole = 'SUPER_ADMIN' | 'PUBLICATION_ADMIN' | 'CONTENT_MANAGER' | 'STUDENT';
-export type UIRole = 'admin' | 'student';
+export type BackendRole = 'SUPER_ADMIN' | 'PUBLICATION_ADMIN' | 'CONTENT_MANAGER' | 'STUDENT' | 'SCHOOL_ADMIN';
+export type UIRole = 'admin' | 'student' | 'school';
 
 export interface AuthUser {
   id: string;
@@ -47,6 +47,7 @@ const USER_KEY = 'epoch-user';
 
 export function toUIRole(role: BackendRole): UIRole {
   if (role === 'STUDENT') return 'student';
+  if (role === 'SCHOOL_ADMIN') return 'school';
   return 'admin';
 }
 

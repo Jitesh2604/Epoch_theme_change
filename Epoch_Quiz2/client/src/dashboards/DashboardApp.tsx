@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, Component, type ReactNode, type Error
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { RoleSelectionPage } from './RoleSelectionPage';
 import { AdminDashboard } from './admin/AdminDashboard';
+import { SchoolDashboard } from './school/SchoolDashboard';
 import { MyAssessmentsPage } from './student/pages/MyAssessmentsPage';
 import { AssessmentOverviewPage } from './student/pages/AssessmentOverviewPage';
 import { AssessmentTakePage } from './student/pages/AssessmentTakePage';
@@ -110,6 +111,7 @@ export function DashboardApp() {
       <Routes>
         <Route path="/select-role" element={<RoleSelectionPage />} />
         <Route path="/admin/*"   element={<RequireRole role="admin"><AdminDashboard /></RequireRole>} />
+        <Route path="/school/*"  element={<RequireRole role="school"><SchoolDashboard /></RequireRole>} />
 
         {/* There is no Student Dashboard — these are flat, top-level
             standalone routes (not nested under a "/student" prefix, which
