@@ -824,15 +824,21 @@ model SchoolRegistration {
 // endpoint, a real distinction between preview data and an earned
 // certificate.
 model Certificate {
-  id            String   @id @default(cuid())
-  certificateId String   @unique
-  studentId     String
-  certType      String
-  sessionTitle  String
-  createdAt     DateTime @default(now())
-  student       User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  id                String   @id @default(cuid())
+  certificateId     String   @unique
+  studentId         String
+  certType          String
+  sessionTitle      String
+  // Certificates are now ranked/awarded within (session, subject), never
+  // across subjects — see certificate.service.ts's myCertificates(), which
+  // iterates every subject a session actually contains rather than ranking
+  // the session as a whole. Required (not nullable): a certificate without
+  // a subject can no longer be produced.
+  subjectExternalId String
+  createdAt         DateTime @default(now())
+  student           User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  @@unique([studentId, certType, sessionTitle])
+  @@unique([studentId, certType, sessionTitle, subjectExternalId])
   @@index([studentId])
   @@map("certificates")
 }

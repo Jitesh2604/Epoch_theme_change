@@ -19,47 +19,57 @@ import { prisma } from '../lib/prisma';
 import { Role } from '../lib/enums';
 import { ApiError } from '../utils/ApiError';
 import { LeaderboardService, resolveActorProfile } from './leaderboard.service';
+import { ContentMeta, UNKNOWN_SUBJECT_NAME } from './content.service';
 import type { Actor } from './assessment.service';
 
 type RankField = 'schoolRank' | 'stateRank' | 'globalRank';
 
 interface CertMeta {
-  title:       string;
-  typeCode:    string; // GLO | STA | SCH — the code embedded in the certificate id
-  scope:       'global' | 'state' | 'school';
-  description: string;
-  rankField:   RankField;
+  baseTitle:       string;
+  typeCode:        string; // GLO | STA | SCH — the code embedded in the certificate id
+  scope:           'global' | 'state' | 'school';
+  baseDescription: string;
+  rankField:       RankField;
 }
 
 // Static label dictionary (like the client's BADGE_META) — not per-student
 // data. Keys are exactly the 6 badge codes LeaderboardService.myAssessmentRanking
 // already computes in computeBadges(); no new eligibility logic is added here.
+// Certificates are now awarded within (session, subject) — see
+// myCertificates() below — so every title/description gets the subject name
+// appended at build time (withSubject()), never baked in here.
 const CERT_META: Record<string, CertMeta> = {
-  GLOBAL_CHAMPION: { title: 'Global Champion', typeCode: 'GLO', scope: 'global', rankField: 'globalRank', description: 'Ranked #1 across all students globally.' },
-  GLOBAL_TOP_10:   { title: 'Global Top 10',   typeCode: 'GLO', scope: 'global', rankField: 'globalRank', description: 'Ranked in the global top 10.' },
-  GLOBAL_TOP_100:  { title: 'Global Top 100',  typeCode: 'GLO', scope: 'global', rankField: 'globalRank', description: 'Ranked in the global top 100.' },
-  STATE_CHAMPION:  { title: 'State Champion',  typeCode: 'STA', scope: 'state',  rankField: 'stateRank',  description: 'Ranked #1 in their state.' },
-  STATE_TOP_10:    { title: 'State Top 10',    typeCode: 'STA', scope: 'state',  rankField: 'stateRank',  description: 'Ranked in the state top 10.' },
-  SCHOOL_CHAMPION: { title: 'School Rank #1',  typeCode: 'SCH', scope: 'school', rankField: 'schoolRank', description: 'Ranked #1 within their school.' },
+  GLOBAL_CHAMPION: { baseTitle: 'Global Champion', typeCode: 'GLO', scope: 'global', rankField: 'globalRank', baseDescription: 'Ranked #1 across all students globally' },
+  GLOBAL_TOP_10:   { baseTitle: 'Global Top 10',   typeCode: 'GLO', scope: 'global', rankField: 'globalRank', baseDescription: 'Ranked in the global top 10' },
+  GLOBAL_TOP_100:  { baseTitle: 'Global Top 100',  typeCode: 'GLO', scope: 'global', rankField: 'globalRank', baseDescription: 'Ranked in the global top 100' },
+  STATE_CHAMPION:  { baseTitle: 'State Champion',  typeCode: 'STA', scope: 'state',  rankField: 'stateRank',  baseDescription: 'Ranked #1 in their state' },
+  STATE_TOP_10:    { baseTitle: 'State Top 10',    typeCode: 'STA', scope: 'state',  rankField: 'stateRank',  baseDescription: 'Ranked in the state top 10' },
+  SCHOOL_CHAMPION: { baseTitle: 'School Champion', typeCode: 'SCH', scope: 'school', rankField: 'schoolRank', baseDescription: 'Ranked #1 within their school' },
 };
 
+function withSubject(text: string, subjectName: string): string {
+  return `${text} – ${subjectName}`;
+}
+
 export interface CertificateDto {
-  certificateId: string;
-  type:          string;
-  title:         string;
-  description:   string;
-  scope:         'global' | 'state' | 'school';
-  studentName:   string;
-  rank:          number;
-  score:         number;
-  totalMarks:    number;
-  percent:       number;
-  sessionTitle:  string;
-  schoolName:    string | null;
-  state:         string | null;
-  className:     string | null;
-  issuedAt:      string;
-  devFallback:   boolean;
+  certificateId:     string;
+  type:              string;
+  title:             string;
+  description:       string;
+  scope:             'global' | 'state' | 'school';
+  studentName:       string;
+  rank:              number;
+  score:             number;
+  totalMarks:        number;
+  percent:           number;
+  sessionTitle:      string;
+  subjectExternalId: string;
+  subjectName:       string;
+  schoolName:        string | null;
+  state:             string | null;
+  className:         string | null;
+  issuedAt:          string;
+  devFallback:       boolean;
 }
 
 export interface VerifyResult {
@@ -101,9 +111,11 @@ function formatCertificateId(year: number, typeCode: string, num: number): strin
 /** DEV-fallback certificates get a stable id too (same hash function, no DB
  *  row) — they just can't be looked up by the public verify endpoint, since
  *  nothing durable backs them. That's an intentional, honest distinction
- *  between preview data and a real, issued certificate. */
-function devCertificateId(studentId: string, certType: string, sessionTitle: string, year: number, typeCode: string): string {
-  const num = stableHash(`${studentId}:${certType}:${sessionTitle}:dev`);
+ *  between preview data and a real, issued certificate. Subject is part of
+ *  the hash input so the same cert type in two different subjects (of the
+ *  same session) never collides on id. */
+function devCertificateId(studentId: string, certType: string, sessionTitle: string, subjectExternalId: string, year: number, typeCode: string): string {
+  const num = stableHash(`${studentId}:${certType}:${sessionTitle}:${subjectExternalId}:dev`);
   return formatCertificateId(year, typeCode, num);
 }
 
@@ -115,26 +127,26 @@ function devIssuedAt(sessionIndex: number): Date {
 }
 
 /**
- * Finds or lazily creates the durable (studentId, certType, sessionTitle) ->
- * certificateId pointer row. Only ever called for REAL (non-DEV-fallback)
- * certificates. Collision-safe: relies on the DB's own unique constraint on
- * `certificateId` (P2002) rather than a check-then-create race, retrying
- * with a salted hash on the (very rare) collision with a different
- * student/type/session's id.
+ * Finds or lazily creates the durable (studentId, certType, sessionTitle,
+ * subjectExternalId) -> certificateId pointer row. Only ever called for REAL
+ * (non-DEV-fallback) certificates. Collision-safe: relies on the DB's own
+ * unique constraint on `certificateId` (P2002) rather than a check-then-
+ * create race, retrying with a salted hash on the (very rare) collision
+ * with a different student/type/session/subject's id.
  */
 async function getOrCreateCertificate(
-  studentId: string, certType: string, sessionTitle: string, year: number, typeCode: string,
+  studentId: string, certType: string, sessionTitle: string, subjectExternalId: string, year: number, typeCode: string,
 ): Promise<{ certificateId: string; createdAt: Date }> {
   const existing = await prisma.certificate.findUnique({
-    where: { studentId_certType_sessionTitle: { studentId, certType, sessionTitle } },
+    where: { studentId_certType_sessionTitle_subjectExternalId: { studentId, certType, sessionTitle, subjectExternalId } },
   });
   if (existing) return existing;
 
   for (let salt = 0; salt < 5; salt++) {
-    const num = stableHash(`${studentId}:${certType}:${sessionTitle}:${salt}`);
+    const num = stableHash(`${studentId}:${certType}:${sessionTitle}:${subjectExternalId}:${salt}`);
     const certificateId = formatCertificateId(year, typeCode, num);
     try {
-      return await prisma.certificate.create({ data: { certificateId, studentId, certType, sessionTitle } });
+      return await prisma.certificate.create({ data: { certificateId, studentId, certType, sessionTitle, subjectExternalId } });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') continue; // id taken by a different combo — retry
       throw err;
@@ -151,56 +163,78 @@ function pickRank(meta: CertMeta, ranking: { schoolRank?: number | null; stateRa
 
 export const CertificateService = {
   /** Every certificate the logged-in student has currently, genuinely
-   *  earned — across every session they have a published result in.
-   *  Never accepts a target student id; always computed for `actor` only
-   *  (see certificate.controller.ts) — a student can only ever see their
-   *  own certificates. */
+   *  earned — across every (session, subject) pair they have a published
+   *  result in. Certificates are ranked and awarded strictly WITHIN one
+   *  subject at a time: a session that spans multiple subjects (e.g. one
+   *  "Epoch Olympiad 2026" title covering separate Mathematics/Science/
+   *  English Assessment rows — see listAssessmentSessions()'s
+   *  subjectExternalIds array) is walked subject-by-subject, each one
+   *  calling myAssessmentRanking() with an explicit subjectExternalId
+   *  filter so LeaderboardService.resolveAssessments() narrows ranking to
+   *  just that subject's assessment(s) — never summing/comparing across
+   *  subjects. Never accepts a target student id; always computed for
+   *  `actor` only (see certificate.controller.ts) — a student can only
+   *  ever see their own certificates. */
   async myCertificates(actor: Actor): Promise<CertificateDto[]> {
     if (actor.role !== Role.STUDENT) throw ApiError.forbidden('Only students have certificates');
 
     const profile = await resolveActorProfile(actor);
     if (!profile) return [];
 
-    const { sessions } = await LeaderboardService.listAssessmentSessions();
+    const { sessions, subjects } = await LeaderboardService.listAssessmentSessions();
+    const subjectNames = new Map(subjects.map(s => [s.id, s.name]));
     const out: CertificateDto[] = [];
 
     for (let i = 0; i < sessions.length; i++) {
       const session = sessions[i];
-      const ranking = await LeaderboardService.myAssessmentRanking(actor, { session: session.title });
-      if (!ranking.hasResult || !ranking.badges?.length) continue;
+      // A session with no subject at all (assessment created with no
+      // subjectExternalId) can't produce a certificate — there's no real
+      // subject name to attach to it, and fabricating a placeholder would
+      // violate "do not hardcode subjects".
+      for (const subjectExternalId of session.subjectExternalIds) {
+        const ranking = await LeaderboardService.myAssessmentRanking(actor, { session: session.title, subjectExternalId });
+        if (!ranking.hasResult || !ranking.badges?.length) continue;
 
-      const year = yearFromSessionTitle(session.title);
-      // myAssessmentRanking's success shape only includes `devFallback` on
-      // its DEV-fallback branch — absent (not just false) on the real-data
-      // branch, hence the `in` check rather than direct property access.
-      const isDevFallback = 'devFallback' in ranking && ranking.devFallback === true;
+        const year = yearFromSessionTitle(session.title);
+        const subjectName = subjectNames.get(subjectExternalId) ?? UNKNOWN_SUBJECT_NAME;
+        // myAssessmentRanking's success shape only includes `devFallback` on
+        // its DEV-fallback branch — absent (not just false) on the real-data
+        // branch, hence the `in` check rather than direct property access.
+        const isDevFallback = 'devFallback' in ranking && ranking.devFallback === true;
 
-      for (const certType of ranking.badges) {
-        const meta = CERT_META[certType];
-        if (!meta) continue; // unknown/future badge code — ignore rather than guess
-        const rank = pickRank(meta, ranking);
-        if (rank == null) continue; // defensive — shouldn't happen for an earned badge
+        for (const certType of ranking.badges) {
+          const meta = CERT_META[certType];
+          if (!meta) continue; // unknown/future badge code — ignore rather than guess
+          const rank = pickRank(meta, ranking);
+          if (rank == null) continue; // defensive — shouldn't happen for an earned badge
 
-        let certificateId: string;
-        let issuedAt: Date;
-        if (isDevFallback) {
-          certificateId = devCertificateId(profile.id, certType, session.title, year, meta.typeCode);
-          issuedAt = devIssuedAt(i);
-        } else {
-          const record = await getOrCreateCertificate(profile.id, certType, session.title, year, meta.typeCode);
-          certificateId = record.certificateId;
-          issuedAt = record.createdAt;
+          let certificateId: string;
+          let issuedAt: Date;
+          if (isDevFallback) {
+            certificateId = devCertificateId(profile.id, certType, session.title, subjectExternalId, year, meta.typeCode);
+            issuedAt = devIssuedAt(i);
+          } else {
+            const record = await getOrCreateCertificate(profile.id, certType, session.title, subjectExternalId, year, meta.typeCode);
+            certificateId = record.certificateId;
+            issuedAt = record.createdAt;
+          }
+
+          out.push({
+            certificateId, type: certType,
+            title: withSubject(meta.baseTitle, subjectName),
+            // Not re-stating the subject here — the bolded title already
+            // says "… – Mathematics"; repeating it in the sentence that
+            // follows (see CertificatePreview.tsx) read redundantly.
+            description: `${meta.baseDescription}.`,
+            scope: meta.scope,
+            studentName: profile.name, rank,
+            score: ranking.score ?? 0, totalMarks: ranking.totalMarks ?? 0, percent: ranking.percent ?? 0,
+            sessionTitle: session.title, subjectExternalId, subjectName,
+            schoolName: profile.schoolName, state: profile.state, className: ranking.className ?? null,
+            issuedAt: issuedAt.toISOString(),
+            devFallback: isDevFallback,
+          });
         }
-
-        out.push({
-          certificateId, type: certType, title: meta.title, description: meta.description, scope: meta.scope,
-          studentName: profile.name, rank,
-          score: ranking.score ?? 0, totalMarks: ranking.totalMarks ?? 0, percent: ranking.percent ?? 0,
-          sessionTitle: session.title,
-          schoolName: profile.schoolName, state: profile.state, className: ranking.className ?? null,
-          issuedAt: issuedAt.toISOString(),
-          devFallback: isDevFallback,
-        });
       }
     }
 
@@ -208,11 +242,13 @@ export const CertificateService = {
   },
 
   /** Public, unauthenticated lookup by certificate id. Always re-checks
-   *  CURRENT eligibility live (via the same LeaderboardService ranking a
+   *  CURRENT eligibility live, WITHIN the same subject the certificate was
+   *  originally issued for (via the same LeaderboardService ranking a
    *  student's own listing uses) rather than trusting the stored pointer
-   *  forever — if the student's rank has since dropped out of qualifying
-   *  range, verification correctly reports invalid. Returns only what's
-   *  needed to prove authenticity; never email, studentId, school, or state. */
+   *  forever — if the student's subject-specific rank has since dropped
+   *  out of qualifying range, verification correctly reports invalid.
+   *  Returns only what's needed to prove authenticity; never email,
+   *  studentId, school, or state. */
   async verify(certificateId: string): Promise<VerifyResult> {
     const record = await prisma.certificate.findUnique({ where: { certificateId } });
     if (!record) return { valid: false };
@@ -221,9 +257,10 @@ export const CertificateService = {
     if (!meta) return { valid: false };
 
     const syntheticActor: Actor = { id: record.studentId, role: Role.STUDENT };
-    const [profile, ranking] = await Promise.all([
+    const [profile, ranking, subjectName] = await Promise.all([
       resolveActorProfile(syntheticActor),
-      LeaderboardService.myAssessmentRanking(syntheticActor, { session: record.sessionTitle }),
+      LeaderboardService.myAssessmentRanking(syntheticActor, { session: record.sessionTitle, subjectExternalId: record.subjectExternalId }),
+      ContentMeta.subjectName(record.subjectExternalId),
     ]);
 
     if (!profile || !ranking.hasResult || !ranking.badges?.includes(record.certType)) {
@@ -233,7 +270,7 @@ export const CertificateService = {
     return {
       valid: true,
       studentName: profile.name,
-      title: meta.title,
+      title: withSubject(meta.baseTitle, subjectName ?? UNKNOWN_SUBJECT_NAME),
       rank: pickRank(meta, ranking),
       score: ranking.score ?? 0,
       totalMarks: ranking.totalMarks ?? 0,
