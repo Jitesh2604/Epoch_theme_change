@@ -4,7 +4,6 @@ import { Icon } from '../ui/Icon';
 import { showToast } from '../ui/Toast';
 import { useT } from '../../lib/i18n';
 import { useAuth, logout, toUIRole, type AuthUser } from '../../lib/authStore';
-import { useResultsPublished } from '../../hooks/useResultsPublished';
 
 function initials(name: string): string {
   return name
@@ -57,10 +56,6 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const t    = useT();
   const user = useAuth();
-  // Leaderboard isn't a static on/off flag like Assessment above — it's
-  // hidden until the current assessment's results are published, then
-  // appears automatically for every student (see useResultsPublished.ts).
-  const { published: resultsPublished } = useResultsPublished();
 
   useEffect(() => {
     const onClick = () => { setProfileOpen(false); };
@@ -140,7 +135,8 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
             <>
               {NAV_ENABLED.assessment && <a href="/assessment" className="nav-link">Assessment</a>}
               <a href="/results" className="nav-link">Results</a>
-              {resultsPublished && <a href="/leaderboard" className="nav-link">Leaderboard</a>}
+              <a href="/leaderboard" className="nav-link">Leaderboard</a>
+              <a href="/certificates" className="nav-link">Certificates</a>
             </>
           )}
           {/* Secondary/informational pages (FAQ, About, Contact) live behind
@@ -242,16 +238,22 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
               >
                 Results
               </a>
-              {resultsPublished && (
-                <a
-                  href="/leaderboard"
-                  className="nav-link"
-                  style={{ textAlign: 'left', display: 'block', textDecoration: 'none' }}
-                  onClick={() => setMobileOpen(false)}
-                >
-                  Leaderboard
-                </a>
-              )}
+              <a
+                href="/leaderboard"
+                className="nav-link"
+                style={{ textAlign: 'left', display: 'block', textDecoration: 'none' }}
+                onClick={() => setMobileOpen(false)}
+              >
+                Leaderboard
+              </a>
+              <a
+                href="/certificates"
+                className="nav-link"
+                style={{ textAlign: 'left', display: 'block', textDecoration: 'none' }}
+                onClick={() => setMobileOpen(false)}
+              >
+                Certificates
+              </a>
             </>
           )}
 

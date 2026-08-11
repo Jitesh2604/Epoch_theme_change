@@ -25,6 +25,7 @@ import assessmentAnalyticsRoutes from './assessmentAnalytics.routes';
 import schoolRoutes         from './school.routes';
 import schoolStateRoutes    from './schoolState.routes';
 import schoolBranchRoutes   from './schoolBranch.routes';
+import certificateRoutes    from './certificate.routes';
 
 const router = new Router();
 
@@ -63,5 +64,6 @@ router.use('/admin-analytics', assessmentAnalyticsRoutes);
 router.use('/schools',        schoolRoutes);
 router.use('/school-states',  schoolStateRoutes);
 router.use('/school-branches', schoolBranchRoutes);
+router.use('/certificates',   certificateRoutes);
 
 export default router;

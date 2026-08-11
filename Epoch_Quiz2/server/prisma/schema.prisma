@@ -51,6 +51,7 @@ model User {
   revisionItems              RevisionItem[]              @relation("StudentRevisionItems")
   revisionStreak             RevisionStreakState?        @relation("StudentRevisionStreak")
   schoolRegistration         SchoolRegistration?
+  certificates               Certificate[]
 
   @@index([role])
   @@index([status])
@@ -802,6 +803,38 @@ model SchoolRegistration {
   @@index([stateId])
   @@index([branchId])
   @@map("school_registrations")
+}
+
+// ── My Certificates ────────────────────────────────────────────────────────
+// A minimal identity POINTER, not a certificate snapshot — rank/score are
+// never stored here, only who/what/which-session. Everything display-worthy
+// (rank, score, student name, school/state) is recomputed live from
+// LeaderboardService on every read (certificate.service.ts), exactly like
+// the Leaderboard itself never caches a rank. This row exists purely because
+// the public Verify-by-ID endpoint needs *some* durable, publicly-resolvable
+// pointer from a certificateId string back to (student, type, session) — a
+// one-way deterministic hash can't be reversed from the ID alone. Lazily
+// created (upserted) the first time myCertificates() finds a student
+// currently, genuinely qualifies for a given (certType, sessionTitle) — see
+// getOrCreateCertificateId(). `createdAt` doubles as the real "issued on"
+// date (first-confirmed-earned). DEV-fallback certificates never write a row
+// here (see leaderboardDevFallback.ts's isDev gating, which this inherits by
+// calling LeaderboardService rather than duplicating its source selection) —
+// they are therefore correctly reported as unverifiable by the public
+// endpoint, a real distinction between preview data and an earned
+// certificate.
+model Certificate {
+  id            String   @id @default(cuid())
+  certificateId String   @unique
+  studentId     String
+  certType      String
+  sessionTitle  String
+  createdAt     DateTime @default(now())
+  student       User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, certType, sessionTitle])
+  @@index([studentId])
+  @@map("certificates")
 }
 
 enum Role {

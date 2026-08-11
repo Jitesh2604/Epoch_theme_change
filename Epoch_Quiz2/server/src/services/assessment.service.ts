@@ -77,6 +77,28 @@ function toPublic(a: AssessmentWithRel, subjectNames?: Map<string, string>) {
   };
 }
 
+/**
+ * One Assessment per subject for a student's listing — if multiple
+ * assessments share a subjectExternalId (e.g. the DEV fallback generates
+ * several per subject, or an admin republishes a refreshed version), keep
+ * only the current one. `rows` must already be ordered publishedAt desc,
+ * createdAt desc (student-visible rows are always PUBLISHED, so
+ * publishedAt is never null here) — the first row seen per subject key is
+ * therefore the latest/current one. Assessments with no subject
+ * (subjectExternalId: null) are their own group, same rule.
+ */
+function latestPerSubject(rows: AssessmentWithRel[]): AssessmentWithRel[] {
+  const seen = new Set<string>();
+  const result: AssessmentWithRel[] = [];
+  for (const r of rows) {
+    const key = r.subjectExternalId ?? '__no_subject__';
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(r);
+  }
+  return result;
+}
+
 /** Validate a subject external id against the live catalog (skip if API off). */
 async function ensureSubjectExists(subjectExternalId: string): Promise<void> {
   if (!ContentService.isConfigured()) return;
@@ -265,6 +287,26 @@ export const AssessmentService = {
       where.createdById = actor.id;
     }
     if (and.length) where.AND = and;
+
+    if (actor.role === Role.STUDENT) {
+      // One Assessment per subject: a student's assigned set is small (a
+      // handful, never thousands), so fetch it in full — ordered newest
+      // published first — dedupe with latestPerSubject(), THEN paginate the
+      // deduped list. Applies uniformly to both real API-sourced and DEV
+      // fallback assessments (both flow through this same read path), so
+      // the dedup rule can't drift between sources or need separate
+      // handling in the fallback generator itself.
+      const [allRows, subjectNames] = await Promise.all([
+        prisma.assessment.findMany({ where, include: assessmentInclude, orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }] }),
+        ContentMeta.subjects(),
+      ]);
+      const deduped = latestPerSubject(allRows);
+      const total   = deduped.length;
+      const { skip, take } = pageToSkipTake(page, limit);
+      const pageRows = deduped.slice(skip, skip + take);
+
+      return { items: pageRows.map((r) => toPublic(r, subjectNames)), meta: pageMeta(total, page, limit) };
+    }
 
     const { skip, take } = pageToSkipTake(page, limit);
 

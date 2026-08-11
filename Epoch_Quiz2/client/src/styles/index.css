@@ -1533,3 +1533,23 @@ main { flex: 1; position: relative; z-index: 1; }
 .bg-bg\/90 { background-color: rgba(245, 237, 224, 0.92) !important; }
 .dark .bg-bg\/80 { background-color: rgba(26, 24, 18, 0.88) !important; }
 .dark .bg-bg\/90 { background-color: rgba(26, 24, 18, 0.92) !important; }
+
+/* ============================================================
+   Certificate print isolation — used by the "Print" button on
+   /certificates' viewer modal. Everything on the page is hidden except the
+   node marked .certificate-print-area (the same CertificatePreview DOM
+   used on-screen and for PDF capture), which is pulled out to fill the
+   printed page — no navbar/dashboard chrome, no modal backdrop.
+   ============================================================ */
+@media print {
+  body * { visibility: hidden; }
+  .certificate-print-area, .certificate-print-area * { visibility: visible; }
+  .certificate-print-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    margin: 0;
+    box-shadow: none !important;
+  }
+}

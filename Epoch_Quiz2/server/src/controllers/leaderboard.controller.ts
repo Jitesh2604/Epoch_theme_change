@@ -7,6 +7,8 @@ import type { Actor } from '../services/assessment.service';
 import type {
   AssessmentLeaderboardQuery,
   GlobalLeaderboardQuery,
+  ScopedLeaderboardQuery,
+  MyRankingQuery,
 } from '../validators/leaderboard.validator';
 
 function actorFrom(req: Request): Actor {
@@ -36,6 +38,27 @@ export const LeaderboardController = {
 
   myStats: asyncHandler(async (req: Request, res: Response) => {
     const out = await LeaderboardService.myStats(actorFrom(req));
+    ApiResponse.ok(res, out);
+  }),
+
+  sessions: asyncHandler(async (_req: Request, res: Response) => {
+    const out = await LeaderboardService.listAssessmentSessions();
+    ApiResponse.ok(res, out);
+  }),
+
+  scoped: asyncHandler(async (req: Request, res: Response) => {
+    const out = await LeaderboardService.assessmentLeaderboard(
+      actorFrom(req),
+      req.query as unknown as ScopedLeaderboardQuery,
+    );
+    ApiResponse.ok(res, out);
+  }),
+
+  myRanking: asyncHandler(async (req: Request, res: Response) => {
+    const out = await LeaderboardService.myAssessmentRanking(
+      actorFrom(req),
+      req.query as unknown as MyRankingQuery,
+    );
     ApiResponse.ok(res, out);
   }),
 };

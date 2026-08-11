@@ -132,7 +132,7 @@ function QuestionCard({
           Question {q.order}
         </span>
         <span className="text-[11px] text-fg3 font-mono">
-          {q.marks} {q.marks === 1 ? 'mark' : 'marks'}
+          {q.marks} {q.marks === 1 ? 'Mark' : 'Marks'}
         </span>
       </div>
 

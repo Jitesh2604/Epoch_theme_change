@@ -11,6 +11,7 @@ import { ResultsPage } from './student/pages/ResultsPage';
 import { AnalyticsPage } from './student/pages/AnalyticsPage';
 import { PracticeReviewPage } from './student/pages/PracticeReviewPage';
 import { LeaderboardPage } from './student/pages/LeaderboardPage';
+import { CertificatesPage } from './student/pages/CertificatesPage';
 import { ProfilePage } from './student/pages/ProfilePage';
 import { RequireRole } from './shared/RequireRole';
 import { getRole, pathForRole, signOut } from './shared/auth';
@@ -136,6 +137,7 @@ export function DashboardApp() {
             <Route path="/analytics"   element={<AnalyticsPage />} />
             <Route path="/review/:attemptId" element={<PracticeReviewPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
+            <Route path="/certificates" element={<CertificatesPage />} />
             <Route path="/profile"     element={<ProfilePage />} />
           </Route>
         </Route>

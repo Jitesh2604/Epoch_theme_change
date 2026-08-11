@@ -1,12 +1,23 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { isDev } from '../config';
 import { AssessmentStatus, Role, SubmissionStatus } from '../lib/enums';
 import { ApiError } from '../utils/ApiError';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
+import { ContentMeta, UNKNOWN_SUBJECT_NAME, UNKNOWN_CLASS_NAME } from './content.service';
+import { sortByClassName } from '../lib/classOrder';
+import {
+  devFallbackSessions,
+  devFallbackAssessmentLeaderboard,
+  devFallbackMyRanking,
+  type DevActorProfile,
+} from './leaderboardDevFallback';
 import type { Actor } from './assessment.service';
 import type {
   AssessmentLeaderboardQuery,
   GlobalLeaderboardQuery,
+  ScopedLeaderboardQuery,
+  MyRankingQuery,
 } from '../validators/leaderboard.validator';
 
 /** Submissions that count towards scoring/leaderboards. */
@@ -28,6 +39,175 @@ function resultsVisibleFilter(): Prisma.AssessmentWhereInput {
 export function pct(score: number, total: number): number {
   if (total <= 0) return 0;
   return Math.round((score / total) * 10000) / 100;
+}
+
+// ── Assessment Leaderboard (School / State / Global) ──────────────────────
+// "Session" = a distinct Assessment title among leaderboard-eligible
+// (visible-results) assessments. Subject/Class narrow the assessment set
+// within a session — both are Assessment-level attributes. In the common
+// case (session + subject + class) this resolves to exactly one Assessment,
+// so ranking degrades to the same single-assessment logic as forAssessment()
+// above; if it resolves to several (e.g. a session spans multiple class
+// tiers), a student's rows across them are summed before ranking — same
+// aggregation style as global() below.
+
+interface AssessmentRef {
+  id: string;
+  title: string;
+  subjectExternalId: string | null;
+  classExternalId: string | null;
+  publishedAt: Date | null;
+}
+
+async function visibleAssessments(): Promise<AssessmentRef[]> {
+  return prisma.assessment.findMany({
+    where: { status: AssessmentStatus.PUBLISHED, ...resultsVisibleFilter() },
+    select: { id: true, title: true, subjectExternalId: true, classExternalId: true, publishedAt: true },
+    orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
+  });
+}
+
+/**
+ * The single gate deciding real vs. DEV-only dummy data (see
+ * leaderboardDevFallback.ts's module doc) — a cheap COUNT, not a full row
+ * fetch, since every caller only needs to know "does ANY real
+ * leaderboard-eligible assessment exist at all", never the rows themselves.
+ * Real and dummy data are never blended: each of listAssessmentSessions/
+ * assessmentLeaderboard/myAssessmentRanking picks ONE branch based on this
+ * check, at the very top, before doing any other real-data work.
+ */
+async function hasAnyVisibleAssessments(): Promise<boolean> {
+  const count = await prisma.assessment.count({
+    where: { status: AssessmentStatus.PUBLISHED, ...resultsVisibleFilter() },
+  });
+  return count > 0;
+}
+
+/** Real name/avatarHue/schoolName/state for slotting the actual logged-in
+ *  student into the DEV dummy roster (see leaderboardDevFallback.ts's
+ *  injectActor) — null for non-student actors, who get no personal row.
+ *  Exported for reuse by certificate.service.ts (same student-identity
+ *  lookup, dev/real-agnostic) — do not duplicate this query elsewhere. */
+export async function resolveActorProfile(actor: Actor): Promise<DevActorProfile | null> {
+  if (actor.role !== Role.STUDENT) return null;
+  const user = await prisma.user.findUnique({
+    where: { id: actor.id },
+    select: { id: true, name: true, avatarHue: true, studentProfile: { select: { schoolName: true, state: true } } },
+  });
+  if (!user) return null;
+  return {
+    id: user.id, name: user.name, avatarHue: user.avatarHue,
+    schoolName: user.studentProfile?.schoolName ?? null,
+    state: user.studentProfile?.state ?? null,
+  };
+}
+
+interface SessionFilters { session?: string; subjectExternalId?: string; classExternalId?: string }
+
+/** Resolve a session+subject+class filter combination to the Assessment rows
+ *  it maps to. No `session` given → defaults to the most recently published
+ *  session, matching what the frontend's Session dropdown defaults to. */
+async function resolveAssessments(filters: SessionFilters): Promise<AssessmentRef[]> {
+  const all = await visibleAssessments();
+  if (!all.length) return [];
+
+  const sessionTitle = filters.session ?? all[0].title;
+  let matched = all.filter(a => a.title === sessionTitle);
+  if (filters.subjectExternalId) matched = matched.filter(a => a.subjectExternalId === filters.subjectExternalId);
+  if (filters.classExternalId) matched = matched.filter(a => a.classExternalId === filters.classExternalId);
+  return matched;
+}
+
+interface RankableRow {
+  studentId: string;
+  studentName: string;
+  avatarHue: number;
+  schoolName: string | null;
+  state: string | null;
+  classExternalId: string | null;
+  score: number;
+  totalMarks: number;
+  timeTakenSec: number;
+  submittedAt: Date;
+  submissionId: string;
+  assessmentId: string;
+}
+
+/** The one ranking rule shared by every scope (School/State/Global) and by
+ *  a student's own rank lookup — see the module doc above forAssessment()
+ *  for the tie-break order. Never diverges between scopes: each scope is
+ *  just a different filter over the same rows, ranked the same way. */
+function rankRows(rows: RankableRow[]): (RankableRow & { rank: number; percent: number })[] {
+  return [...rows]
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      const pa = pct(a.score, a.totalMarks);
+      const pb = pct(b.score, b.totalMarks);
+      if (pb !== pa) return pb - pa;
+      if (a.timeTakenSec !== b.timeTakenSec) return a.timeTakenSec - b.timeTakenSec;
+      const ta = a.submittedAt.getTime();
+      const tb = b.submittedAt.getTime();
+      if (ta !== tb) return ta - tb;
+      return a.studentId.localeCompare(b.studentId);
+    })
+    .map((r, i) => ({ ...r, rank: i + 1, percent: pct(r.score, r.totalMarks) }));
+}
+
+interface FetchRowsOpts {
+  scope: 'school' | 'state' | 'global';
+  viewerSchoolName?: string;
+  viewerState?: string;
+  schoolSearch?: string;
+}
+
+/** Countable (SUBMITTED/GRADED), visible-results submissions across the
+ *  resolved assessment set, scoped/filtered, one row per student (summed
+ *  across assessments in the rare multi-assessment-session case). */
+async function fetchSubmissionRows(assessmentIds: string[], opts: FetchRowsOpts): Promise<RankableRow[]> {
+  if (!assessmentIds.length) return [];
+
+  const profileConditions: Prisma.StudentProfileWhereInput[] = [];
+  if (opts.scope === 'school' && opts.viewerSchoolName) profileConditions.push({ schoolName: opts.viewerSchoolName });
+  if (opts.scope === 'state' && opts.viewerState) profileConditions.push({ state: opts.viewerState });
+  if (opts.schoolSearch) profileConditions.push({ schoolName: { contains: opts.schoolSearch } });
+
+  const submissions = await prisma.submission.findMany({
+    where: {
+      assessmentId: { in: assessmentIds },
+      status: COUNTABLE,
+      assessment: resultsVisibleFilter(),
+      ...(profileConditions.length && { student: { studentProfile: { AND: profileConditions } } }),
+    },
+    select: {
+      id: true, assessmentId: true, studentId: true, score: true, totalMarks: true, timeTakenSec: true, submittedAt: true,
+      student: { select: { name: true, avatarHue: true, studentProfile: { select: { schoolName: true, state: true, classExternalId: true } } } },
+    },
+  });
+
+  const byStudent = new Map<string, RankableRow>();
+  for (const s of submissions) {
+    const profile = s.student.studentProfile;
+    const submittedAt = s.submittedAt ?? new Date(0);
+    const existing = byStudent.get(s.studentId);
+    if (!existing) {
+      byStudent.set(s.studentId, {
+        studentId: s.studentId, studentName: s.student.name, avatarHue: s.student.avatarHue,
+        schoolName: profile?.schoolName ?? null, state: profile?.state ?? null, classExternalId: profile?.classExternalId ?? null,
+        score: s.score, totalMarks: s.totalMarks, timeTakenSec: s.timeTakenSec, submittedAt,
+        submissionId: s.id, assessmentId: s.assessmentId,
+      });
+    } else {
+      existing.score += s.score;
+      existing.totalMarks += s.totalMarks;
+      existing.timeTakenSec += s.timeTakenSec;
+      if (submittedAt.getTime() > existing.submittedAt.getTime()) {
+        existing.submittedAt = submittedAt;
+        existing.submissionId = s.id;
+        existing.assessmentId = s.assessmentId;
+      }
+    }
+  }
+  return [...byStudent.values()];
 }
 
 export const LeaderboardService = {
@@ -204,6 +384,169 @@ export const LeaderboardService = {
       totalSubmissions:   submissionCount,
       gradedSubmissions:  gradedCount,
       platformAvgPercent: pct(totalAgg._sum.score ?? 0, totalAgg._sum.totalMarks ?? 0),
+    };
+  },
+
+  /** Session/Subject/Class filter options for the Assessment Leaderboard —
+   *  built only from visible-results assessments, never hardcoded. Falls
+   *  back to DEV-only dummy sessions (see leaderboardDevFallback.ts) when
+   *  there are none — never in production, never alongside real ones. */
+  async listAssessmentSessions() {
+    if (!(await hasAnyVisibleAssessments())) {
+      return isDev ? devFallbackSessions() : { sessions: [], subjects: [], classes: [] };
+    }
+
+    const all = await visibleAssessments();
+
+    const [subjectNames, classNames] = await Promise.all([ContentMeta.subjects(), ContentMeta.classes()]);
+
+    const order: string[] = [];
+    const byTitle = new Map<string, AssessmentRef[]>();
+    for (const a of all) {
+      if (!byTitle.has(a.title)) { byTitle.set(a.title, []); order.push(a.title); }
+      byTitle.get(a.title)!.push(a);
+    }
+
+    const sessions = order.map((title) => {
+      const rows = byTitle.get(title)!;
+      return {
+        title,
+        subjectExternalIds: [...new Set(rows.map(r => r.subjectExternalId).filter((x): x is string => !!x))],
+        classExternalIds:   [...new Set(rows.map(r => r.classExternalId).filter((x): x is string => !!x))],
+      };
+    });
+
+    const subjectIds = [...new Set(all.map(a => a.subjectExternalId).filter((x): x is string => !!x))];
+    const classIds    = [...new Set(all.map(a => a.classExternalId).filter((x): x is string => !!x))];
+
+    const subjects = subjectIds
+      .map(id => ({ id, name: subjectNames.get(id) ?? UNKNOWN_SUBJECT_NAME }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const classes = sortByClassName(
+      classIds.map(id => ({ id, name: classNames.get(id) ?? UNKNOWN_CLASS_NAME })),
+      c => c.name,
+    );
+
+    return { sessions, subjects, classes };
+  },
+
+  /** School / State / Global leaderboard for a resolved session. Falls back
+   *  to DEV-only dummy data (see leaderboardDevFallback.ts) when there is no
+   *  real leaderboard-eligible data anywhere — never in production, never
+   *  blended with real rows. */
+  async assessmentLeaderboard(actor: Actor, query: ScopedLeaderboardQuery) {
+    const { scope, page, limit, school: schoolSearch, ...sessionFilters } = query;
+
+    if (!(await hasAnyVisibleAssessments())) {
+      if (!isDev) return { items: [], meta: pageMeta(0, page, limit), reason: 'NO_SESSION' as const };
+      const actorProfile = await resolveActorProfile(actor);
+      return devFallbackAssessmentLeaderboard({ scope, page, limit, school: schoolSearch, ...sessionFilters }, actorProfile);
+    }
+
+    const assessments = await resolveAssessments(sessionFilters);
+    const assessmentIds = assessments.map(a => a.id);
+
+    let viewerProfile: { schoolName: string | null; state: string | null } | null = null;
+    if (scope !== 'global') {
+      viewerProfile = await prisma.studentProfile.findUnique({
+        where: { userId: actor.id }, select: { schoolName: true, state: true },
+      });
+    }
+    if (scope === 'school' && !viewerProfile?.schoolName) {
+      return { items: [], meta: pageMeta(0, page, limit), reason: 'NO_SCHOOL' as const };
+    }
+    if (scope === 'state' && !viewerProfile?.state) {
+      return { items: [], meta: pageMeta(0, page, limit), reason: 'NO_STATE' as const };
+    }
+    if (!assessmentIds.length) {
+      return { items: [], meta: pageMeta(0, page, limit), reason: 'NO_SESSION' as const };
+    }
+
+    const rows = await fetchSubmissionRows(assessmentIds, {
+      scope,
+      viewerSchoolName: viewerProfile?.schoolName ?? undefined,
+      viewerState:      viewerProfile?.state ?? undefined,
+      schoolSearch,
+    });
+    const ranked = rankRows(rows);
+    const total  = ranked.length;
+    const { skip, take } = pageToSkipTake(page, limit);
+    const pageItems = ranked.slice(skip, skip + take);
+
+    const classNames = await ContentMeta.classes();
+    const items = pageItems.map(r => ({
+      rank: r.rank, studentId: r.studentId, studentName: r.studentName, avatarHue: r.avatarHue,
+      schoolName: r.schoolName, state: r.state,
+      classExternalId: r.classExternalId,
+      className: r.classExternalId ? (classNames.get(r.classExternalId) ?? UNKNOWN_CLASS_NAME) : null,
+      score: r.score, totalMarks: r.totalMarks, percent: r.percent, timeTakenSec: r.timeTakenSec,
+      submissionId: r.submissionId,
+    }));
+
+    return { items, meta: pageMeta(total, page, limit) };
+  },
+
+  /** The logged-in student's own School/State/Global rank + score info +
+   *  earned badges for a resolved session. Never fabricates a rank — returns
+   *  hasResult:false when the student has no countable submission in scope.
+   *  Falls back to a DEV-only dummy ranking (see leaderboardDevFallback.ts)
+   *  when there is no real leaderboard-eligible data anywhere. */
+  async myAssessmentRanking(actor: Actor, query: MyRankingQuery) {
+    if (actor.role !== Role.STUDENT) throw ApiError.forbidden('Only students have a personal assessment ranking');
+
+    if (!(await hasAnyVisibleAssessments())) {
+      if (!isDev) return { hasResult: false as const, reason: 'NO_SESSION' as const };
+      const actorProfile = await resolveActorProfile(actor);
+      return devFallbackMyRanking(query, actorProfile);
+    }
+
+    const assessments = await resolveAssessments(query);
+    const assessmentIds = assessments.map(a => a.id);
+    if (!assessmentIds.length) return { hasResult: false as const, reason: 'NO_SESSION' as const };
+
+    const viewerProfile = await prisma.studentProfile.findUnique({
+      where: { userId: actor.id }, select: { schoolName: true, state: true },
+    });
+
+    const [globalRows, schoolRows, stateRows] = await Promise.all([
+      fetchSubmissionRows(assessmentIds, { scope: 'global' }),
+      viewerProfile?.schoolName
+        ? fetchSubmissionRows(assessmentIds, { scope: 'school', viewerSchoolName: viewerProfile.schoolName })
+        : Promise.resolve([]),
+      viewerProfile?.state
+        ? fetchSubmissionRows(assessmentIds, { scope: 'state', viewerState: viewerProfile.state })
+        : Promise.resolve([]),
+    ]);
+
+    const globalRanked = rankRows(globalRows);
+    const me = globalRanked.find(r => r.studentId === actor.id);
+    if (!me) return { hasResult: false as const, reason: 'NO_RESULT' as const };
+
+    const schoolRank = schoolRows.length ? rankRows(schoolRows).find(r => r.studentId === actor.id)?.rank ?? null : null;
+    const stateRank  = stateRows.length ? rankRows(stateRows).find(r => r.studentId === actor.id)?.rank ?? null : null;
+    const globalRank = me.rank;
+
+    const badges: string[] = [];
+    if (schoolRank === 1) badges.push('SCHOOL_CHAMPION');
+    if (stateRank === 1) badges.push('STATE_CHAMPION');
+    if (globalRank === 1) badges.push('GLOBAL_CHAMPION');
+    if (globalRank <= 10) badges.push('GLOBAL_TOP_10');
+    if (globalRank <= 100) badges.push('GLOBAL_TOP_100');
+    if (stateRank !== null && stateRank <= 10) badges.push('STATE_TOP_10');
+
+    const classNames = await ContentMeta.classes();
+    const sessionTitle = assessments.find(a => a.id === me.assessmentId)?.title ?? assessments[0]?.title ?? null;
+
+    return {
+      hasResult: true as const,
+      assessmentId: me.assessmentId,
+      assessmentTitle: sessionTitle,
+      submissionId: me.submissionId,
+      schoolRank, stateRank, globalRank,
+      score: me.score, totalMarks: me.totalMarks, percent: me.percent, timeTakenSec: me.timeTakenSec,
+      classExternalId: me.classExternalId,
+      className: me.classExternalId ? (classNames.get(me.classExternalId) ?? UNKNOWN_CLASS_NAME) : null,
+      badges,
     };
   },
 };
