@@ -10,6 +10,10 @@ import {
   useLeaderboardSessions, useAssessmentLeaderboard, useMyAssessmentRanking,
   type LeaderboardScope,
 } from '../../../hooks/useLeaderboard';
+import { useMyCertificates, type Certificate } from '../../../hooks/useCertificates';
+import { CertificateCard } from './certificates/CertificateCard';
+import { CertificateViewerModal } from './certificates/CertificateViewerModal';
+import { CertificateVerifyModal } from './certificates/CertificateVerifyModal';
 import { loadUser } from '../../../lib/authStore';
 
 function StandalonePage({ children }: { children: React.ReactNode }) {
@@ -103,6 +107,17 @@ export function LeaderboardPage() {
   );
   const { data: board, loading: boardLoading } = useAssessmentLeaderboard(tableFilters);
 
+  // Your Certificates — reuses the exact same CertificateService.myCertificates
+  // logic/data as the standalone CertificatesPage (GET /certificates/me,
+  // scoped server-side to the logged-in student only, subject-wise, real
+  // published-Assessment-results only) — no new backend endpoint, no second
+  // certificate-generation path. Same CertificateCard/Viewer/Verify
+  // components too, so View/Print/Download/Verify behave identically to the
+  // rest of the app, not a reimplementation.
+  const { data: certificates, loading: certificatesLoading } = useMyCertificates();
+  const [viewingCert, setViewingCert] = useState<Certificate | null>(null);
+  const [verifyingCertId, setVerifyingCertId] = useState<string | null>(null);
+
   const hasActiveFilters = !!(subjectExternalId || classExternalId || schoolSearch);
 
   // The server itself decides real vs. DEV-only dummy vs. empty (see
@@ -111,7 +126,7 @@ export function LeaderboardPage() {
   // is non-empty for BOTH real data and the dev fallback, so this single
   // check is the whole "does the leaderboard have anything to show" gate;
   // no separate publish-state check needed here.
-  const isDevPreview = !!(sessionsData?.devFallback || board?.devFallback || ranking?.devFallback);
+  const isDevPreview = !!(sessionsData?.devFallback || board?.devFallback || ranking?.devFallback || certificates?.some(c => c.devFallback));
 
   if (sessionsLoading) {
     return (
@@ -226,11 +241,22 @@ export function LeaderboardPage() {
         ) : !ranking?.hasResult ? (
           <EmptyState
             icon={Trophy}
-            title="You don't have a published Assessment result yet."
-            desc="Complete an Assessment to see your ranking."
+            title="No ranking yet"
+            desc="Your assessment ranking will appear here after your result is published."
           />
         ) : (
           <>
+            {/* Position, shown prominently — "#5 out of 120 students" */}
+            <div className="mb-4">
+              <div className="text-[12.5px] text-fg3 mb-1">
+                {ranking.assessmentTitle}{ranking.subjectName ? ` · ${ranking.subjectName}` : ''}
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="font-display font-semibold text-[40px] text-fg1 leading-none tabular-nums">#{ranking.globalRank}</span>
+                <span className="text-[13.5px] text-fg3">out of {ranking.totalStudents ?? '—'} students</span>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
               <RankTile icon={SchoolIcon} label="School Rank" value={ranking.schoolRank} tone="bg-sky-500/15 text-sky-500" />
               <RankTile icon={MapPin}     label="State Rank"  value={ranking.stateRank}  tone="bg-fuchsia-500/15 text-fuchsia-500" />
@@ -238,9 +264,15 @@ export function LeaderboardPage() {
             </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-              <InfoTile label="Assessment Score" value={`${ranking.score}/${ranking.totalMarks}`} />
-              <InfoTile label="Percentage" value={`${Math.round(ranking.percent ?? 0)}%`} />
+              <InfoTile label="Assessment" value={ranking.assessmentTitle ?? '—'} />
+              <InfoTile label="Subject" value={ranking.subjectName ?? '—'} />
               <InfoTile label="Class" value={ranking.className ?? '—'} />
+              <InfoTile label="School" value={ranking.schoolName ?? '—'} />
+              <InfoTile label="State" value={ranking.state ?? '—'} />
+              <InfoTile label="Assessment Score" value={`${ranking.score}/${ranking.totalMarks}`} />
+              <InfoTile label="Total Marks" value={String(ranking.totalMarks ?? '—')} />
+              <InfoTile label="Percentage" value={`${Math.round(ranking.percent ?? 0)}%`} />
+              <InfoTile label="Students Ranked" value={String(ranking.totalStudents ?? '—')} />
               <InfoTile label="Time Taken" value={fmtTime(ranking.timeTakenSec ?? 0)} />
             </div>
 
@@ -317,6 +349,44 @@ export function LeaderboardPage() {
           </>
         )}
       </Card>
+
+      {/* Your Certificates */}
+      <Card className="p-5 mt-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Award size={18} className="text-brand" />
+          <h3 className="font-display font-semibold text-[15px] text-fg1">Your Certificates</h3>
+        </div>
+
+        {certificatesLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-80 rounded-2xl" />)}
+          </div>
+        ) : !certificates?.length ? (
+          <EmptyState
+            icon={Award}
+            title="No certificates earned yet."
+            desc="Complete assessments and achieve the required performance to earn certificates."
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {certificates.map(c => (
+              <CertificateCard
+                key={c.certificateId}
+                certificate={c}
+                onView={setViewingCert}
+                onVerify={setVerifyingCertId}
+              />
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <CertificateViewerModal
+        certificate={viewingCert}
+        onClose={() => setViewingCert(null)}
+        onVerify={(id) => { setViewingCert(null); setVerifyingCertId(id); }}
+      />
+      <CertificateVerifyModal certificateId={verifyingCertId} onClose={() => setVerifyingCertId(null)} />
     </StandalonePage>
   );
 }

@@ -5,8 +5,9 @@ import {
 } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, Skeleton } from '../../shared/ui';
 import { SessionOverScreen } from '../../shared/SessionOverScreen';
+import { TeacherCodeGate } from '../../shared/TeacherCodeGate';
 import { SESSION_END_DATE } from '../../../config/assessmentSession';
-import { useAssessments } from '../../../hooks/useAssessments';
+import { useAssessments, useAssessmentAccess } from '../../../hooks/useAssessments';
 import { useMySubmissions } from '../../../hooks/useSubmissions';
 
 /** Restored entry point of the standalone Assessment flow — see
@@ -27,6 +28,12 @@ export function MyAssessmentsPage() {
   const navigate              = useNavigate();
   const sessionOver = Date.now() >= SESSION_END_DATE.getTime();
 
+  // A student without a valid Teacher Code sees the unlock popup instead of
+  // the assessment list entirely — Practice has no equivalent check. The
+  // real security boundary is server-side (requireTeacherCode on
+  // POST /assessments/:id/start); this is purely the UX for it.
+  const access = useAssessmentAccess();
+
   const { data: available, loading: aLoading, error: aError } = useAssessments({ status: 'PUBLISHED', limit: 20 });
   // Unfiltered so it covers every status the student can be in (including
   // SUBMITTED-but-not-yet-graded, which used to fall through the cracks —
@@ -36,6 +43,21 @@ export function MyAssessmentsPage() {
   // Once the session is over, students can't browse or start assessments at
   // all — this replaces the whole page, it isn't an add-on banner.
   if (sessionOver) return <StandalonePage><SessionOverScreen /></StandalonePage>;
+
+  if (access.loading) {
+    return (
+      <StandalonePage>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="p-5"><Skeleton className="h-36" /></Card>
+          ))}
+        </div>
+      </StandalonePage>
+    );
+  }
+  if (!access.data?.hasAccess) {
+    return <StandalonePage><TeacherCodeGate onUnlocked={() => access.refetch()} /></StandalonePage>;
+  }
 
   const loading = aLoading || sLoading;
   const loadError = aError || sError;

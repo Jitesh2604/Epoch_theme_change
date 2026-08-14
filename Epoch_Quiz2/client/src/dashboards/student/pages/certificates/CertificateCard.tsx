@@ -42,13 +42,17 @@ export function CertificateCard({
 
       <div className="flex items-start justify-between gap-2 mb-1">
         <h3 className="font-display font-semibold text-[14px] text-fg1 leading-snug">{c.title}</h3>
-        {c.devFallback && <Badge tone="warning" className="shrink-0">Dev</Badge>}
+        {c.devFallback
+          ? <Badge tone="warning" className="shrink-0">Dev Preview</Badge>
+          : <Badge tone="success" className="shrink-0">Verified</Badge>}
       </div>
-      <div className="text-[11.5px] text-fg3 mb-2 truncate">{c.sessionTitle}</div>
+      <div className="text-[11.5px] text-fg3 mb-2 truncate">{c.sessionTitle} · {c.subjectName}</div>
 
       <div className="space-y-1 text-[12px] text-fg2 mb-3">
+        <div>Awarded to <span className="font-semibold text-fg1">{c.studentName}</span></div>
         <div>{c.scope === 'global' ? 'Global' : c.scope === 'state' ? 'State' : 'School'} Rank: <span className="font-semibold text-fg1">#{c.rank}</span></div>
         <div>Score: <span className="font-semibold text-fg1">{c.score}/{c.totalMarks}</span></div>
+        <div className="text-fg3 line-clamp-2">{c.description}</div>
         <div className="text-fg3">Issued on {fmtDate(c.issuedAt)}</div>
         <div className="text-fg3 font-mono text-[11px]">{c.certificateId}</div>
       </div>

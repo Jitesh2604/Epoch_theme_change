@@ -7,6 +7,7 @@ import { pageMeta, pageToSkipTake } from "../utils/pagination";
 import { suggestStateBoard } from "../lib/educationBoards";
 import { ContentService, ContentMeta, UNKNOWN_CLASS_NAME } from "./content.service";
 import { assertMinPasswordLength } from "./settings.service";
+import { TeacherCodeService } from "./teacherCode.service";
 import type { DbUser } from "./auth.service";
 import type {
   AdminCreateUserInput,
@@ -244,9 +245,64 @@ export const UserService = {
       boardFields.stateBoard = input.stateBoard?.trim() || null;
     }
 
+    // School-catalog selection (School/SchoolBranch) — validated for real
+    // existence + the branch actually belonging to the chosen school (same
+    // integrity check SchoolService.register does), then schoolName is
+    // derived from the canonical School.name so LeaderboardService's
+    // exact-string school-scope match stays consistent across every student
+    // who picks the same catalog school.
+    let schoolCatalogFields: Record<string, unknown> = {};
+    if (input.schoolId !== undefined) {
+      if (input.schoolId === null) {
+        schoolCatalogFields = { schoolId: null, branchId: null };
+      } else {
+        const school = await prisma.school.findUnique({ where: { id: input.schoolId } });
+        if (!school || !school.isActive) throw ApiError.badRequest("Select a valid school");
+
+        let resolvedBranchId: string | null = null;
+        if (input.branchId) {
+          const branch = await prisma.schoolBranch.findUnique({ where: { id: input.branchId } });
+          if (!branch || !branch.isActive || branch.schoolId !== school.id) {
+            throw ApiError.badRequest("Select a valid branch for the chosen school");
+          }
+          resolvedBranchId = branch.id;
+        }
+        schoolCatalogFields = { schoolId: school.id, branchId: resolvedBranchId, schoolName: school.name };
+      }
+    } else if (input.branchId !== undefined) {
+      if (input.branchId === null) {
+        schoolCatalogFields = { branchId: null };
+      } else {
+        const existing = await prisma.studentProfile.findUnique({ where: { userId }, select: { schoolId: true } });
+        if (!existing?.schoolId) throw ApiError.badRequest("Select a school before choosing a branch");
+        const branch = await prisma.schoolBranch.findUnique({ where: { id: input.branchId } });
+        if (!branch || !branch.isActive || branch.schoolId !== existing.schoolId) {
+          throw ApiError.badRequest("Select a valid branch for the chosen school");
+        }
+        schoolCatalogFields = { branchId: branch.id };
+      }
+    }
+
+    // Teacher Code — validated live against the TeacherCode catalog (case-
+    // insensitive), not just format-checked, since it gates Assessment
+    // access (see requireTeacherCode). Storing the canonical (uppercase)
+    // code so later gate checks compare like-for-like.
+    let teacherCodeFields: Record<string, unknown> = {};
+    if (input.teacherCode !== undefined) {
+      if (input.teacherCode === null) {
+        teacherCodeFields = { teacherCode: null };
+      } else {
+        const tc = await TeacherCodeService.findValid(input.teacherCode);
+        if (!tc) throw ApiError.badRequest("Invalid or inactive teacher code");
+        teacherCodeFields = { teacherCode: tc.code };
+      }
+    }
+
     const sharedFields: Record<string, unknown> = {
       ...(dob !== undefined && { dob }),
       ...(input.schoolName !== undefined && { schoolName: input.schoolName }),
+      ...schoolCatalogFields,
+      ...teacherCodeFields,
       ...(input.address !== undefined && { address: input.address }),
       ...(input.country !== undefined && { country: input.country }),
       ...(input.state !== undefined && { state: input.state }),

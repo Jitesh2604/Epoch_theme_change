@@ -57,7 +57,7 @@ async function fetchPracticeAnswerRows(studentId: string) {
     select: {
       isCorrect: true, isSkipped: true, marksAwarded: true, attemptId: true,
       attempt: { select: { startTime: true, timeTakenSec: true } },
-      question: { select: { subjectExternalId: true, marks: true, type: true, chapterExternalId: true, bookExternalId: true } },
+      question: { select: { subjectExternalId: true, marks: true, type: true, difficulty: true, chapterExternalId: true, bookExternalId: true } },
     },
   });
 }
@@ -568,6 +568,75 @@ export const AnalyticsService = {
         latestAttemptAccuracy,
       };
     });
+  },
+
+  /**
+   * Difficulty-wise Analytics (Answer Distribution + Difficulty Distribution
+   * charts) — same idea and same per-(dimension, attempt) slicing as
+   * getQuestionTypeBreakdown above, grouped by Question.difficulty (a
+   * required, always-populated field — no null-skip needed, unlike chapter/
+   * subject) instead of Question.type. Reuses fetchPracticeAnswerRows, which
+   * already selects `difficulty` — no new query shape. Deliberately omits
+   * time/score fields nothing currently asks for; add them the same way if a
+   * future feature needs them, rather than speculatively including them now.
+   */
+  async getDifficultyBreakdown(studentId: string) {
+    const rows = await fetchPracticeAnswerRows(studentId);
+
+    interface DifficultyAttemptSlice {
+      difficulty: string;
+      attemptId: string;
+      correct: number; wrong: number; skipped: number;
+    }
+    const slices = new Map<string, DifficultyAttemptSlice>();
+    for (const r of rows) {
+      const difficulty = r.question.difficulty;
+      const key = `${difficulty}::${r.attemptId}`;
+      let slice = slices.get(key);
+      if (!slice) {
+        slice = { difficulty, attemptId: r.attemptId, correct: 0, wrong: 0, skipped: 0 };
+        slices.set(key, slice);
+      }
+      if (r.isSkipped) slice.skipped += 1;
+      else if (r.isCorrect === true) slice.correct += 1;
+      else if (r.isCorrect === false) slice.wrong += 1;
+    }
+
+    const byDifficulty = new Map<string, DifficultyAttemptSlice[]>();
+    for (const slice of slices.values()) {
+      const list = byDifficulty.get(slice.difficulty);
+      if (list) list.push(slice);
+      else byDifficulty.set(slice.difficulty, [slice]);
+    }
+
+    if (!byDifficulty.size) return [];
+
+    // Fixed EASY -> MEDIUM -> HARD display order (a structural enum
+    // ordering, not fabricated data) — only difficulties the student has
+    // actually attempted appear at all.
+    const ORDER = ['EASY', 'MEDIUM', 'HARD'];
+
+    return ORDER
+      .filter(d => byDifficulty.has(d))
+      .map((difficulty) => {
+        const difficultySlices = byDifficulty.get(difficulty)!;
+        const totalCorrect = difficultySlices.reduce((s, x) => s + x.correct, 0);
+        const totalWrong   = difficultySlices.reduce((s, x) => s + x.wrong, 0);
+        const totalSkipped = difficultySlices.reduce((s, x) => s + x.skipped, 0);
+        const totalQuestionsAttempted = totalCorrect + totalWrong + totalSkipped;
+
+        const answered = totalCorrect + totalWrong;
+        const accuracyPercent = answered > 0 ? round((totalCorrect / answered) * 100) : 0;
+
+        return {
+          difficulty,
+          totalQuestionsAttempted,
+          totalCorrect,
+          totalWrong,
+          totalSkipped,
+          accuracyPercent,
+        };
+      });
   },
 
   /**

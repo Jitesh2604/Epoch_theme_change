@@ -534,8 +534,10 @@ export const LeaderboardService = {
     if (globalRank <= 100) badges.push('GLOBAL_TOP_100');
     if (stateRank !== null && stateRank <= 10) badges.push('STATE_TOP_10');
 
-    const classNames = await ContentMeta.classes();
-    const sessionTitle = assessments.find(a => a.id === me.assessmentId)?.title ?? assessments[0]?.title ?? null;
+    const [classNames, subjectNames] = await Promise.all([ContentMeta.classes(), ContentMeta.subjects()]);
+    const matchedAssessment = assessments.find(a => a.id === me.assessmentId) ?? assessments[0] ?? null;
+    const sessionTitle = matchedAssessment?.title ?? null;
+    const subjectExternalId = matchedAssessment?.subjectExternalId ?? null;
 
     return {
       hasResult: true as const,
@@ -543,9 +545,19 @@ export const LeaderboardService = {
       assessmentTitle: sessionTitle,
       submissionId: me.submissionId,
       schoolRank, stateRank, globalRank,
+      // Denominator for "#rank out of N students" — already computed above
+      // as part of ranking everyone in scope, just not previously returned.
+      totalStudents: globalRanked.length,
       score: me.score, totalMarks: me.totalMarks, percent: me.percent, timeTakenSec: me.timeTakenSec,
       classExternalId: me.classExternalId,
       className: me.classExternalId ? (classNames.get(me.classExternalId) ?? UNKNOWN_CLASS_NAME) : null,
+      subjectExternalId,
+      subjectName: subjectExternalId ? (subjectNames.get(subjectExternalId) ?? UNKNOWN_SUBJECT_NAME) : null,
+      // The viewer's own school/state, already fetched above for scoping —
+      // surfaced here purely for display (Analytics' "Your Assessment
+      // Ranking" section), not a new query.
+      schoolName: viewerProfile?.schoolName ?? null,
+      state: viewerProfile?.state ?? null,
       badges,
     };
   },

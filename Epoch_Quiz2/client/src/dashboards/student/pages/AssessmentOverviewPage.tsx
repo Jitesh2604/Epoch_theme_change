@@ -6,8 +6,9 @@ import {
 } from 'lucide-react';
 import { Card, Button, Badge, Skeleton, useToasts } from '../../shared/ui';
 import { SessionOverScreen } from '../../shared/SessionOverScreen';
+import { TeacherCodeGate } from '../../shared/TeacherCodeGate';
 import { SESSION_END_DATE } from '../../../config/assessmentSession';
-import { useAssessment } from '../../../hooks/useAssessments';
+import { useAssessment, useAssessmentAccess } from '../../../hooks/useAssessments';
 import { useMySubmissions } from '../../../hooks/useSubmissions';
 import { assessmentTakeApi, type TakeSubmission, type SubmissionResult } from '../../../hooks/useSubmissionApi';
 
@@ -54,6 +55,12 @@ export function AssessmentOverviewPage() {
   const { data: assessment, loading, error } = useAssessment(assessmentId ?? '');
   const [starting, setStarting] = useState(false);
 
+  // Defensive, in-depth check for direct/bookmarked links straight into an
+  // assessment's overview page — the list page already gates this, but a
+  // stale link shouldn't skip it. The real enforcement is server-side
+  // (requireTeacherCode on POST /assessments/:id/start).
+  const access = useAssessmentAccess();
+
   // A student gets exactly one attempt: once a submission for THIS assessment
   // exists and is no longer IN_PROGRESS, the Details page must show a status
   // screen instead of the Start button — regardless of how they got here
@@ -72,6 +79,10 @@ export function AssessmentOverviewPage() {
   // stale link shouldn't still work.
   if (Date.now() >= SESSION_END_DATE.getTime()) {
     return <StandalonePage><SessionOverScreen /></StandalonePage>;
+  }
+
+  if (!access.loading && !access.data?.hasAccess) {
+    return <StandalonePage><TeacherCodeGate onUnlocked={() => access.refetch()} /></StandalonePage>;
   }
 
   const handleStart = async () => {

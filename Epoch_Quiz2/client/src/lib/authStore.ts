@@ -23,6 +23,11 @@ export interface ProfileUpdateData {
   avatarHue?: number;
   dob?: string | null;           // YYYY-MM-DD
   schoolName?: string | null;
+  // School catalog selection — schoolName is derived server-side from
+  // School.name when schoolId is set (see UserService.updateOwnProfile).
+  schoolId?: string | null;
+  branchId?: string | null;
+  teacherCode?: string | null;
   address?: string | null;
   country?: string | null;
   state?: string | null;

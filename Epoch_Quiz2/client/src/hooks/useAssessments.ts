@@ -50,6 +50,15 @@ export function useAssessment(id: string) {
   return useAsync<Assessment>(() => api.get(`/assessments/${id}`), [id]);
 }
 
+// Does the logged-in student currently have a valid Teacher Code? Checked
+// live server-side (server/src/middlewares/requireTeacherCode.ts is the
+// actual security gate on /assessments/:id/start) — this is only used to
+// decide whether the frontend shows the Teacher Code popup instead of the
+// assessment list/overview.
+export function useAssessmentAccess() {
+  return useAsync<{ hasAccess: boolean }>(() => api.get('/assessments/access'), []);
+}
+
 export interface AssessmentAssignments {
   classes:  Array<{ id: string; name: string }>;
   students: Array<{ id: string; name: string; email: string }>;

@@ -1,12 +1,13 @@
 import {
   LayoutDashboard, GraduationCap, ClipboardList, BookOpen, FileQuestion,
-  BarChart3, Settings as SettingsIcon, Home, Award, TrendingUp, Layers, ListChecks, ClipboardCheck, School,
+  BarChart3, Settings as SettingsIcon, Home, Award, TrendingUp, Layers, ListChecks, ClipboardCheck, School, KeyRound,
 } from 'lucide-react';
 import { Route, Routes, Navigate } from 'react-router-dom';
 import { DashboardLayout } from '../shared/DashboardLayout';
 import { DashboardOverviewPage } from './pages/DashboardOverviewPage';
 import { StudentsPage } from './pages/StudentsPage';
 import { SchoolsCatalogPage } from './pages/SchoolsCatalogPage';
+import { TeacherCodesPage } from './pages/TeacherCodesPage';
 import { StudentPerformancePage } from './pages/StudentPerformancePage';
 import { ClassAnalyticsPage } from './pages/ClassAnalyticsPage';
 import { SubjectAnalyticsPage } from './pages/SubjectAnalyticsPage';
@@ -39,6 +40,7 @@ export function AdminDashboard() {
               { to: '/admin', label: 'Dashboard', icon: LayoutDashboard },
               { to: '/admin/students', label: 'Students', icon: GraduationCap },
               { to: '/admin/schools', label: 'Schools', icon: School },
+              { to: '/admin/teacher-codes', label: 'Teacher Codes', icon: KeyRound },
               { to: '/admin/student-performance', label: 'Student Performance', icon: TrendingUp },
               { to: '/admin/class-analytics', label: 'Class Analytics', icon: School },
               { to: '/admin/subject-analytics', label: 'Subject Analytics', icon: Layers },
@@ -65,6 +67,7 @@ export function AdminDashboard() {
         <Route index element={<DashboardOverviewPage />} />
         <Route path="students" element={<StudentsPage />} />
         <Route path="schools" element={<SchoolsCatalogPage />} />
+        <Route path="teacher-codes" element={<TeacherCodesPage />} />
         <Route path="student-performance" element={<StudentPerformancePage />} />
         <Route path="class-analytics" element={<ClassAnalyticsPage />} />
         <Route path="subject-analytics" element={<SubjectAnalyticsPage />} />

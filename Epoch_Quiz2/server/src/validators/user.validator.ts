@@ -32,6 +32,13 @@ export const updateProfileSchema = z.object({
   // Scalar profile fields
   dob:       z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
   schoolName: z.string().trim().min(1).max(200).optional().nullable(),
+  // School catalog selection (see School/SchoolBranch) — when schoolId is
+  // set, the server derives schoolName from the catalog itself rather than
+  // trusting the client-sent string; see UserService.updateOwnProfile.
+  schoolId:  z.string().min(1).optional().nullable(),
+  branchId:  z.string().min(1).optional().nullable(),
+  // No teacher registry exists in this app — format-validated only.
+  teacherCode: z.string().trim().max(40).regex(/^[A-Za-z0-9_-]+$/, 'Teacher code can only contain letters, numbers, - and _').optional().nullable(),
   address:   z.string().trim().max(500).optional().nullable(),
   country:   z.string().trim().max(80).optional().nullable(),
   state:     z.string().trim().max(80).optional().nullable(),

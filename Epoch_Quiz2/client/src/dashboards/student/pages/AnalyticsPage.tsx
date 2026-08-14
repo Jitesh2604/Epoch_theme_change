@@ -8,11 +8,14 @@ import {
   History, Lightbulb, Brain, Compass,
   ThumbsUp,
   ClipboardList, Eye,
+  TrendingUp, TrendingDown, Minus, GitCommitHorizontal,
 } from 'lucide-react';
 import { PageHeader, Card, Button, StatCard, Skeleton, EmptyState } from '../../shared/ui';
+import { HorizontalBarChart, StackedBarChart, LineChart } from '../../shared/charts';
 import {
   usePracticeOverview, useSubjectBreakdown, useSubjectQuestionTypeBreakdown, useQuestionTypeBreakdown, useTopicBreakdown,
-  type SubjectStat, type SubjectQuestionTypeStat, type PracticeOverview, type QuestionTypeStat, type TopicStat,
+  useDifficultyBreakdown,
+  type SubjectStat, type SubjectQuestionTypeStat, type PracticeOverview, type QuestionTypeStat, type TopicStat, type DifficultyStat,
 } from '../../../hooks/useStudentAnalytics';
 import { getStrengthStatus } from '../../../lib/performanceBand';
 import { fmtDurationHMS, fmtSeconds, fmtDate } from '../../../lib/formatters';
@@ -22,6 +25,7 @@ import {
   type Recommendation, type StudyPriority,
   type LearningInsights,
 } from '../../../lib/learningInsightsEngine';
+import { deriveTopicInsights } from '../../../lib/topicInsights';
 import { useOlympiadAttempts, type OlympiadAttemptSummary } from '../../../hooks/usePracticeQuiz';
 import { buildReviewLearningSummary } from '../../../lib/practiceReviewInsights';
 
@@ -165,11 +169,35 @@ function SubjectWisePerformance({ subjects, questionTypes, loading, error }: Sub
           />
         </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {subjects.map(s => (
-            <SubjectPerformanceCard key={s.subjectId} subject={s} questionTypes={questionTypesBySubject.get(s.subjectId) ?? []} />
-          ))}
-        </div>
+        <>
+          {/* Visual comparison — easiest way to see subjects side-by-side
+              before drilling into each card's detail below. Same
+              accuracyPercent + strength-band colors the cards themselves
+              use, just laid out as bars instead of separate tiles. */}
+          {subjects.length > 1 && (
+            <Card className="p-5 mb-4">
+              <HorizontalBarChart
+                rows={subjects
+                  .slice()
+                  .sort((a, b) => b.accuracyPercent - a.accuracyPercent)
+                  .map(s => ({
+                    key: s.subjectId,
+                    label: s.subjectName,
+                    value: s.accuracyPercent,
+                    max: 100,
+                    valueLabel: `${s.accuracyPercent}%`,
+                    colorClass: getStrengthStatus(s.accuracyPercent).barColorClass,
+                  }))}
+              />
+            </Card>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {subjects.map(s => (
+              <SubjectPerformanceCard key={s.subjectId} subject={s} questionTypes={questionTypesBySubject.get(s.subjectId) ?? []} />
+            ))}
+          </div>
+        </>
       )}
     </>
   );
@@ -517,6 +545,213 @@ function PracticeReviewAndMistakeAnalysis({ subjects, questionTypes, topics, all
   );
 }
 
+// ── Improvement Trend ──────────────────────────────────────────────────────
+// Pure derivation over PracticeOverviewData.accuracyTrend.history — already
+// computed server-side (per-attempt accuracy, chronological) for Feature 6;
+// this just charts it instead of only feeding the AI Insights text. The
+// improving/declining/consistent read reuses the same firstAttemptAccuracy/
+// latestAttemptAccuracy the backend already computed, not a new calculation.
+
+const TREND_STABLE_BAND = 5; // percentage points — matches the tolerance already implied by this feature's existing "recent windows" framing
+
+function ImprovementTrendSection({ overview, loading, error }: { overview: PracticeOverview | null; loading: boolean; error: string | null }) {
+  const history = overview?.hasData ? overview.accuracyTrend.history : [];
+
+  const trend = useMemo(() => {
+    if (!overview?.hasData || history.length < 2) return null;
+    const delta = round1(overview.accuracyTrend.latestAttemptAccuracy - overview.accuracyTrend.firstAttemptAccuracy);
+    if (delta > TREND_STABLE_BAND) return { label: 'Improving', delta, icon: TrendingUp, cls: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/25' };
+    if (delta < -TREND_STABLE_BAND) return { label: 'Declining', delta, icon: TrendingDown, cls: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/25' };
+    return { label: 'Consistent', delta, icon: Minus, cls: 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/25' };
+  }, [overview, history.length]);
+
+  return (
+    <>
+      <div className="mb-4">
+        <h3 className="font-display font-semibold text-[16px] text-fg1 flex items-center gap-2">
+          <TrendingUp size={18} className="text-brand" /> Improvement Trend
+        </h3>
+        <p className="text-[12px] text-fg3 mt-1">Your accuracy across attempts, in order — see whether you're moving up or down.</p>
+      </div>
+
+      {loading ? (
+        <Card className="p-5"><Skeleton className="h-40" /></Card>
+      ) : error ? (
+        <Card className="p-0 overflow-hidden"><EmptyState icon={XCircle} title="Couldn't load your improvement trend" desc={error} /></Card>
+      ) : history.length < 2 ? (
+        <Card className="p-0 overflow-hidden">
+          <EmptyState
+            icon={GitCommitHorizontal}
+            title="Not enough attempts yet"
+            desc="Complete a few more Practice Olympiad attempts to see your improvement trend."
+          />
+        </Card>
+      ) : (
+        <Card className="p-5">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <div className="text-[11px] text-fg3">Attempt-by-attempt accuracy</div>
+              <div className="font-display font-semibold text-[22px] text-fg1 tabular-nums">{history[history.length - 1].accuracy}%</div>
+            </div>
+            {trend && (
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[12px] font-semibold shrink-0 ${trend.cls}`}>
+                <trend.icon size={13} /> {trend.label} {trend.delta > 0 ? '+' : ''}{trend.delta}%
+              </span>
+            )}
+          </div>
+          <LineChart points={history.map(h => ({ label: fmtDate(h.date), value: h.accuracy }))} />
+        </Card>
+      )}
+    </>
+  );
+}
+
+// ── Difficulty-wise Performance (Answer Distribution + Difficulty
+// Distribution) ────────────────────────────────────────────────────────────
+// Both charts come from the one getDifficultyBreakdown fetch — Distribution
+// reads totalQuestionsAttempted (share of questions per tier), Answer
+// Breakdown reads correct/wrong/skipped (how you did within each tier).
+// Grouped into one card, not two, so the page doesn't gain two more
+// near-identical large sections for what's fundamentally one dataset.
+
+const DIFFICULTY_LABEL: Record<string, string> = { EASY: 'Easy', MEDIUM: 'Medium', HARD: 'Hard' };
+const DIFFICULTY_COLOR: Record<string, string> = { EASY: 'bg-emerald-400', MEDIUM: 'bg-amber-400', HARD: 'bg-rose-400' };
+
+function DifficultyPerformanceSection({ difficulties, loading, error }: { difficulties: DifficultyStat[] | null; loading: boolean; error: string | null }) {
+  const totalQuestions = (difficulties ?? []).reduce((s, d) => s + d.totalQuestionsAttempted, 0);
+
+  return (
+    <>
+      <div className="mb-4">
+        <h3 className="font-display font-semibold text-[16px] text-fg1 flex items-center gap-2">
+          <Layers size={18} className="text-brand" /> Difficulty-wise Performance
+        </h3>
+        <p className="text-[12px] text-fg3 mt-1">How your questions split across Easy/Medium/Hard, and how you did on each.</p>
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card className="p-5"><Skeleton className="h-32" /></Card>
+          <Card className="p-5"><Skeleton className="h-32" /></Card>
+        </div>
+      ) : error ? (
+        <Card className="p-0 overflow-hidden"><EmptyState icon={XCircle} title="Couldn't load your difficulty breakdown" desc={error} /></Card>
+      ) : !difficulties?.length ? (
+        <Card className="p-0 overflow-hidden">
+          <EmptyState icon={Layers} title="No difficulty data yet" desc="Start practicing to see your performance broken down by question difficulty." />
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card className="p-5">
+            <h4 className="text-[12.5px] font-semibold text-fg2 mb-3">Question Distribution</h4>
+            <HorizontalBarChart
+              rows={difficulties.map(d => ({
+                key: d.difficulty,
+                label: DIFFICULTY_LABEL[d.difficulty] ?? d.difficulty,
+                value: d.totalQuestionsAttempted,
+                max: Math.max(...difficulties.map(x => x.totalQuestionsAttempted), 1),
+                valueLabel: `${d.totalQuestionsAttempted} (${totalQuestions > 0 ? Math.round((d.totalQuestionsAttempted / totalQuestions) * 100) : 0}%)`,
+                colorClass: DIFFICULTY_COLOR[d.difficulty] ?? 'bg-brand',
+              }))}
+            />
+          </Card>
+
+          <Card className="p-5">
+            <h4 className="text-[12.5px] font-semibold text-fg2 mb-3">Answer Breakdown</h4>
+            <StackedBarChart
+              rows={difficulties.map(d => ({
+                key: d.difficulty,
+                label: DIFFICULTY_LABEL[d.difficulty] ?? d.difficulty,
+                total: d.totalQuestionsAttempted,
+                trailingLabel: `${d.accuracyPercent}% accuracy`,
+                segments: [
+                  { name: 'Correct', value: d.totalCorrect, colorClass: 'bg-emerald-400' },
+                  { name: 'Wrong', value: d.totalWrong, colorClass: 'bg-rose-400' },
+                  { name: 'Skipped', value: d.totalSkipped, colorClass: 'bg-slate-300 dark:bg-slate-600' },
+                ],
+              }))}
+              legend={[
+                { name: 'Correct', value: 0, colorClass: 'bg-emerald-400' },
+                { name: 'Wrong', value: 0, colorClass: 'bg-rose-400' },
+                { name: 'Skipped', value: 0, colorClass: 'bg-slate-300 dark:bg-slate-600' },
+              ]}
+            />
+          </Card>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Strong & Weak Topics ────────────────────────────────────────────────────
+// deriveTopicInsights (topicInsights.ts) already computes strongestTopics/
+// weakestTopics from TopicStat[] — top-5, ranked, topics with only 1
+// attempted question excluded to avoid a lucky/unlucky single answer
+// looking like a real strength or weakness. Already written for Feature 8's
+// AI Insights text; this is its first direct visual use.
+
+function TopicRankList({ topics, tone, emptyLabel }: { topics: TopicStat[]; tone: string; emptyLabel: string }) {
+  if (!topics.length) {
+    return <p className="text-[12.5px] text-fg3 py-6 text-center">{emptyLabel}</p>;
+  }
+  return (
+    <HorizontalBarChart
+      rows={topics.map(t => ({
+        key: t.topicId,
+        label: t.topicName,
+        sublabel: t.subjectName,
+        value: t.accuracyPercent,
+        max: 100,
+        valueLabel: `${t.accuracyPercent}%`,
+        colorClass: tone,
+      }))}
+    />
+  );
+}
+
+function TopicPerformanceSection({ topics, loading, error }: { topics: TopicStat[] | null; loading: boolean; error: string | null }) {
+  const insights = useMemo(() => (topics ? deriveTopicInsights(topics) : null), [topics]);
+
+  return (
+    <>
+      <div className="mb-4">
+        <h3 className="font-display font-semibold text-[16px] text-fg1 flex items-center gap-2">
+          <Compass size={18} className="text-brand" /> Topic Performance
+        </h3>
+        <p className="text-[12px] text-fg3 mt-1">Your strongest and weakest topics, based on actual practice accuracy (topics with only one question answered are excluded).</p>
+      </div>
+
+      {loading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card className="p-5"><Skeleton className="h-48" /></Card>
+          <Card className="p-5"><Skeleton className="h-48" /></Card>
+        </div>
+      ) : error ? (
+        <Card className="p-0 overflow-hidden"><EmptyState icon={XCircle} title="Couldn't load your topic performance" desc={error} /></Card>
+      ) : !insights || (!insights.strongestTopics.length && !insights.weakestTopics.length) ? (
+        <Card className="p-0 overflow-hidden">
+          <EmptyState icon={Compass} title="No topic data yet" desc="Practice at least 2 questions in a topic to see your strong and weak areas here." />
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card className="p-5">
+            <h4 className="text-[12.5px] font-semibold text-fg2 mb-3 flex items-center gap-1.5"><TrendingUp size={14} className="text-emerald-500" /> Strong Topics</h4>
+            <TopicRankList topics={insights.strongestTopics} tone="bg-emerald-400" emptyLabel="No strong topics identified yet." />
+          </Card>
+          <Card className="p-5">
+            <h4 className="text-[12.5px] font-semibold text-fg2 mb-3 flex items-center gap-1.5"><TrendingDown size={14} className="text-rose-500" /> Weak Topics</h4>
+            <TopicRankList topics={insights.weakestTopics} tone="bg-rose-400" emptyLabel="No weak topics identified yet." />
+          </Card>
+        </div>
+      )}
+    </>
+  );
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
 export function AnalyticsPage() {
   const { data, loading, error } = usePracticeOverview();
   // Lifted up from SubjectWisePerformance so AI Learning Insights can reuse
@@ -538,6 +773,9 @@ export function AnalyticsPage() {
   // Lifted here (rather than fetched separately inside PracticeReviewAndMistakeAnalysis)
   // so it's fetched once per page load, not twice.
   const { data: allAttempts, loading: attemptsLoading, error: attemptsError } = useOlympiadAttempts();
+  // Powers Difficulty-wise Performance's two charts (Distribution + Answer
+  // Breakdown) from a single fetch — see useStudentAnalytics.ts.
+  const { data: difficulties, loading: difficultiesLoading, error: difficultiesError } = useDifficultyBreakdown();
 
   return (
     <StandalonePage>
@@ -591,12 +829,24 @@ export function AnalyticsPage() {
       )}
 
       <div className="mb-8">
+        <ImprovementTrendSection overview={data} loading={loading} error={error} />
+      </div>
+
+      <div className="mb-8">
         <SubjectWisePerformance
           subjects={subjects}
           questionTypes={subjectQuestionTypes}
           loading={subjectsLoading}
           error={subjectsError}
         />
+      </div>
+
+      <div className="mb-8">
+        <DifficultyPerformanceSection difficulties={difficulties} loading={difficultiesLoading} error={difficultiesError} />
+      </div>
+
+      <div className="mb-8">
+        <TopicPerformanceSection topics={topics} loading={topicsLoading} error={topicsError} />
       </div>
 
       <AILearningInsights

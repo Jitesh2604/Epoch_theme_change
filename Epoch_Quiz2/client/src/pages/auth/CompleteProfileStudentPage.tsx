@@ -8,7 +8,7 @@ import { loadUser, updateProfile } from '../../lib/authStore';
 import { ApiError } from '../../lib/api';
 import type { ProfileUpdateData } from '../../lib/authStore';
 import { catalogPresets, useClasses } from '../../hooks/useCatalog';
-import { useRealSubjects } from '../../hooks/useSubjects';
+import { useSchoolCatalog, useSchoolBranches } from '../../hooks/useSchools';
 
 interface Props { navigate: NavigateFn; }
 
@@ -25,9 +25,10 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
   // ── Form state ───────────────────────────────────────────────
   const [name,        setName]        = useState(user?.name ?? '');
   const [dob,         setDob]         = useState('');
-  const [schoolName,  setSchoolName]  = useState('');
+  const [schoolId,    setSchoolId]    = useState('');
+  const [branchId,    setBranchId]    = useState('');
+  const [teacherCode, setTeacherCode] = useState('');
   const [classId,     setClassId]     = useState('');
-  const [subjectIds,  setSubjectIds]  = useState<string[]>([]);
   const [educationBoard, setEducationBoard] = useState('');
   const [stateBoard,  setStateBoard]  = useState('');
   const [country,     setCountry]     = useState('');
@@ -42,29 +43,42 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
 
   // Grade levels (Class 1–12) from the catalog.
   const classes = useClasses();
-  // Studiable subjects (excludes the Olympiad "mode" rows) — chosen by the student.
-  const subjects = useRealSubjects();
-  const toggleSubject = (id: string) =>
-    setSubjectIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  // School -> Branch cascade — same School catalog built for the School
+  // Panel. Branch lists every active branch under the chosen school
+  // (across whichever states it operates in); reset whenever the school
+  // selection changes.
+  const schools = useSchoolCatalog();
+  const branches = useSchoolBranches(schoolId || null, null);
+  useEffect(() => { setBranchId(''); }, [schoolId]);
 
   if (!user) return null;
 
   const countryOptions = catalogPresets.countries.map(c => ({ value: c, label: c }));
   const classOptions   = (classes.data ?? []).map(c => ({ value: c.id, label: c.name }));
+  const schoolOptions  = (schools.data ?? []).map(s => ({ value: s.id, label: s.name }));
+  const branchOptions  = (branches.data ?? []).map(b => ({ value: b.id, label: b.name }));
+  // Not part of `validate()` — a bad/unknown teacher code must never block
+  // finishing registration (it's optional and can be added/fixed later
+  // from the profile page). This is just immediate inline feedback while
+  // typing; the real check happens server-side when it's actually saved.
+  const teacherCodeFormatError = teacherCode.trim() && !/^[A-Za-z0-9_-]+$/.test(teacherCode.trim())
+    ? 'Teacher code can only contain letters, numbers, - and _.'
+    : '';
 
   const validate = (): Record<string, string> => {
     const errs: Record<string, string> = {};
     const reqText = (key: string, val: string) => { if (!val.trim()) errs[key] = 'This field is required.'; };
     reqText('name', name);
     if (!dob) errs.dob = 'This field is required.';
-    reqText('schoolName', schoolName);
+    if (!schoolId) errs.schoolId = 'Please select your school.';
+    if (schoolId && branchOptions.length > 0 && !branchId) errs.branchId = 'Please select your branch.';
     if (!country) errs.country = 'This field is required.';
     reqText('state', state);
     reqText('city', city);
     reqText('zip', zip);
     reqText('address', address);
     if (classOptions.length && !classId) errs.classId = 'Please select your class.';
-    if ((subjects.data?.length ?? 0) > 0 && subjectIds.length === 0) errs.subjects = 'Select at least one subject.';
     if (!educationBoard) errs.educationBoard = 'Please select your education board.';
     if (educationBoard === 'STATE_BOARD' && !stateBoard.trim()) errs.stateBoard = 'Please confirm your state board.';
     return errs;
@@ -84,9 +98,9 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
       const payload: ProfileUpdateData = {
         name:        name.trim() || undefined,
         dob:         dob || null,
-        schoolName:  schoolName.trim() || null,
+        schoolId:    schoolId || null,
+        branchId:    branchId || null,
         classExternalId:    classId || null,
-        subjectExternalIds: subjectIds,
         educationBoard: educationBoard || null,
         stateBoard:  educationBoard === 'STATE_BOARD' ? (stateBoard.trim() || null) : null,
         country:     country || null,
@@ -97,7 +111,24 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
         imageUrl:    imageUrl || null,
       };
       await updateProfile(payload);
-      showToast('Profile saved — welcome to Epoch Quiz!', 'success');
+
+      // Teacher Code is optional and never required to finish registration
+      // (it only unlocks Assessment, added separately here so an invalid
+      // code can never block completing the rest of the profile) — best
+      // effort: if it fails, the student still lands on Home and can fix
+      // it later from their profile.
+      const tc = teacherCode.trim();
+      if (tc) {
+        try {
+          await updateProfile({ teacherCode: tc });
+          showToast('Profile saved — welcome to Epoch Quiz!', 'success');
+        } catch (tcErr) {
+          const tcMsg = tcErr instanceof ApiError ? tcErr.message : 'Could not save your teacher code.';
+          showToast(`Profile saved. ${tcMsg} You can add it later from your profile.`, 'danger');
+        }
+      } else {
+        showToast('Profile saved — welcome to Epoch Quiz!', 'success');
+      }
       window.location.href = '/#/home';
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Could not save profile. Please try again.';
@@ -138,49 +169,28 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
               label="Date of birth" type="date" value={dob} onChange={setDob}
               icon="calendar" error={errors.dob}
             />
+            <SelectField
+              label="School name" value={schoolId} onChange={setSchoolId}
+              options={schoolOptions} icon="graduation" placeholder="— Select your school —"
+              error={errors.schoolId}
+            />
+            <SelectField
+              label="School branch" value={branchId} onChange={setBranchId}
+              options={branchOptions} icon="building" error={errors.branchId}
+              disabled={!schoolId || branches.loading}
+              placeholder={!schoolId ? 'Select a school first' : branches.loading ? 'Loading branches…' : 'Select branch'}
+            />
             <ProfileField
-              label="School name" value={schoolName} onChange={setSchoolName}
-              placeholder="Name of your school" icon="building" error={errors.schoolName}
+              label="Teacher code" value={teacherCode} onChange={setTeacherCode}
+              placeholder="If your teacher gave you a code" icon="hash" optional
+              error={teacherCodeFormatError}
+              hint="Unlocks Assessment — you can also add this later from your profile."
             />
             <SelectField
               label="Class" value={classId} onChange={setClassId}
               options={classOptions} icon="user" placeholder="— Select your class —"
               error={errors.classId} hint="Your current grade / class (1st–12th)."
             />
-
-            {/* Subjects — select every subject you study. Drives both Subject
-                Practice and the mixed Practice Olympiad. */}
-            <div className="auth-field">
-              <div className="auth-field-header">
-                <label className="auth-label">Subjects</label>
-                <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>{subjectIds.length} selected</span>
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {(subjects.data ?? []).map(s => {
-                  const on = subjectIds.includes(s.id);
-                  return (
-                    <button
-                      type="button"
-                      key={s.id}
-                      onClick={() => toggleSubject(s.id)}
-                      style={{
-                        fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-                        borderRadius: 999, padding: '6px 12px',
-                        border: `1px solid ${on ? 'var(--brand)' : 'var(--border-1)'}`,
-                        background: on ? 'var(--brand)' : 'var(--surface-1)',
-                        color: on ? 'var(--brand-ink, #fff)' : 'var(--fg-2)',
-                      }}
-                    >
-                      {on ? '✓ ' : ''}{s.name}
-                    </button>
-                  );
-                })}
-                {!subjects.loading && !(subjects.data?.length) && (
-                  <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>No subjects available yet.</span>
-                )}
-              </div>
-              {errors.subjects && <span className="auth-error">{errors.subjects}</span>}
-            </div>
 
             <EducationBoardField
               value={educationBoard} onChange={setEducationBoard}

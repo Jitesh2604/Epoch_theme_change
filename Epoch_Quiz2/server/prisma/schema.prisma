@@ -63,7 +63,21 @@ model StudentProfile {
   userId           String           @unique
   mobileNo         String?
   dob              DateTime?
+  // Free-text display name, kept even for catalog-backed students since
+  // LeaderboardService school-scope ranking does an exact string match on
+  // this field. When schoolId is set, it's always derived from School.name
+  // server-side (see UserService.updateOwnProfile) rather than free-typed,
+  // so catalog students always match exactly. Students who registered
+  // before the School catalog dropdown existed simply keep schoolId null
+  // and this stays free text, unaffected.
   schoolName       String?
+  schoolId         String?
+  branchId         String?
+  // Validated live against TeacherCode.code (case-insensitive, stored
+  // uppercase) — see UserService.updateOwnProfile. Optional at registration;
+  // gates Assessment access only, never Practice (see requireTeacherCode
+  // middleware and AssessmentController.checkAccess).
+  teacherCode      String?
   educationBoard   String?
   stateBoard       String?
   address          String?          @db.Text
@@ -80,10 +94,14 @@ model StudentProfile {
   books            StudentBook[]
   user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   subjects         StudentSubject[]
+  school           School?          @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  branch           SchoolBranch?    @relation(fields: [branchId], references: [id], onDelete: SetNull)
 
   @@index([boardExternalId])
   @@index([classExternalId])
   @@index([seriesExternalId])
+  @@index([schoolId])
+  @@index([branchId])
   @@map("student_profiles")
 }
 
@@ -737,13 +755,14 @@ model Setting {
 // dropdown is scoped to states that School actually has a Branch in (see
 // SchoolStateService.list), not the full global list.
 model School {
-  id            String               @id @default(cuid())
-  name          String               @unique
-  isActive      Boolean              @default(true)
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-  branches      SchoolBranch[]
-  registrations SchoolRegistration[]
+  id              String               @id @default(cuid())
+  name            String               @unique
+  isActive        Boolean              @default(true)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  branches        SchoolBranch[]
+  registrations   SchoolRegistration[]
+  studentProfiles StudentProfile[]
 
   @@map("schools")
 }
@@ -761,16 +780,17 @@ model SchoolState {
 }
 
 model SchoolBranch {
-  id            String               @id @default(cuid())
-  schoolId      String
-  stateId       String
-  name          String
-  isActive      Boolean              @default(true)
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-  school        School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  state         SchoolState          @relation(fields: [stateId], references: [id], onDelete: Cascade)
-  registrations SchoolRegistration[]
+  id              String               @id @default(cuid())
+  schoolId        String
+  stateId         String
+  name            String
+  isActive        Boolean              @default(true)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  school          School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  state           SchoolState          @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  registrations   SchoolRegistration[]
+  studentProfiles StudentProfile[]
 
   @@unique([schoolId, stateId, name])
   @@index([schoolId, stateId])
@@ -803,6 +823,24 @@ model SchoolRegistration {
   @@index([stateId])
   @@index([branchId])
   @@map("school_registrations")
+}
+
+// ── Teacher Codes (Assessment access gate) ─────────────────────────────────
+// Admin-managed catalog of valid codes — there is no teacher account/login
+// system in this app (removed, see migration 20260805091718_remove_teacher_role),
+// so a code is just an issuable/revocable string, not tied to a User row.
+// A student links one to StudentProfile.teacherCode (validated live against
+// this table, not just "is it non-null") to unlock Assessment; Practice never
+// checks this. Deactivating a code here immediately revokes access for every
+// student who was relying on it — no caching, checked fresh on every gate.
+model TeacherCode {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("teacher_codes")
 }
 
 // ── My Certificates ────────────────────────────────────────────────────────

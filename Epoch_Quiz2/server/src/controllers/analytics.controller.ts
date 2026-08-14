@@ -38,6 +38,14 @@ export const AnalyticsController = {
     ApiResponse.ok(res, data);
   }),
 
+  getDifficultyBreakdown: asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user) throw ApiError.unauthorized();
+    if (req.user.role !== Role.STUDENT) throw ApiError.forbidden('Only students have practice analytics');
+
+    const data = await AnalyticsService.getDifficultyBreakdown(req.user.id);
+    ApiResponse.ok(res, data);
+  }),
+
   getTopicBreakdown: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) throw ApiError.unauthorized();
     if (req.user.role !== Role.STUDENT) throw ApiError.forbidden('Only students have practice analytics');

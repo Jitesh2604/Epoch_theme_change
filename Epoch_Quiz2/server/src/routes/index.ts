@@ -26,6 +26,7 @@ import schoolRoutes         from './school.routes';
 import schoolStateRoutes    from './schoolState.routes';
 import schoolBranchRoutes   from './schoolBranch.routes';
 import certificateRoutes    from './certificate.routes';
+import teacherCodeRoutes    from './teacherCode.routes';
 
 const router = new Router();
 
@@ -65,5 +66,6 @@ router.use('/schools',        schoolRoutes);
 router.use('/school-states',  schoolStateRoutes);
 router.use('/school-branches', schoolBranchRoutes);
 router.use('/certificates',   certificateRoutes);
+router.use('/teacher-codes',  teacherCodeRoutes);
 
 export default router;

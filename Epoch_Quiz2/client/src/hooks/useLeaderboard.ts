@@ -110,12 +110,19 @@ export interface MyAssessmentRanking {
   schoolRank?: number | null;
   stateRank?: number | null;
   globalRank?: number;
+  /** Total students ranked in this scope — the denominator for "#rank out
+   *  of N students". */
+  totalStudents?: number;
   score?: number;
   totalMarks?: number;
   percent?: number;
   timeTakenSec?: number;
   classExternalId?: string | null;
   className?: string | null;
+  subjectExternalId?: string | null;
+  subjectName?: string | null;
+  schoolName?: string | null;
+  state?: string | null;
   badges?: string[];
   /** See LeaderboardSessionsResponse.devFallback. */
   devFallback?: boolean;

@@ -7,6 +7,7 @@ import { SubmissionController } from '../controllers/submission.controller';
 import { LeaderboardController } from '../controllers/leaderboard.controller';
 import { authenticate } from '../middlewares/authenticate';
 import { authorize } from '../middlewares/authorize';
+import { requireTeacherCode } from '../middlewares/requireTeacherCode';
 import { validate } from '../middlewares/validate';
 import {
   createAssessmentSchema,
@@ -26,6 +27,12 @@ import { assessmentLeaderboardQuerySchema } from '../validators/leaderboard.vali
 const router = new Router();
 
 router.use(authenticate);
+
+// ── student: does this student currently have Assessment access? ──
+// Read by the frontend before rendering the assessment list/overview to
+// decide whether to show the Teacher Code popup — must come before "/:id"
+// so it isn't swallowed as an assessment id.
+router.get('/access', AssessmentController.checkAccess);
 
 // ── list / read (scoped per role inside the service) ──────────
 router.get(
@@ -161,6 +168,7 @@ router.delete(
 router.post(
   '/:id/start',
   authorize(Role.STUDENT, ...ADMIN_ROLES),
+  requireTeacherCode,
   validate(assessmentIdParamsSchema, 'params'),
   SubmissionController.start,
 );

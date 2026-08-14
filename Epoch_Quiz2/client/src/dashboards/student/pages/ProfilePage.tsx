@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Mail, Award, Edit3, Save, X, Trophy, Calendar, FileText,
-  Building, MapPin, User, Phone, Clock, GraduationCap,
+  Building, MapPin, User, Phone, Clock, GraduationCap, KeyRound,
 } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, StatCard, Avatar, Skeleton, Select } from '../../shared/ui';
 import { loadUser } from '../../../lib/authStore';
@@ -57,6 +57,7 @@ export function ProfilePage() {
   const [name, setName] = useState('');
   const [schoolName, setSchoolName] = useState('');
   const [classId, setClassId] = useState('');
+  const [teacherCode, setTeacherCode] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -64,6 +65,7 @@ export function ProfilePage() {
       setName(profile.name ?? '');
       setSchoolName(profile.studentProfile?.schoolName ?? '');
       setClassId(profile.studentProfile?.classExternalId ?? '');
+      setTeacherCode(profile.studentProfile?.teacherCode ?? '');
     } else if (cachedUser) {
       setName(cachedUser.name ?? '');
     }
@@ -76,6 +78,9 @@ export function ProfilePage() {
         name,
         schoolName: schoolName || undefined,
         classExternalId: classId || null,
+        // Unlocks Assessment once it validates against the Teacher Code
+        // catalog server-side — same field the Assessment popup writes to.
+        teacherCode: teacherCode.trim() || null,
       });
       push({ kind: 'success', title: 'Profile updated' });
       setEditing(false);
@@ -145,6 +150,12 @@ export function ProfilePage() {
                     options={[{ value: '', label: '— Select your class —' }, ...classOptions]}
                   />
                 </div>
+                <div>
+                  <label className="text-[11px] text-fg3 block mb-1">Teacher code <span className="opacity-60">(unlocks Assessment)</span></label>
+                  <input value={teacherCode} onChange={e => setTeacherCode(e.target.value)}
+                    placeholder="If your teacher gave you a code"
+                    className="w-full h-10 px-3 rounded-xl bg-surface1 border border-line text-[13px] text-fg1 focus:outline-none focus:border-brand/40" />
+                </div>
               </div>
             ) : (
               <>
@@ -172,6 +183,7 @@ export function ProfilePage() {
                         <InfoRow icon={Mail}    label="Email"       value={displayEmail} />
                         <InfoRow icon={Award}   label="Role"        value={capitalize(profile?.role ?? cachedUser?.role)} />
                         {sp?.schoolName   && <InfoRow icon={Building}  label="School / Institution" value={sp.schoolName} />}
+                        {sp?.teacherCode  && <InfoRow icon={KeyRound} label="Teacher code" value={sp.teacherCode} />}
                         {sp?.classExternalId && (
                           <InfoRow icon={GraduationCap} label="Class"
                             value={classOptions.find(c => c.value === sp.classExternalId)?.label ?? sp.classExternalId} />

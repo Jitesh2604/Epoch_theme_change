@@ -264,8 +264,11 @@ export function devFallbackMyRanking(filters: DevFilters, actor: DevActorProfile
     assessmentTitle: session.title,
     submissionId: me.submissionId,
     schoolRank, stateRank, globalRank,
+    totalStudents: globalRanked.length,
     score: me.score, totalMarks: me.totalMarks, percent: me.percent, timeTakenSec: me.timeTakenSec,
     classExternalId: me.classExternalId, className: me.className,
+    subjectExternalId: session.subjectId, subjectName: session.subjectName,
+    schoolName: me.schoolName, state: me.state,
     badges: computeBadges(schoolRank, stateRank, globalRank),
   };
 }

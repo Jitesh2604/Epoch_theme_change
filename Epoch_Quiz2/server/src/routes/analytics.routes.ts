@@ -8,6 +8,7 @@ router.get('/practice/overview', authenticate, AnalyticsController.getPracticeOv
 router.get('/practice/subjects', authenticate, AnalyticsController.getSubjectBreakdown);
 router.get('/practice/subject-question-types', authenticate, AnalyticsController.getSubjectQuestionTypeBreakdown);
 router.get('/practice/question-types', authenticate, AnalyticsController.getQuestionTypeBreakdown);
+router.get('/practice/difficulty', authenticate, AnalyticsController.getDifficultyBreakdown);
 router.get('/practice/topics', authenticate, AnalyticsController.getTopicBreakdown);
 
 export default router;

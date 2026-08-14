@@ -44,13 +44,13 @@ export const Field: React.FC<FieldProps> = ({ label, type, value, onChange, plac
 };
 
 // ─── PasswordFieldInner ───────────────────────────────────────────────────────
-export const PasswordFieldInner: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
+export const PasswordFieldInner: React.FC<{ value: string; onChange: (v: string) => void; placeholder?: string }> = ({ value, onChange, placeholder = 'Min. 8 characters' }) => {
   const [show, setShow] = useState(false);
   return (
     <>
       <input className="auth-input" type={show ? 'text' : 'password'}
         value={value} onChange={e => onChange(e.target.value)}
-        placeholder="Min. 8 characters" autoComplete="new-password" />
+        placeholder={placeholder} autoComplete="new-password" />
       <button type="button" className="auth-eye" onClick={() => setShow(s => !s)} tabIndex={-1}>
         <Icon name={show ? 'eyeOff' : 'eye'} size={16} />
       </button>
@@ -139,4 +139,7 @@ export function validatePassword(v: string) {
 }
 export function validateName(v: string) {
   return v.trim().length >= 2 ? '' : 'Name must be at least 2 characters.';
+}
+export function validateConfirmPassword(password: string, confirm: string) {
+  return password === confirm ? '' : 'Passwords do not match.';
 }

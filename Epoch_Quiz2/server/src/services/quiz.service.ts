@@ -1100,17 +1100,29 @@ export const QuizService = {
     const profile = await readStudentProfile(studentId);
 
     // The student's chosen subjects are stored as Content API external ids.
+    // Subject selection was removed from registration, so most students now
+    // have no StudentSubject rows — fall back to every subject that
+    // actually has questions for their class/board (same discovery Subject-
+    // wise Practice already uses via getSubjectsWithQuestions), so Olympiad
+    // still works without requiring an explicit pick. Existing students who
+    // do have StudentSubject rows keep their exact prior behavior.
     const chosen = await prisma.studentSubject.findMany({
       where: { studentProfileId: profile.profileId ?? '__none__' },
       select: { subjectExternalId: true },
     });
-    if (!chosen.length) {
-      throw ApiError.badRequest('Add your subjects in your profile to start an Olympiad.');
+    let subjects: { id: string; name: string }[];
+    if (chosen.length) {
+      const subjectNames = await ContentMeta.subjects();
+      subjects = chosen
+        .map(c => ({ id: c.subjectExternalId, name: subjectNames.get(c.subjectExternalId) ?? UNKNOWN_SUBJECT_NAME }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+      const available = await QuizService.getSubjectsWithQuestions(studentId);
+      if (!available.length) {
+        throw ApiError.badRequest('No questions available for your class/board yet.');
+      }
+      subjects = available.map(s => ({ id: s.id, name: s.name }));
     }
-    const subjectNames = await ContentMeta.subjects();
-    const subjects = chosen
-      .map(c => ({ id: c.subjectExternalId, name: subjectNames.get(c.subjectExternalId) ?? UNKNOWN_SUBJECT_NAME }))
-      .sort((a, b) => a.name.localeCompare(b.name));
 
     const perSubject = input.perSubject ?? await getOlympiadPerSubject();
 

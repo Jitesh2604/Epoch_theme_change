@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import type { NavigateFn } from '../../types';
 import { Icon } from '../../components/ui/Icon';
 import { showToast } from '../../components/ui/Toast';
-import { Field, PasswordFieldInner, AuthIllustration, validateEmail, validateName } from './_shared';
+import { Field, PasswordFieldInner, AuthIllustration, validateEmail, validateName, validateConfirmPassword } from './_shared';
 import { register } from '../../lib/authStore';
 import { ApiError } from '../../lib/api';
 
@@ -18,6 +18,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ navigate }) => {
   const [mobileNo, setMobileNo] = useState('');
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const role: Role = 'STUDENT';
   const [agreed, setAgreed]     = useState(false);
   const [errors, setErrors]     = useState<Record<string, string>>({});
@@ -32,6 +33,8 @@ export const SignupPage: React.FC<SignupPageProps> = ({ navigate }) => {
     if (eErr) errs.email = eErr;
     if (!/^\d{7,}$/.test(mobileNo.replace(/[\s\-\+\(\)]/g, ''))) errs.mobileNo = 'Enter a valid mobile number (min 7 digits)';
     if (password.length < 8) errs.password = 'Password must be at least 8 characters';
+    const cErr = validateConfirmPassword(password, confirmPassword);
+    if (cErr) errs.confirmPassword = cErr;
     if (!agreed) errs.terms = 'You must agree to the terms.';
     setErrors(errs);
     if (Object.keys(errs).length) return;
@@ -105,6 +108,15 @@ export const SignupPage: React.FC<SignupPageProps> = ({ navigate }) => {
               </div>
             )}
             {errors.password && <span className="auth-error">{errors.password}</span>}
+          </div>
+
+          <div className="auth-field">
+            <label className="auth-label">Confirm password</label>
+            <div className={`auth-input-wrap ${errors.confirmPassword ? 'error' : ''}`}>
+              <span className="auth-input-icon"><Icon name="lock" size={16} /></span>
+              <PasswordFieldInner value={confirmPassword} onChange={setConfirmPassword} placeholder="Re-enter your password" />
+            </div>
+            {errors.confirmPassword && <span className="auth-error">{errors.confirmPassword}</span>}
           </div>
 
           <label className="auth-checkbox-row">

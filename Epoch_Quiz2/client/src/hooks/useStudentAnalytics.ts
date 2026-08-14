@@ -170,6 +170,25 @@ export function useQuestionTypeBreakdown() {
   return useAsync<QuestionTypeStat[]>(() => api.get('/analytics/practice/question-types'), []);
 }
 
+// Difficulty-wise Analytics — powers both the Answer Distribution (stacked
+// correct/wrong/skipped) and Difficulty Distribution (question-count share)
+// charts from the one fetch; see server/src/services/analytics.service.ts's
+// getDifficultyBreakdown. Same scope/rules as every other Practice Olympiad
+// analytics endpoint above (SUBMITTED attempts, quizType !== OLYMPIAD).
+
+export interface DifficultyStat {
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+  totalQuestionsAttempted: number;
+  totalCorrect: number;
+  totalWrong: number;
+  totalSkipped: number;
+  accuracyPercent: number;
+}
+
+export function useDifficultyBreakdown() {
+  return useAsync<DifficultyStat[]>(() => api.get('/analytics/practice/difficulty'), []);
+}
+
 // Student Analytics — Feature 7: Topic-wise Analytics. The schema/Content API
 // have no "Topic" level (boards/classes/subjects/series/books/chapters only),
 // so Chapter is used as the Topic unit, per the fallback instruction. Same

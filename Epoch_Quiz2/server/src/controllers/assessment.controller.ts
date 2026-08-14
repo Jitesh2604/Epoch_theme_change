@@ -1,5 +1,7 @@
 import type { Request, Response } from '../core/types';
 import { AssessmentService, type Actor } from '../services/assessment.service';
+import { TeacherCodeService } from '../services/teacherCode.service';
+import { Role } from '../lib/enums';
 import { ApiResponse } from '../utils/ApiResponse';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ApiError } from '../utils/ApiError';
@@ -18,6 +20,14 @@ function actorFrom(req: Request): Actor {
 const p = (req: Request, key: string): string => req.params[key] as string;
 
 export const AssessmentController = {
+  // Non-students (admin/preview roles) always have access — the teacherCode
+  // gate only applies to STUDENT, same as requireTeacherCode.
+  checkAccess: asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user) throw ApiError.unauthorized();
+    const hasAccess = req.user.role !== Role.STUDENT || await TeacherCodeService.studentHasValidCode(req.user.id);
+    ApiResponse.ok(res, { hasAccess });
+  }),
+
   create: asyncHandler(async (req: Request, res: Response) => {
     const a = await AssessmentService.create(actorFrom(req), req.body as CreateAssessmentInput);
     ApiResponse.created(res, a, 'Assessment created');
