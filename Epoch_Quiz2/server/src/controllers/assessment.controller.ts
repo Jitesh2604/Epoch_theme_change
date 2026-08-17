@@ -1,6 +1,6 @@
 import type { Request, Response } from '../core/types';
 import { AssessmentService, type Actor } from '../services/assessment.service';
-import { TeacherCodeService } from '../services/teacherCode.service';
+import { BranchCodeService } from '../services/branchCode.service';
 import { Role } from '../lib/enums';
 import { ApiResponse } from '../utils/ApiResponse';
 import { asyncHandler } from '../utils/asyncHandler';
@@ -8,6 +8,7 @@ import { ApiError } from '../utils/ApiError';
 import type {
   CreateAssessmentInput,
   UpdateAssessmentInput,
+  GenerateAssessmentInput,
   ListAssessmentsQuery,
   AssignAssessmentInput,
 } from '../validators/assessment.validator';
@@ -20,17 +21,29 @@ function actorFrom(req: Request): Actor {
 const p = (req: Request, key: string): string => req.params[key] as string;
 
 export const AssessmentController = {
-  // Non-students (admin/preview roles) always have access — the teacherCode
-  // gate only applies to STUDENT, same as requireTeacherCode.
+  // Non-students (admin/preview roles) always have access — the branch-
+  // verification gate only applies to STUDENT, same as requireBranchVerification.
   checkAccess: asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) throw ApiError.unauthorized();
-    const hasAccess = req.user.role !== Role.STUDENT || await TeacherCodeService.studentHasValidCode(req.user.id);
+    const hasAccess = req.user.role !== Role.STUDENT || await BranchCodeService.studentIsVerified(req.user.id);
     ApiResponse.ok(res, { hasAccess });
   }),
 
   create: asyncHandler(async (req: Request, res: Response) => {
     const a = await AssessmentService.create(actorFrom(req), req.body as CreateAssessmentInput);
     ApiResponse.created(res, a, 'Assessment created');
+  }),
+
+  // The centralized ASSESSMENT_CONFIG, read-only — lets the admin UI show
+  // the current question count/marks/duration/difficulty mix instead of
+  // hardcoding them.
+  generateConfig: asyncHandler(async (_req: Request, res: Response) => {
+    ApiResponse.ok(res, AssessmentService.getGenerationConfig());
+  }),
+
+  generate: asyncHandler(async (req: Request, res: Response) => {
+    const a = await AssessmentService.generate(actorFrom(req), req.body as GenerateAssessmentInput);
+    ApiResponse.created(res, a, 'Assessment generated');
   }),
 
   list: asyncHandler(async (req: Request, res: Response) => {

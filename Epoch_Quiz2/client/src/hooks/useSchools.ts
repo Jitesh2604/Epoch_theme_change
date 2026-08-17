@@ -17,9 +17,12 @@ export interface SchoolRegisterPayload {
   email: string;
   password: string;
   mobileNo: string;
-  schoolId: string;
+  /** Free text — the School Registration form no longer has a school
+   *  catalog dropdown (see SchoolRegisterPage.tsx). The backend finds or
+   *  creates a matching School catalog row by exact name (see
+   *  school.service.ts's register()). */
+  schoolName: string;
   stateId: string;
-  branchId: string;
   contactPersonName: string;
   contactPhone: string;
   address: string;

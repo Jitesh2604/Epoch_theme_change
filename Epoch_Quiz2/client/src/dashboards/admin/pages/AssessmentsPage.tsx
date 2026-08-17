@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Users, ClipboardList, FilePlus2, UserPlus, Archive, Trash2 } from 'lucide-react';
+import { Clock, Users, ClipboardList, FilePlus2, UserPlus, Archive, Trash2, Wand2 } from 'lucide-react';
 import { PageHeader, Card, Button, SearchInput, Select, Badge, EmptyState, Skeleton } from '../../shared/ui';
 import { useAssessments, assessmentApi } from '../../../hooks/useAssessments';
 import { useToasts } from '../../shared/ui';
 import { AssignAssessmentModal } from '../../shared/AssignAssessmentModal';
+import { GenerateAssessmentModal } from '../../shared/GenerateAssessmentModal';
 
 export function AssessmentsPage() {
   const [q, setQ] = useState('');
@@ -18,6 +19,7 @@ export function AssessmentsPage() {
   const navigate = useNavigate();
   const { push, node } = useToasts();
   const [assignFor, setAssignFor] = useState<{ id: string; title: string } | null>(null);
+  const [generateOpen, setGenerateOpen] = useState(false);
 
   const rows = data?.items ?? [];
 
@@ -52,11 +54,17 @@ export function AssessmentsPage() {
           push={push}
         />
       )}
+      <GenerateAssessmentModal open={generateOpen} onClose={() => setGenerateOpen(false)} push={push} />
       <PageHeader
         eyebrow="Content"
         title="Assessment Management"
         subtitle="Every assessment created on your publication, with controls for status, visibility, and performance."
-        actions={<Button icon={FilePlus2} onClick={() => navigate('/admin/create-assessment')}>New assessment</Button>}
+        actions={
+          <>
+            <Button variant="soft" icon={Wand2} onClick={() => setGenerateOpen(true)}>Auto-Generate</Button>
+            <Button icon={FilePlus2} onClick={() => navigate('/admin/create-assessment')}>New assessment</Button>
+          </>
+        }
       />
 
       <Card className="p-4 mb-5">

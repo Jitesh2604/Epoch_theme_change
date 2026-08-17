@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, Skeleton } from '../../shared/ui';
 import { SessionOverScreen } from '../../shared/SessionOverScreen';
-import { TeacherCodeGate } from '../../shared/TeacherCodeGate';
+import { BranchCodeGate } from '../../shared/BranchCodeGate';
 import { SESSION_END_DATE } from '../../../config/assessmentSession';
 import { useAssessments, useAssessmentAccess } from '../../../hooks/useAssessments';
 import { useMySubmissions } from '../../../hooks/useSubmissions';
@@ -28,10 +28,11 @@ export function MyAssessmentsPage() {
   const navigate              = useNavigate();
   const sessionOver = Date.now() >= SESSION_END_DATE.getTime();
 
-  // A student without a valid Teacher Code sees the unlock popup instead of
-  // the assessment list entirely — Practice has no equivalent check. The
-  // real security boundary is server-side (requireTeacherCode on
-  // POST /assessments/:id/start); this is purely the UX for it.
+  // A student who hasn't verified their Branch Code yet sees the unlock
+  // popup instead of the assessment list entirely — Practice has no
+  // equivalent check. The real security boundary is server-side
+  // (requireBranchVerification on POST /assessments/:id/start); this is
+  // purely the UX for it.
   const access = useAssessmentAccess();
 
   const { data: available, loading: aLoading, error: aError } = useAssessments({ status: 'PUBLISHED', limit: 20 });
@@ -39,6 +40,23 @@ export function MyAssessmentsPage() {
   // SUBMITTED-but-not-yet-graded, which used to fall through the cracks —
   // fetched only under 'GRADED' before, so it showed in neither tab).
   const { data: myAttempts, loading: sLoading, error: sError } = useMySubmissions({ limit: 100 });
+
+  // These must run on every render regardless of which early return below
+  // fires (session-over / access-loading / Branch Code gate) — hooks can't
+  // be called conditionally, or React throws "Rendered more hooks than
+  // during the previous render" the moment the gate clears.
+  const completedItems = useMemo(
+    () => (myAttempts?.items ?? []).filter((s) => s.status !== 'IN_PROGRESS'),
+    [myAttempts],
+  );
+  const completedAssessmentIds = useMemo(
+    () => new Set(completedItems.map((s) => s.assessment.id)),
+    [completedItems],
+  );
+  const availableItems = useMemo(
+    () => (available?.items ?? []).filter((a) => !completedAssessmentIds.has(a.id)),
+    [available, completedAssessmentIds],
+  );
 
   // Once the session is over, students can't browse or start assessments at
   // all — this replaces the whole page, it isn't an add-on banner.
@@ -56,27 +74,11 @@ export function MyAssessmentsPage() {
     );
   }
   if (!access.data?.hasAccess) {
-    return <StandalonePage><TeacherCodeGate onUnlocked={() => access.refetch()} /></StandalonePage>;
+    return <StandalonePage><BranchCodeGate onVerified={() => access.refetch()} /></StandalonePage>;
   }
 
   const loading = aLoading || sLoading;
   const loadError = aError || sError;
-
-  // Assessment has no pause/resume, and once submitted an attempt can never
-  // be restarted (the server rejects it) — so anything the student has
-  // already submitted belongs only in Completed, never in Available.
-  const completedItems = useMemo(
-    () => (myAttempts?.items ?? []).filter((s) => s.status !== 'IN_PROGRESS'),
-    [myAttempts],
-  );
-  const completedAssessmentIds = useMemo(
-    () => new Set(completedItems.map((s) => s.assessment.id)),
-    [completedItems],
-  );
-  const availableItems = useMemo(
-    () => (available?.items ?? []).filter((a) => !completedAssessmentIds.has(a.id)),
-    [available, completedAssessmentIds],
-  );
 
   // Assessment has no pause/resume: every assessment, whether or not a
   // previous attempt was interrupted, always opens the overview page and

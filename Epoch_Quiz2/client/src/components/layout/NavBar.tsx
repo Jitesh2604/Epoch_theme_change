@@ -41,7 +41,7 @@ interface NavBarProps {
 
 // Secondary/informational pages grouped under the "More" dropdown — kept
 // off the main nav so it only shows the most frequently used items.
-const MORE_ROUTES = ['faq', 'about', 'contact'];
+const MORE_ROUTES = ['faq', 'about', 'contact', 'school'];
 
 // Assessment is back in the navbar now that its flow (My Assessments →
 // Details → full-screen exam → Result) is in place. Flip to `false` here
@@ -156,6 +156,7 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
                 <button className={`dropdown-item ${top === 'faq' ? 'active' : ''}`} onClick={() => { navigate('faq'); setMoreOpen(false); }}>{t('nav.faq')}</button>
                 <button className={`dropdown-item ${top === 'about' ? 'active' : ''}`} onClick={() => { navigate('about'); setMoreOpen(false); }}>{t('nav.aboutUs')}</button>
                 <button className={`dropdown-item ${top === 'contact' ? 'active' : ''}`} onClick={() => { navigate('contact'); setMoreOpen(false); }}>{t('nav.contactUs')}</button>
+                <button className={`dropdown-item ${top === 'school' ? 'active' : ''}`} onClick={() => { navigate('school'); setMoreOpen(false); }}>School Registration</button>
               </div>
             )}
           </div>
@@ -272,6 +273,7 @@ export const NavBar: React.FC<NavBarProps> = ({ route, navigate }) => {
               <button className={`nav-link ${top === 'faq' ? 'active' : ''}`} style={{ textAlign: 'left' }} onClick={() => { navigate('faq'); setMobileOpen(false); }}>{t('nav.faq')}</button>
               <button className={`nav-link ${top === 'about' ? 'active' : ''}`} style={{ textAlign: 'left' }} onClick={() => { navigate('about'); setMobileOpen(false); }}>{t('nav.aboutUs')}</button>
               <button className={`nav-link ${top === 'contact' ? 'active' : ''}`} style={{ textAlign: 'left' }} onClick={() => { navigate('contact'); setMobileOpen(false); }}>{t('nav.contactUs')}</button>
+              <button className={`nav-link ${top === 'school' ? 'active' : ''}`} style={{ textAlign: 'left' }} onClick={() => { navigate('school'); setMobileOpen(false); }}>School Registration</button>
             </div>
           )}
 

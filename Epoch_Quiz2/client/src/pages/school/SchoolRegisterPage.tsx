@@ -3,7 +3,7 @@ import type { NavigateFn } from '../../types';
 import { Icon } from '../../components/ui/Icon';
 import { Field, PasswordFieldInner, AuthIllustration, validateEmail, validateName } from '../auth/_shared';
 import { SelectField, ProfileField } from '../auth/profileFields';
-import { schoolApi, type CatalogItem, type SchoolBranchItem } from '../../hooks/useSchools';
+import { schoolApi, type CatalogItem } from '../../hooks/useSchools';
 import { ApiError } from '../../lib/api';
 
 interface SchoolRegisterPageProps { navigate: NavigateFn; }
@@ -12,11 +12,15 @@ export const SchoolRegisterPage: React.FC<SchoolRegisterPageProps> = ({ navigate
   const [name, setName]             = useState('');
   const [email, setEmail]           = useState('');
   const [password, setPassword]     = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [mobileNo, setMobileNo]     = useState('');
 
-  const [schoolId, setSchoolId]     = useState('');
+  // School Name is free text — the admin types it rather than picking from
+  // a catalog dropdown. The backend finds-or-creates a matching School
+  // catalog row by exact name (see school.service.ts's register()); the
+  // Admin panel's School catalog CRUD is unaffected by this change.
+  const [schoolName, setSchoolName] = useState('');
   const [stateId, setStateId]       = useState('');
-  const [branchId, setBranchId]     = useState('');
 
   const [contactPersonName, setContactPersonName] = useState('');
   const [contactPhone, setContactPhone]           = useState('');
@@ -24,51 +28,26 @@ export const SchoolRegisterPage: React.FC<SchoolRegisterPageProps> = ({ navigate
   const [city, setCity]             = useState('');
   const [pincode, setPincode]       = useState('');
 
-  const [schools, setSchools]   = useState<CatalogItem[]>([]);
-  const [states, setStates]     = useState<CatalogItem[]>([]);
-  const [branches, setBranches] = useState<SchoolBranchItem[]>([]);
-  const [loadingStates, setLoadingStates]   = useState(false);
-  const [loadingBranches, setLoadingBranches] = useState(false);
+  // Full State catalog, loaded once. Previously this cascaded from a
+  // selected School (only states that school already had a branch in) —
+  // that cascade required a real schoolId, which no longer exists before
+  // submission now that School Name is a text field, so this loads the
+  // same unscoped full catalog the Admin panel uses.
+  const [states, setStates] = useState<CatalogItem[]>([]);
+  const [loadingStates, setLoadingStates] = useState(true);
 
   const [errors, setErrors]   = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  // Full catalog, loaded once — School is the top of the hierarchy.
   useEffect(() => {
-    schoolApi.listSchools().then(setSchools).catch(() => setSchools([]));
-  }, []);
-
-  // School -> State cascade: only states that this school actually has an
-  // active branch in (see SchoolStateService.list's schoolId param).
-  useEffect(() => {
-    setStateId('');
-    setBranchId('');
-    setStates([]);
-    setBranches([]);
-    if (!schoolId) return;
-    setLoadingStates(true);
-    schoolApi.listStates(schoolId)
+    schoolApi.listStates()
       .then(setStates)
       .catch(() => setStates([]))
       .finally(() => setLoadingStates(false));
-  }, [schoolId]);
+  }, []);
 
-  // State -> Branch cascade.
-  useEffect(() => {
-    setBranchId('');
-    setBranches([]);
-    if (!schoolId || !stateId) return;
-    setLoadingBranches(true);
-    schoolApi.listBranches(schoolId, stateId)
-      .then(setBranches)
-      .catch(() => setBranches([]))
-      .finally(() => setLoadingBranches(false));
-  }, [schoolId, stateId]);
-
-  const schoolOptions  = schools.map(s => ({ value: s.id, label: s.name }));
-  const stateOptions   = states.map(s => ({ value: s.id, label: s.name }));
-  const branchOptions  = branches.map(b => ({ value: b.id, label: b.name }));
+  const stateOptions = states.map(s => ({ value: s.id, label: s.name }));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,9 +58,10 @@ export const SchoolRegisterPage: React.FC<SchoolRegisterPageProps> = ({ navigate
     if (eErr) errs.email = eErr;
     if (!/^\d{7,}$/.test(mobileNo.replace(/[\s\-\+\(\)]/g, ''))) errs.mobileNo = 'Enter a valid mobile number (min 7 digits)';
     if (password.length < 8) errs.password = 'Password must be at least 8 characters';
-    if (!schoolId) errs.schoolId = 'Select a school';
+    if (!confirmPassword) errs.confirmPassword = 'Please confirm your password';
+    else if (confirmPassword !== password) errs.confirmPassword = 'Passwords do not match';
+    if (schoolName.trim().length < 2) errs.schoolName = 'Enter your school\'s name';
     if (!stateId)  errs.stateId  = 'Select a state';
-    if (!branchId) errs.branchId = 'Select a branch';
     if (validateName(contactPersonName)) errs.contactPersonName = 'Contact person name is required';
     if (!/^\d{7,}$/.test(contactPhone.replace(/[\s\-\+\(\)]/g, ''))) errs.contactPhone = 'Enter a valid phone number (min 7 digits)';
     if (!address.trim()) errs.address = 'Address is required';
@@ -94,7 +74,7 @@ export const SchoolRegisterPage: React.FC<SchoolRegisterPageProps> = ({ navigate
     try {
       await schoolApi.register({
         name, email, password, mobileNo,
-        schoolId, stateId, branchId,
+        schoolName, stateId,
         contactPersonName, contactPhone, address, city, pincode,
       });
       setSubmitted(true);
@@ -138,25 +118,34 @@ export const SchoolRegisterPage: React.FC<SchoolRegisterPageProps> = ({ navigate
 
         <div className="auth-head">
           <h2 className="auth-title">Register your school</h2>
-          <p className="auth-sub">Pick your school, state, and branch, then fill in your details to get started.</p>
+          <p className="auth-sub">Enter your school's name and details to get started.</p>
         </div>
 
         <form className="auth-form" onSubmit={submit} noValidate>
-          <SelectField
-            label="School name" icon="graduation" value={schoolId} onChange={setSchoolId}
-            options={schoolOptions} placeholder="Select school name" error={errors.schoolId}
+          <Field
+            label="School name" type="text" value={schoolName} onChange={setSchoolName}
+            placeholder="Enter your school's name" icon="graduation" error={errors.schoolName}
           />
+
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <ProfileField label="City" value={city} onChange={setCity} placeholder="City" icon="mapPin" error={errors.city} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <ProfileField label="Pincode" value={pincode} onChange={setPincode} placeholder="Pincode" icon="hash" error={errors.pincode} />
+            </div>
+          </div>
+
           <SelectField
             label="State" icon="mapPin" value={stateId} onChange={setStateId}
             options={stateOptions} error={errors.stateId}
-            disabled={!schoolId || loadingStates}
-            placeholder={!schoolId ? 'Select a school first' : loadingStates ? 'Loading states…' : 'Select state'}
+            disabled={loadingStates}
+            placeholder={loadingStates ? 'Loading states…' : 'Select state'}
           />
-          <SelectField
-            label="Branch" icon="building" value={branchId} onChange={setBranchId}
-            options={branchOptions} error={errors.branchId}
-            disabled={!stateId || loadingBranches}
-            placeholder={!stateId ? 'Select a state first' : loadingBranches ? 'Loading branches…' : 'Select branch'}
+
+          <ProfileField
+            label="School address" value={address} onChange={setAddress}
+            placeholder="Street, area" icon="mapPin" error={errors.address}
           />
 
           <Field
@@ -167,18 +156,6 @@ export const SchoolRegisterPage: React.FC<SchoolRegisterPageProps> = ({ navigate
             label="School contact phone" type="tel" value={contactPhone} onChange={setContactPhone}
             placeholder="+91 98765 43210" icon="phone" error={errors.contactPhone}
           />
-          <ProfileField
-            label="School address" value={address} onChange={setAddress}
-            placeholder="Street, area" icon="mapPin" error={errors.address}
-          />
-          <div style={{ display: 'flex', gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <ProfileField label="City" value={city} onChange={setCity} placeholder="City" icon="mapPin" error={errors.city} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <ProfileField label="Pincode" value={pincode} onChange={setPincode} placeholder="Pincode" icon="hash" error={errors.pincode} />
-            </div>
-          </div>
 
           <Field
             label="Your full name" type="text" value={name} onChange={setName}
@@ -200,6 +177,15 @@ export const SchoolRegisterPage: React.FC<SchoolRegisterPageProps> = ({ navigate
               <PasswordFieldInner value={password} onChange={setPassword} />
             </div>
             {errors.password && <span className="auth-error">{errors.password}</span>}
+          </div>
+
+          <div className="auth-field">
+            <label className="auth-label">Confirm Password</label>
+            <div className={`auth-input-wrap ${errors.confirmPassword ? 'error' : ''}`}>
+              <span className="auth-input-icon"><Icon name="lock" size={16} /></span>
+              <PasswordFieldInner value={confirmPassword} onChange={setConfirmPassword} placeholder="Re-enter your password" />
+            </div>
+            {errors.confirmPassword && <span className="auth-error">{errors.confirmPassword}</span>}
           </div>
 
           <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>

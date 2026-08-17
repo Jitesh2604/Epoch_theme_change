@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { Role, UserStatus } from '../lib/enums';
 import { ApiError } from '../utils/ApiError';
@@ -62,6 +63,34 @@ export const SchoolService = {
     return prisma.school.update({ where: { id }, data: { isActive: false } });
   },
 
+  /**
+   * Find the School catalog row matching `name` exactly, or create it.
+   * Registration no longer picks a school from a dropdown (see
+   * SchoolRegisterPage.tsx — the field is now free text), so this is the
+   * seam that keeps the Admin panel's School catalog (SchoolService.list/
+   * create/update/deactivate, unchanged above) as the real source of truth:
+   * a typed name that already exists in the catalog reuses that exact row;
+   * a genuinely new name gets added to the same catalog, active by default,
+   * same as an admin creating one directly via SchoolService.create.
+   */
+  async findOrCreateSchoolByName(name: string) {
+    const trimmed = name.trim();
+    let school = await prisma.school.findUnique({ where: { name: trimmed } });
+    if (!school) {
+      try {
+        school = await prisma.school.create({ data: { name: trimmed, isActive: true } });
+      } catch (err) {
+        // Race: a concurrent registration created the same name a moment
+        // ago (School.name is @unique) — re-fetch instead of failing.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          school = await prisma.school.findUnique({ where: { name: trimmed } });
+        }
+        if (!school) throw err;
+      }
+    }
+    return school;
+  },
+
   // ── Public self-registration ─────────────────────────────────────────────
   // Mirrors AuthService.register's shape (uniqueness checks, hashPassword,
   // avatarHue) but is intentionally a separate code path: School accounts
@@ -70,22 +99,22 @@ export const SchoolService = {
   // admin user endpoints (PATCH /users/:id) — see auth.service.ts's login()
   // for the role-aware PENDING message.
   async register(input: SchoolRegisterInput): Promise<{ email: string }> {
-    const [existingEmail, existingMobile, school, state, branch] = await Promise.all([
+    const [existingEmail, existingMobile, state] = await Promise.all([
       prisma.user.findUnique({ where: { email: input.email }, select: { id: true } }),
       prisma.user.findUnique({ where: { mobileNo: input.mobileNo }, select: { id: true } }),
-      prisma.school.findUnique({ where: { id: input.schoolId } }),
       prisma.schoolState.findUnique({ where: { id: input.stateId } }),
-      prisma.schoolBranch.findUnique({ where: { id: input.branchId } }),
     ]);
 
     if (existingEmail) throw ApiError.conflict('Email is already registered');
     if (existingMobile) throw ApiError.conflict('Mobile number is already registered');
-    if (!school || !school.isActive) throw ApiError.badRequest('Select a valid school');
     if (!state || !state.isActive) throw ApiError.badRequest('Select a valid state');
-    if (!branch || !branch.isActive || branch.schoolId !== school.id || branch.stateId !== state.id) {
-      throw ApiError.badRequest('Select a valid branch for the chosen school and state');
-    }
 
+    const school = await this.findOrCreateSchoolByName(input.schoolName);
+    if (!school.isActive) throw ApiError.badRequest('This school is not currently active — contact an administrator.');
+
+    // No branch is selected or created here anymore — branchId stays null
+    // until the School Admin creates their own branch(es) later from the
+    // School Panel (see branchCode.service.ts's createBranch()).
     await assertMinPasswordLength(input.password);
     const passwordHash = await hashPassword(input.password);
     const avatarHue    = Math.floor(Math.random() * 360);
@@ -102,9 +131,10 @@ export const SchoolService = {
         profileComplete: true,
         schoolRegistration: {
           create: {
-            schoolId:          input.schoolId,
-            stateId:           input.stateId,
-            branchId:          input.branchId,
+            schoolId:          school.id,
+            stateId:           state.id,
+            // branchId intentionally omitted — nullable, unset until the
+            // School Admin creates a branch themselves.
             contactPersonName: input.contactPersonName,
             contactPhone:      input.contactPhone,
             address:           input.address,

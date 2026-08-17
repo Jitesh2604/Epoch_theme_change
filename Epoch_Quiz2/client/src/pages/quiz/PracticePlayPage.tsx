@@ -14,6 +14,7 @@ import { useQuizExitGuard } from '../../hooks/useQuizExitGuard';
 import { useExamMode } from '../../hooks/useExamMode';
 import { ExamHeader, ExamProgressBar, QuestionPalette, SubmitTestDialog, LeaveExamDialog } from './shared/ExamUI';
 
+
 interface PracticePlayPageProps {
   navigate:  NavigateFn;
   attemptId: string;

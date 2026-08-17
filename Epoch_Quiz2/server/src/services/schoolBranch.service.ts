@@ -10,6 +10,8 @@ export interface SchoolBranchRow {
   schoolId:  string;
   stateId:   string;
   name:      string;
+  city:      string | null;
+  address:   string | null;
   isActive:  boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -30,6 +32,12 @@ export const SchoolBranchService = {
     });
   },
 
+  // Shared by two callers: the platform Admin's catalog CRUD (any school,
+  // via adminCreateSchoolBranchSchema — city/address optional there) and
+  // the School Admin's own "Create Branch" form (branchCode.service.ts's
+  // createBranch(), which resolves schoolId server-side from the actor and
+  // requires city/address on its own validator) — one implementation, one
+  // uniqueness rule, for both.
   async create(input: AdminCreateSchoolBranchInput): Promise<SchoolBranchRow> {
     const [school, state] = await Promise.all([
       prisma.school.findUnique({ where: { id: input.schoolId }, select: { id: true } }),
@@ -49,6 +57,8 @@ export const SchoolBranchService = {
         schoolId: input.schoolId,
         stateId:  input.stateId,
         name:     input.name,
+        city:     input.city ?? null,
+        address:  input.address ?? null,
         isActive: input.isActive ?? true,
       },
     });

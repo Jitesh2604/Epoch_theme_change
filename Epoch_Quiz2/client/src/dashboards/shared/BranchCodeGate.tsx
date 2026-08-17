@@ -1,31 +1,31 @@
 import { useState } from 'react';
 import { KeyRound } from 'lucide-react';
 import { Button, Modal } from './ui';
-import { updateProfile } from '../../lib/authStore';
+import { branchCodeApi } from '../../hooks/useBranchCodes';
 import { ApiError } from '../../lib/api';
 
 /**
- * Shown instead of the assessment list/overview when the student has no
- * valid Teacher Code (see useAssessmentAccess / requireTeacherCode on the
- * backend — this is a UX convenience, not the security boundary itself).
- * Submits through the same PATCH /users/me path as the Profile page's
- * "add a teacher code later" field, so there's exactly one place a code is
- * validated and saved, not a second parallel system.
+ * Shown instead of the assessment list/overview when the student hasn't
+ * verified their Branch Code yet (see useAssessmentAccess /
+ * requireBranchVerification on the backend — this is a UX convenience, not
+ * the security boundary itself). Verifying does NOT let the student pick a
+ * school/branch — it only confirms the code matches the School+Branch they
+ * already selected at registration.
  */
-export function TeacherCodeGate({ onUnlocked }: { onUnlocked: () => void }) {
+export function BranchCodeGate({ onVerified }: { onVerified: () => void }) {
   const [open, setOpen]             = useState(true);
   const [code, setCode]             = useState('');
   const [error, setError]           = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
-    if (!code.trim()) { setError('Enter your teacher code.'); return; }
+    if (!code.trim()) { setError('Enter your Branch Code.'); return; }
     setSubmitting(true);
     setError('');
     try {
-      await updateProfile({ teacherCode: code.trim() });
+      await branchCodeApi.verify(code.trim());
       setOpen(false);
-      onUnlocked();
+      onVerified();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not verify that code. Please try again.');
     } finally {
@@ -40,35 +40,36 @@ export function TeacherCodeGate({ onUnlocked }: { onUnlocked: () => void }) {
           <KeyRound size={28} />
         </div>
         <h2 className="font-display font-semibold text-[22px] text-fg1 mb-2">
-          Teacher Code Required
+          Branch Code Required
         </h2>
         <p className="text-[14px] text-fg3 max-w-md mb-6">
-          Ask your teacher for your Teacher Code to unlock Assessment. Practice stays open either way.
+          Ask your school for your Branch Code to unlock Assessment. Practice stays open either way.
         </p>
         <Button icon={KeyRound} onClick={() => setOpen(true)}>
-          Enter Teacher Code
+          Enter Branch Code
         </Button>
       </div>
 
       <Modal
         open={open}
         onClose={() => { if (!submitting) setOpen(false); }}
-        title="Enter Teacher Code"
+        title="Enter your Branch Code"
         footer={
           <>
             <Button variant="ghost" onClick={() => setOpen(false)} disabled={submitting}>Cancel</Button>
-            <Button onClick={submit} disabled={submitting}>{submitting ? 'Checking…' : 'Unlock Assessment'}</Button>
+            <Button onClick={submit} disabled={submitting}>{submitting ? 'Verifying…' : 'Verify'}</Button>
           </>
         }
       >
         <p className="text-[13px] text-fg3 mb-4">
-          A Teacher Code is required to access Assessment. Enter the code your teacher shared with you.
+          A Branch Code is required to access Assessment. Enter the code your school shared with you —
+          it must match the school and branch you selected on your profile.
         </p>
         <input
           value={code}
           onChange={e => setCode(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') submit(); }}
-          placeholder="e.g. MRS-SHARMA-9A"
+          placeholder="e.g. DPS-RH-4829"
           autoFocus
           className="w-full h-10 px-3 rounded-xl bg-surface1 border border-line text-[13px] text-fg1 focus:outline-none focus:border-brand/40"
         />

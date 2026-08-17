@@ -4,7 +4,7 @@ import App from './App';
 import { DashboardApp } from './dashboards/DashboardApp';
 import './styles/index.css';
 
-const isDashboardRoute = /^\/(admin|select-role|assessment|results|leaderboard|certificates|profile|analytics)(\/|$)/.test(window.location.pathname);
+const isDashboardRoute = /^\/(admin|school|select-role|assessment|results|leaderboard|certificates|profile|analytics)(\/|$)/.test(window.location.pathname);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

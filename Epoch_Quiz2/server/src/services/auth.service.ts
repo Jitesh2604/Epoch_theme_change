@@ -313,7 +313,10 @@ export const AuthService = {
           ...reg,
           schoolName: reg.school.name,
           stateName:  reg.state.name,
-          branchName: reg.branch.name,
+          // branch is no longer set at registration time — null until the
+          // School Admin creates one themselves (see school.service.ts's
+          // register() / branchCode.service.ts's createBranch()).
+          branchName: reg.branch?.name ?? null,
         };
       }
     }

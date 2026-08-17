@@ -50,11 +50,25 @@ export function useAssessment(id: string) {
   return useAsync<Assessment>(() => api.get(`/assessments/${id}`), [id]);
 }
 
-// Does the logged-in student currently have a valid Teacher Code? Checked
-// live server-side (server/src/middlewares/requireTeacherCode.ts is the
+/** The backend's ASSESSMENT_CONFIG (server/src/config/assessmentConfig.ts)
+ *  — the admin "Auto-Generate" UI reads this instead of hardcoding the
+ *  question count/marks/duration/difficulty mix. */
+export interface AssessmentGenerationConfig {
+  totalQuestions: number;
+  totalMarks: number;
+  durationMinutes: number;
+  difficultyDistribution: Record<'EASY' | 'MEDIUM' | 'HARD', number>;
+}
+
+export function useAssessmentGenerationConfig() {
+  return useAsync<AssessmentGenerationConfig>(() => api.get('/assessments/generate-config'), []);
+}
+
+// Has the logged-in student verified their Branch Code yet? Checked live
+// server-side (server/src/middlewares/requireBranchVerification.ts is the
 // actual security gate on /assessments/:id/start) — this is only used to
-// decide whether the frontend shows the Teacher Code popup instead of the
-// assessment list/overview.
+// decide whether the frontend shows the "Enter your Branch Code" popup
+// instead of the assessment list/overview.
 export function useAssessmentAccess() {
   return useAsync<{ hasAccess: boolean }>(() => api.get('/assessments/access'), []);
 }
@@ -67,6 +81,11 @@ export interface AssessmentAssignments {
 export const assessmentApi = {
   create:    (data: { title: string; description?: string; instructions?: string | null; duration: number; subjectExternalId?: string; classExternalId?: string; passingMarks?: number; negativeMarking?: boolean; negativeMarksValue?: number; resultsPublished?: boolean; resultPublishAt?: string | null; assignedClassIds?: string[]; assignedStudentIds?: string[] }) =>
                api.post<Assessment>('/assessments', data),
+  // Auto-generate: question count/marks/duration/difficulty mix all come
+  // from the backend's ASSESSMENT_CONFIG (see useAssessmentGenerationConfig
+  // below) — no duration/totalMarks field to pass here, unlike create().
+  generate:  (data: { title: string; description?: string; instructions?: string | null; subjectExternalId: string; classExternalId?: string; passingMarks?: number; negativeMarking?: boolean; negativeMarksValue?: number; resultsPublished?: boolean; resultPublishAt?: string | null; assignedClassIds?: string[]; assignedStudentIds?: string[] }) =>
+               api.post<Assessment>('/assessments/generate', data),
   update:    (id: string, data: Partial<{ title: string; description: string; instructions: string | null; duration: number; subjectExternalId: string; classExternalId: string; passingMarks: number; negativeMarking: boolean; negativeMarksValue: number; resultsPublished: boolean; resultPublishAt: string | null }>) =>
                api.patch<Assessment>(`/assessments/${id}`, data),
   remove:    (id: string) => api.delete(`/assessments/${id}`),

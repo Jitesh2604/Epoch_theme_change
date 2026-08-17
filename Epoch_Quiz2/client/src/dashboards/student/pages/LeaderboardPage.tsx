@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  School as SchoolIcon, MapPin, Globe, Award, ChevronLeft, ChevronRight, HourglassIcon, Trophy, FlaskConical,
+  School as SchoolIcon, MapPin, Globe, Award, ChevronLeft, ChevronRight, HourglassIcon, Trophy, FlaskConical, PartyPopper,
 } from 'lucide-react';
 import {
   PageHeader, Card, Avatar, Badge, Button, Select, SearchInput, Skeleton, EmptyState,
@@ -74,18 +74,28 @@ export function LeaderboardPage() {
   const navigate = useNavigate();
   const user = loadUser();
 
+  // A student redirected here right after submitting an Assessment arrives
+  // via ?session=<title>&subject=<id>&justSubmitted=1 (see
+  // leaderboardLinkForResult in useSubmissionApi.ts) — read from the URL,
+  // not router `state`, so a page refresh still resolves the same ranking
+  // (state doesn't survive a reload; query params do). Read once on mount:
+  // these only ever seed the initial filter values, the Session/Subject
+  // dropdowns below remain freely changeable afterwards like before.
+  const [searchParams] = useSearchParams();
   const [scope, setScope] = useState<LeaderboardScope>('school');
-  const [session, setSession] = useState('');
-  const [subjectExternalId, setSubjectExternalId] = useState('');
+  const [session, setSession] = useState(() => searchParams.get('session') ?? '');
+  const [subjectExternalId, setSubjectExternalId] = useState(() => searchParams.get('subject') ?? '');
   const [classExternalId, setClassExternalId] = useState('');
   const [schoolSearch, setSchoolSearch] = useState('');
   const [page, setPage] = useState(1);
+  const justSubmitted = searchParams.get('justSubmitted') === '1';
 
   const { data: sessionsData, loading: sessionsLoading } = useLeaderboardSessions();
 
   // Default the Session filter to the most recently published session once
   // it loads — mirrors the server's own "no session given -> most recent"
   // fallback in resolveAssessments(), so the dropdown reflects reality.
+  // Never overrides a session already seeded from the URL above.
   useEffect(() => {
     if (!session && sessionsData?.sessions.length) setSession(sessionsData.sessions[0].title);
   }, [sessionsData, session]);
@@ -236,13 +246,24 @@ export function LeaderboardPage() {
           <h3 className="font-display font-semibold text-[15px] text-fg1">Your Assessment Ranking</h3>
         </div>
 
+        {justSubmitted && !rankingLoading && ranking?.hasResult && (
+          <div className="flex items-center gap-2 mb-4 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400 text-[12.5px] font-medium">
+            <PartyPopper size={14} className="shrink-0" />
+            Assessment submitted! Here's your ranking.
+          </div>
+        )}
+
         {rankingLoading ? (
           <div className="space-y-3">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}</div>
         ) : !ranking?.hasResult ? (
           <EmptyState
             icon={Trophy}
-            title="No ranking yet"
-            desc="Your assessment ranking will appear here after your result is published."
+            title={justSubmitted ? 'Assessment submitted' : 'No ranking yet'}
+            desc={
+              justSubmitted
+                ? "Your assessment has been submitted successfully. Your ranking will appear here once your Admin publishes the results for this Assessment."
+                : 'Your assessment ranking will appear here after your result is published.'
+            }
           />
         ) : (
           <>

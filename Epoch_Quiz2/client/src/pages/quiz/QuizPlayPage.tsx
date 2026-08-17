@@ -15,6 +15,9 @@ import {
 import { Footer } from '../../components/layout/Footer';
 import { PageHead } from '../../components/layout/PageHead';
 import { useT } from '../../lib/i18n';
+// ── TEMPORARY CONTENT CLIENT DEBUG ──
+import { api } from '../../lib/api';
+// ── END TEMPORARY CONTENT CLIENT DEBUG ──
 
 interface QuizPlayPageProps {
   navigate: NavigateFn;
@@ -332,6 +335,55 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate, initialSub
     );
   }
 
+  // ── TEMPORARY CONTENT CLIENT DEBUG ──
+  // Calls the dev-only GET /api/v1/debug/content-client/questions endpoint
+  // (server/src/routes/debug.routes.ts) and prints the RAW
+  // @epochstudio/content-client response straight to the browser console —
+  // no ContentService/ContentMeta transformation in between. Never logs
+  // tokens/passwords/student data; the endpoint itself does not exist when
+  // the backend isn't running in development (see routes/index.ts).
+  const handleDebugContentClient = async () => {
+    try {
+      // all=true walks every page from the Content API server-side and
+      // concatenates them — this is genuinely everything available (up to
+      // the endpoint's own 2000-question safety cap), not a 5-item sample.
+      const data = await api.get<any>('/debug/content-client/questions?all=true');
+      console.log('[CONTENT-CLIENT RAW DATA]', data);
+      console.log('[CONTENT-CLIENT RAW KEYS]', Object.keys(data ?? {}));
+      console.log(`[CONTENT-CLIENT TOTAL] ${data?.pagination?.returned ?? 0} of ${data?.pagination?.total ?? '?'} questions fetched`);
+      if (Array.isArray(data)) {
+        console.log('[CONTENT-CLIENT FIRST ITEM]', data[0]);
+      } else if (Array.isArray((data as any)?.questions)) {
+        console.log('[CONTENT-CLIENT FIRST ITEM]', (data as any).questions[0]);
+        console.log('[CONTENT-CLIENT ALL QUESTIONS]', (data as any).questions);
+      }
+    } catch (err: any) {
+      console.error('[CONTENT-CLIENT RAW DATA] request failed:', err?.message ?? err);
+    }
+  };
+
+  // Calls GET /api/v1/debug/content-client/all — every Content Client
+  // resource type in one go (boards, standards, subjects, series, books,
+  // chapters, plus a small questions sample), each logged separately so
+  // they're easy to tell apart in the console.
+  const handleDebugContentClientAll = async () => {
+    try {
+      const data = await api.get<any>('/debug/content-client/all');
+      console.log('[CONTENT-CLIENT RAW DATA] ALL RESOURCES', data);
+      console.log('[CONTENT-CLIENT RAW KEYS]', Object.keys(data ?? {}));
+      console.log('[CONTENT-CLIENT BOARDS]', data?.boards);
+      console.log('[CONTENT-CLIENT STANDARDS]', data?.standards);
+      console.log('[CONTENT-CLIENT SUBJECTS]', data?.subjects);
+      console.log('[CONTENT-CLIENT SERIES]', data?.series);
+      console.log('[CONTENT-CLIENT BOOKS]', data?.books);
+      console.log('[CONTENT-CLIENT CHAPTERS] (first book only)', data?.chapters);
+      console.log('[CONTENT-CLIENT QUESTIONS SAMPLE]', data?.questionsSample);
+    } catch (err: any) {
+      console.error('[CONTENT-CLIENT RAW DATA] request failed:', err?.message ?? err);
+    }
+  };
+  // ── END TEMPORARY CONTENT CLIENT DEBUG ──
+
   // ── Subject selection screen ────────────────────────────────────
 
   return (
@@ -342,6 +394,17 @@ export const QuizPlayPage: React.FC<QuizPlayPageProps> = ({ navigate, initialSub
         title={t('page.chooseCategory')}
         body={t('page.twoQuizModes')}
       />
+
+      {/* ── TEMPORARY CONTENT CLIENT DEBUG ──
+      <div className="container" style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
+        <Button variant="outline" size="sm" onClick={handleDebugContentClient}>
+          🐞 Debug Content API (Questions)
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleDebugContentClientAll}>
+          🐞 Debug Content API (All: boards/standards/subjects/series/books/chapters)
+        </Button>
+      </div>
+      ── END TEMPORARY CONTENT CLIENT DEBUG ── */}
 
       <section className="container" style={{ paddingBottom: 80 }}>
         {/* Hidden while the difficulty modal is open — otherwise the same

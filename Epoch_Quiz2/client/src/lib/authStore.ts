@@ -27,7 +27,6 @@ export interface ProfileUpdateData {
   // School.name when schoolId is set (see UserService.updateOwnProfile).
   schoolId?: string | null;
   branchId?: string | null;
-  teacherCode?: string | null;
   address?: string | null;
   country?: string | null;
   state?: string | null;

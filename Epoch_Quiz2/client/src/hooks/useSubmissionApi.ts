@@ -11,6 +11,23 @@ export interface AssessmentMeta {
   passingMarks: number;
 }
 
+/**
+ * Where a just-finished Assessment attempt should send the student — the
+ * Leaderboard's Session/Subject filters (see LeaderboardPage.tsx) are
+ * driven by these same query params, not router `state`, specifically so
+ * a page refresh still resolves the right ranking (state doesn't survive
+ * a reload, the URL does). `session` matches on Assessment.title, the same
+ * "session" concept LeaderboardService already ranks by — no new/duplicate
+ * ranking lookup key is introduced here.
+ */
+export function leaderboardLinkForResult(result: { assessment: Pick<AssessmentMeta, 'title' | 'subject'> }): string {
+  const params = new URLSearchParams();
+  params.set('session', result.assessment.title);
+  if (result.assessment.subject?.id) params.set('subject', result.assessment.subject.id);
+  params.set('justSubmitted', '1');
+  return `/leaderboard?${params.toString()}`;
+}
+
 export interface OptionWithImage {
   text:     string;
   imageUrl: string | null;
@@ -63,6 +80,7 @@ export interface ResultQuestion {
   options:             OptionWithImage[] | null;
   matchPairs:          MatchPair[] | null;
   marks:               number;
+  difficulty:          string;
   yourAnswer: {
     selectedOption:  number | null;
     selectedOptions: number[];
@@ -105,10 +123,20 @@ export interface SubmissionResult {
 export const assessmentTakeApi = {
   /** Start an assessment. Returns TakeSubmission when still open,
    *  or { autoSubmitted: true, submission: SubmissionResult } if time already expired. */
-  start: (assessmentId: string) =>
-    api.post<{ submission: TakeSubmission | SubmissionResult; autoSubmitted?: boolean }>(
+  start: async (assessmentId: string) => {
+    const result = await api.post<{ submission: TakeSubmission | SubmissionResult; autoSubmitted?: boolean }>(
       `/assessments/${assessmentId}/start`,
-    ),
+    );
+    // ── TEMPORARY CONTENT CLIENT DEBUG ──
+    // Dev-only: server only includes this field when isDev, so it's simply
+    // absent (and this never logs) in production. Never contains tokens,
+    // passwords, or student-identifying data — just the raw
+    // @epochstudio/content-client Subject record for this assessment.
+    const debug = (result.submission as any)?.contentClientDebug;
+    if (debug) console.log('[CONTENT-CLIENT DATA]', debug);
+    // ── END TEMPORARY CONTENT CLIENT DEBUG ──
+    return result;
+  },
 
   /** Fetch a submission by id.  For IN_PROGRESS returns questions without answers.
    *  For SUBMITTED / GRADED reveals correct answers + explanations. */

@@ -1,5 +1,5 @@
 /**
- * Content service — the ONLY layer in the app that talks to the Epoch Content
+* Content service — the ONLY layer in the app that talks to the Epoch Content
  * API. Everything else (catalog/subject/question/… services, controllers) goes
  * through here so SDK usage is never scattered.
  *
@@ -32,7 +32,7 @@ import {
   type PaginatedQuestions,
 } from '@epochstudio/content-client';
 import { getContentClient, isContentConfigured } from '../lib/contentClient';
-import { env } from '../config';
+import { env, isDev } from '../config';
 import { logger } from '../utils/logger';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -87,22 +87,50 @@ async function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
 export const ContentService = {
   isConfigured(): boolean { return isContentConfigured(); },
 
-  getBoards():    Promise<Board[]>    { return cached('boards',    () => withRetry('boards.list',    () => getContentClient().boards.list())); },
-  getStandards(): Promise<Standard[]> { return cached('standards', () => withRetry('standards.list', () => getContentClient().standards.list())); },
-  getSubjects():  Promise<Subject[]>  { return cached('subjects',  () => withRetry('subjects.list',  () => getContentClient().subjects.list())); },
-  getSeries():    Promise<Series[]>   { return cached('series',    () => withRetry('series.list',     () => getContentClient().series.list())); },
+  // ── TEMPORARY CONTENT CLIENT DEBUG ── every console.log below just prints
+  // the resolved value inline (via .then), no new function declared anywhere.
+  getBoards():    Promise<Board[]>    { return cached('boards',    () => withRetry('boards.list',    () => getContentClient().boards.list().then(d => { if (isDev) console.log('[CONTENT-CLIENT DATA] (backend terminal) raw boards.list() response:', JSON.stringify(d, null, 2)); return d; }))); },
+  getStandards(): Promise<Standard[]> { return cached('standards', () => withRetry('standards.list', () => getContentClient().standards.list().then(d => { if (isDev) console.log('[CONTENT-CLIENT DATA] (backend terminal) raw standards.list() response:', JSON.stringify(d, null, 2)); return d; }))); },
+  getSubjects():  Promise<Subject[]>  { return cached('subjects',  () => withRetry('subjects.list',  () => getContentClient().subjects.list().then(d => { if (isDev) console.log('[CONTENT-CLIENT DATA] (backend terminal) raw subjects.list() response:', JSON.stringify(d, null, 2)); return d; }))); },
+  getSeries():    Promise<Series[]>   { return cached('series',    () => withRetry('series.list',     () => getContentClient().series.list().then(d => { if (isDev) console.log('[CONTENT-CLIENT DATA] (backend terminal) raw series.list() response:', JSON.stringify(d, null, 2)); return d; }))); },
+  // ── END TEMPORARY CONTENT CLIENT DEBUG ──
 
   getBooks(filters?: BookFilters): Promise<Book[]> {
     const key = `books:${JSON.stringify(filters ?? {})}`;
-    return cached(key, () => withRetry('books.list', () => getContentClient().books.list(filters)));
+    return cached(key, () => withRetry('books.list', () => getContentClient().books.list(filters).then(d => {
+      // ── TEMPORARY CONTENT CLIENT DEBUG ──
+      if (isDev) console.log('[CONTENT-CLIENT DATA] (backend terminal) raw books.list() response:', JSON.stringify(d, null, 2));
+      // ── END TEMPORARY CONTENT CLIENT DEBUG ──
+      return d;
+    })));
   },
   getChapters(bookId: string): Promise<Chapter[]> {
-    return cached(`chapters:${bookId}`, () => withRetry(`books.getChapters(${bookId})`, () => getContentClient().books.getChapters(bookId)));
+    return cached(`chapters:${bookId}`, () => withRetry(`books.getChapters(${bookId})`, () => getContentClient().books.getChapters(bookId).then(d => {
+      // ── TEMPORARY CONTENT CLIENT DEBUG ──
+      if (isDev) console.log('[CONTENT-CLIENT DATA] (backend terminal) raw books.getChapters() response:', JSON.stringify(d, null, 2));
+      // ── END TEMPORARY CONTENT CLIENT DEBUG ──
+      return d;
+    })));
   },
   getQuestions(filters?: QuestionFilters): Promise<PaginatedQuestions> {
     // Questions are NOT cached here — they are app-owned local data and this
     // endpoint is not used for the local question bank. Kept for completeness.
-    return withRetry('questions.list', () => getContentClient().questions.list(filters));
+    // (Removed a pre-existing `console.log(getContentClient().questions.list(filters))`
+    // here — it logged the un-awaited Promise object itself, never the
+    // resolved data. Replaced below with a correct, dev-only debug log of
+    // the actual resolved response.)
+    return withRetry('questions.list', async () => {
+      const raw = await getContentClient().questions.list(filters);
+      // ── TEMPORARY CONTENT CLIENT DEBUG ──
+      // This is the FIRST backend location that calls
+      // @epochstudio/content-client for question data — logs the exact raw
+      // SDK response, before any transformation by this app. Dev-only.
+      if (isDev) {
+        console.log('[CONTENT-CLIENT DATA] (backend terminal) raw questions.list() response:', JSON.stringify(raw, null, 2));
+      }
+      // ── END TEMPORARY CONTENT CLIENT DEBUG ──
+      return raw;
+    });
   },
 };
 

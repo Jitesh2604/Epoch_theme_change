@@ -7,6 +7,7 @@ import {
 import { Card, Button, ProgressBar, useToasts } from '../../shared/ui';
 import {
   assessmentTakeApi,
+  leaderboardLinkForResult,
   type TakeSubmission,
   type TakeQuestion,
   type DraftSave,
@@ -466,9 +467,11 @@ export function AssessmentTakePage() {
 
       try {
         const result = await assessmentTakeApi.submit(submissionId, answers);
-        navigate(`/assessment/result/${submissionId}`, {
-          state: { result, autoSubmitted: auto },
-        });
+        // Submission is durably saved (submit() only resolves after the
+        // server's grading transaction commits) — safe to navigate now.
+        // Go straight to the Leaderboard, scoped to this Assessment's
+        // session/subject, instead of the result page.
+        navigate(leaderboardLinkForResult(result));
       } catch (e: any) {
         setSubmitting(false);
         if (auto) {

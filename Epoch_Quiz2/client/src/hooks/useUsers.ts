@@ -6,7 +6,6 @@ interface NestedProfile {
   mobileNo?: string | null;
   dob?: string | null;
   schoolName?: string | null;
-  teacherCode?: string | null;
   address?: string | null;
   country?: string | null;
   state?: string | null;
@@ -104,7 +103,7 @@ export const userApi = {
   update: (id: string, data: { name?: string; status?: string; schoolName?: string }) =>
     api.patch(`/users/${id}`, data),
   deactivate: (id: string) => api.delete(`/users/${id}`),
-  updateMe: (data: { name?: string; avatarHue?: number; schoolName?: string; classExternalId?: string | null; teacherCode?: string | null }) =>
+  updateMe: (data: { name?: string; avatarHue?: number; schoolName?: string; classExternalId?: string | null }) =>
     api.patch('/users/me', data),
   // Backend (PATCH /users/me/password) is fully implemented (self-service
   // password change). No "Change password" UI exists on the Profile pages

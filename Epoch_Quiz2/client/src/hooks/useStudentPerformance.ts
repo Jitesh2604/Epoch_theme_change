@@ -1,6 +1,6 @@
 import { api } from '../lib/api';
 import { useAsync } from './useApi';
-import type { PracticeOverview, SubjectStat, QuestionTypeStat, TopicStat } from './useStudentAnalytics';
+import type { PracticeOverview, SubjectStat, QuestionTypeStat, DifficultyStat, TopicStat } from './useStudentAnalytics';
 import type { RevisionDashboard } from './useRevision';
 
 // Admin Analytics — Feature 2: Student Performance Analytics (Practice
@@ -79,6 +79,7 @@ export interface StudentDetail {
   overview: PracticeOverview;
   subjects: SubjectStat[];
   questionTypes: QuestionTypeStat[];
+  difficulties: DifficultyStat[];
   topics: TopicStat[];
   revisionDashboard: RevisionDashboard;
   assessmentStats: SubmissionStats;

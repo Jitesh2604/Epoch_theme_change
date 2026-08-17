@@ -6,11 +6,11 @@ import {
 } from 'lucide-react';
 import { Card, Button, Badge, Skeleton, useToasts } from '../../shared/ui';
 import { SessionOverScreen } from '../../shared/SessionOverScreen';
-import { TeacherCodeGate } from '../../shared/TeacherCodeGate';
+import { BranchCodeGate } from '../../shared/BranchCodeGate';
 import { SESSION_END_DATE } from '../../../config/assessmentSession';
 import { useAssessment, useAssessmentAccess } from '../../../hooks/useAssessments';
 import { useMySubmissions } from '../../../hooks/useSubmissions';
-import { assessmentTakeApi, type TakeSubmission, type SubmissionResult } from '../../../hooks/useSubmissionApi';
+import { assessmentTakeApi, leaderboardLinkForResult, type TakeSubmission, type SubmissionResult } from '../../../hooks/useSubmissionApi';
 
 /** This page is deliberately a dedicated exam-landing page, not a dashboard
  *  page — see DashboardApp.tsx: the whole Assessment flow (entry, details,
@@ -58,7 +58,7 @@ export function AssessmentOverviewPage() {
   // Defensive, in-depth check for direct/bookmarked links straight into an
   // assessment's overview page — the list page already gates this, but a
   // stale link shouldn't skip it. The real enforcement is server-side
-  // (requireTeacherCode on POST /assessments/:id/start).
+  // (requireBranchVerification on POST /assessments/:id/start).
   const access = useAssessmentAccess();
 
   // A student gets exactly one attempt: once a submission for THIS assessment
@@ -82,7 +82,7 @@ export function AssessmentOverviewPage() {
   }
 
   if (!access.loading && !access.data?.hasAccess) {
-    return <StandalonePage><TeacherCodeGate onUnlocked={() => access.refetch()} /></StandalonePage>;
+    return <StandalonePage><BranchCodeGate onVerified={() => access.refetch()} /></StandalonePage>;
   }
 
   const handleStart = async () => {
@@ -93,8 +93,8 @@ export function AssessmentOverviewPage() {
 
       if (resp.autoSubmitted) {
         const result = resp.submission as SubmissionResult;
-        push({ kind: 'info', title: 'Time already expired', sub: 'Redirecting to your results…' });
-        setTimeout(() => navigate(`/assessment/result/${result.id}`, { state: { result } }), 400);
+        push({ kind: 'info', title: 'Time already expired', sub: 'Redirecting to the Leaderboard…' });
+        setTimeout(() => navigate(leaderboardLinkForResult(result)), 400);
         return;
       }
 

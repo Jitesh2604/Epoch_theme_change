@@ -5,9 +5,40 @@ import { ApiError } from '../utils/ApiError';
 import { isAdminRole } from '../utils/roles';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
 import { parseStrArr, parseIntArr, toJson } from '../utils/json';
-import { ContentMeta } from './content.service';
+import { ContentMeta, ContentService } from './content.service';
+import { isDev } from '../config';
 import type { Actor } from './assessment.service';
 import { assessmentVisibleToStudent, isResultVisible } from './assessment.service';
+import { SchoolPanelService } from './schoolPanel.service';
+
+// ── TEMPORARY DEBUG LOGGING (backend → frontend data-flow audit) ──────────
+// Dev-only (isDev), console.log, no request/response shape change — remove
+// once the audit is done. Never logs student name/email/tokens/passwords.
+function logAssessmentToFrontend(context: string, payload: Record<string, unknown>, questions: Array<{
+  questionId: string; type: string; prompt: string; promptImageUrl: string | null;
+  options: { text: string; imageUrl: string | null }[] | null; marks: number;
+}>): void {
+  if (!isDev) return;
+  console.log(`\n[ASSESSMENT → FRONTEND] (${context})`);
+  console.log('[ASSESSMENT → FRONTEND] Assessment:', payload);
+  console.log(`[ASSESSMENT → FRONTEND] Questions: ${questions.length}`);
+  questions.forEach((q, i) => {
+    console.log(`[ASSESSMENT → FRONTEND] Question ${i + 1}:`, {
+      id: q.questionId,
+      type: q.type,
+      // AssessmentQuestionBank.difficulty exists in the DB but is NOT
+      // selected/returned anywhere in this response — flagged here rather
+      // than fabricated so the gap is visible in the console, not hidden.
+      difficulty: 'NOT INCLUDED IN RESPONSE',
+      marks: q.marks,
+      promptPreview: q.prompt.slice(0, 60),
+      image: q.promptImageUrl || q.options?.some(o => o.imageUrl) ? 'yes' : 'no',
+      optionCount: q.options?.length ?? 0,
+    });
+  });
+  console.log('[ASSESSMENT → FRONTEND] Full response object:', JSON.stringify({ ...payload, questions }, null, 2));
+}
+// ── END TEMPORARY DEBUG LOGGING ────────────────────────────────────────────
 
 function slugify(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'subject';
@@ -34,7 +65,7 @@ interface AssessmentQuestion {
   optionA: string | null; optionB: string | null; optionC: string | null; optionD: string | null;
   optionAImageUrl: string | null; optionBImageUrl: string | null;
   optionCImageUrl: string | null; optionDImageUrl: string | null;
-  matchPairs: string | null; marks: number;
+  matchPairs: string | null; marks: number; difficulty: string;
   correctAnswer: string | null; correctOptions: string; correctBoolean: boolean | null;
   explanation: string | null; explanationImageUrl: string | null; modelAnswer: string | null;
 }
@@ -85,7 +116,7 @@ const aqQuestionSelect = {
   id: true, type: true, prompt: true, promptImageUrl: true,
   optionA: true, optionB: true, optionC: true, optionD: true,
   optionAImageUrl: true, optionBImageUrl: true, optionCImageUrl: true, optionDImageUrl: true,
-  matchPairs: true, marks: true, correctAnswer: true, correctOptions: true, correctBoolean: true,
+  matchPairs: true, marks: true, difficulty: true, correctAnswer: true, correctOptions: true, correctBoolean: true,
   explanation: true, explanationImageUrl: true, modelAnswer: true,
 } satisfies Prisma.QuestionSelect;
 
@@ -100,7 +131,7 @@ async function loadAssessmentQuestions(assessmentId: string): Promise<Assessment
     optionA: r.question.optionA, optionB: r.question.optionB, optionC: r.question.optionC, optionD: r.question.optionD,
     optionAImageUrl: r.question.optionAImageUrl, optionBImageUrl: r.question.optionBImageUrl,
     optionCImageUrl: r.question.optionCImageUrl, optionDImageUrl: r.question.optionDImageUrl,
-    matchPairs: r.question.matchPairs, marks: r.question.marks,
+    matchPairs: r.question.matchPairs, marks: r.question.marks, difficulty: r.question.difficulty,
     correctAnswer: r.question.correctAnswer, correctOptions: r.question.correctOptions, correctBoolean: r.question.correctBoolean,
     explanation: r.question.explanation, explanationImageUrl: r.question.explanationImageUrl, modelAnswer: r.question.modelAnswer,
   }));
@@ -222,6 +253,7 @@ function shapeSubmission(s: LoadedSubmission, aqs: AssessmentQuestion[], answers
       options:        opts,
       matchPairs:     aq.type === QuestionType.MATCH_THE_COLUMN ? matchPairs : null,
       marks:          aq.marksOverride ?? aq.marks,
+      difficulty:     aq.difficulty,
       negativeMarks:  s.aNegativeMarking ? (aq.negMarksOverride ?? s.aNegativeMarksValue) : 0,
       yourAnswer: a ? {
         selectedOption:  a.selectedOption,
@@ -242,6 +274,19 @@ function shapeSubmission(s: LoadedSubmission, aqs: AssessmentQuestion[], answers
       } : {}),
     };
   });
+
+  logAssessmentToFrontend('result: GET /submissions/:id or POST /submissions/:id/submit', {
+    assessmentId: s.assessmentId,
+    title: s.aTitle,
+    subject: s.subId ? { id: s.subId, name: s.subName } : null,
+    class: 'NOT INCLUDED IN RESPONSE',
+    totalQuestions: questions.length,
+    totalMarks: total,
+    scoreObtained: score,
+    percent: pct,
+    duration: `${s.aDuration} minutes`,
+    resultsVisible: resultsVisibleFor(s),
+  }, questions);
 
   return {
     id: s.id, status: s.status, score, totalMarks: total, percent: pct,
@@ -367,6 +412,21 @@ export const SubmissionService = {
     });
     if (!assessment) throw ApiError.notFound('Assessment not found');
     const subjectName = await ContentMeta.subjectName(assessment.subjectExternalId);
+
+    // ── TEMPORARY CONTENT CLIENT DEBUG ──
+    // Raw @epochstudio/content-client Subject record (id/name/tenantId/
+    // createdAt) actually backing `subjectName` above — served from the same
+    // TTL cache ContentMeta.subjectName() already populated, so this adds no
+    // extra network call. Dev-only; never present in a production response.
+    let contentClientDebug: unknown = null;
+    if (isDev && assessment.subjectExternalId) {
+      try {
+        const rawSubjects = await ContentService.getSubjects();
+        contentClientDebug = rawSubjects.find(s => String(s.id) === assessment.subjectExternalId) ?? null;
+      } catch { contentClientDebug = null; }
+    }
+    // ── END TEMPORARY CONTENT CLIENT DEBUG ──
+
     if (assessment.status !== AssessmentStatus.PUBLISHED) throw ApiError.notFound('Assessment not found');
     if (!(await assessmentVisibleToStudent(actor.id, assessmentId))) throw ApiError.notFound('Assessment not found');
 
@@ -437,6 +497,16 @@ export const SubmissionService = {
       textAnswer:      a.textAnswer,
     }));
 
+    logAssessmentToFrontend('start-attempt: POST /assessments/:id/start', {
+      assessmentId: assessment.id,
+      title: assessment.title,
+      subject: assessment.subjectExternalId ? { id: assessment.subjectExternalId, name: subjectName } : null,
+      class: 'NOT INCLUDED IN RESPONSE',
+      totalQuestions: questions.length,
+      totalMarks: submission.totalMarks,
+      duration: `${assessment.duration} minutes`,
+    }, questions);
+
     return {
       submission: {
         id: submission.id, status: submission.status, startedAt: submission.startedAt,
@@ -450,6 +520,8 @@ export const SubmissionService = {
         },
         questions,
         savedAnswers: existing,
+        // ── TEMPORARY CONTENT CLIENT DEBUG ── additive-only, dev-only field.
+        ...(isDev && { contentClientDebug }),
       },
     };
   },
@@ -565,6 +637,36 @@ export const SubmissionService = {
     const aqs     = await loadAssessmentQuestions(s.assessmentId);
     const answers = await loadAnswers(id);
     return shapeSubmission(s, aqs, answers, !inProgress);
+  },
+
+  /**
+   * School Panel — Answer Sheet tab. Reuses shapeSubmission() unmodified
+   * (the exact same full-reveal shape a platform Admin already gets via
+   * findById() above), scoped instead to the calling School Admin's own
+   * school. The real security boundary is the SUBMISSION's own studentId
+   * (resolved from the DB), not the :studentId route param — a mismatched
+   * param is still rejected, but even a well-formed URL can never surface
+   * another school's submission, because the check is against who the
+   * submission actually belongs to, not what the client claims.
+   */
+  async getForSchoolAdmin(actor: Actor, studentId: string, submissionId: string) {
+    const schoolId = await SchoolPanelService.resolveAdminSchool(actor);
+
+    const s = await loadSubmissionFlat(submissionId);
+    if (!s) throw ApiError.notFound('Submission not found');
+    if (s.studentId !== studentId) throw ApiError.notFound('Submission not found');
+
+    const studentProfile = await prisma.studentProfile.findUnique({
+      where: { userId: s.studentId }, select: { schoolId: true },
+    });
+    // 404, not 403 — never confirm/deny another school's submission exists.
+    if (!studentProfile || studentProfile.schoolId !== schoolId) throw ApiError.notFound('Submission not found');
+
+    if (!resultsVisibleFor(s)) throw ApiError.badRequest('Results are not published for this assessment yet.');
+
+    const aqs     = await loadAssessmentQuestions(s.assessmentId);
+    const answers = await loadAnswers(submissionId);
+    return shapeSubmission(s, aqs, answers, true);
   },
 
   async listMine(actor: Actor, query: ListSubmissionsQuery) {

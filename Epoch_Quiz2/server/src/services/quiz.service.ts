@@ -5,9 +5,10 @@ import { PracticeConfig } from '../config/practiceConfig';
 import { parseStrArr, toJson } from '../utils/json';
 import { ApiError } from '../utils/ApiError';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
-import { ContentMeta, UNKNOWN_SUBJECT_NAME } from './content.service';
+import { ContentMeta, ContentService, UNKNOWN_SUBJECT_NAME } from './content.service';
 import { RevisionService } from './revision.service';
 import { REVISION_SECONDS_PER_QUESTION } from '../config/revisionConfig';
+import { isDev } from '../config';
 import type {
   StartPracticeInput,
   PreviewPracticeInput,
@@ -101,6 +102,32 @@ function sanitizeQuestion(q: QuizQuestion, order: number) {
     difficulty:     q.difficulty,
   };
 }
+
+// ── TEMPORARY DEBUG LOGGING (backend → frontend data-flow audit) ──────────
+// Dev-only (isDev), console.log, no request/response shape change — remove
+// once the audit is done. Never logs student name/email/tokens/passwords.
+function logPracticeToFrontend(context: string, payload: Record<string, unknown>, questions: Array<{
+  id: string; type: string; prompt: string; promptImageUrl: string | null;
+  options: { text: string; imageUrl: string | null }[] | null; marks: number; difficulty?: string;
+}>): void {
+  if (!isDev) return;
+  console.log(`\n[PRACTICE → FRONTEND] (${context})`);
+  console.log('[PRACTICE → FRONTEND] Practice:', payload);
+  console.log(`[PRACTICE → FRONTEND] Questions: ${questions.length}`);
+  questions.forEach((q, i) => {
+    console.log(`[PRACTICE → FRONTEND] Question ${i + 1}:`, {
+      id: q.id,
+      type: q.type,
+      difficulty: q.difficulty ?? 'NOT INCLUDED IN RESPONSE',
+      marks: q.marks,
+      promptPreview: q.prompt.slice(0, 60),
+      image: q.promptImageUrl || q.options?.some(o => o.imageUrl) ? 'yes' : 'no',
+      optionCount: q.options?.length ?? 0,
+    });
+  });
+  console.log('[PRACTICE → FRONTEND] Full response object:', JSON.stringify({ ...payload, questions }, null, 2));
+}
+// ── END TEMPORARY DEBUG LOGGING ────────────────────────────────────────────
 
 interface AnswerLike {
   selectedOption:  string | null;
@@ -387,6 +414,29 @@ async function buildResult(attemptId: string) {
   const subExtId    = attempt.quiz?.subjectExternalId ?? null;
   const subjectName = subExtId ? subjectNames.get(subExtId) ?? UNKNOWN_SUBJECT_NAME : null;
 
+  logPracticeToFrontend('result: GET /quizzes/attempts/:id or POST /quizzes/attempts/:id/submit', {
+    attemptId: attempt.id,
+    attemptNumber: attempt.attemptNumber,
+    quiz: {
+      id: attempt.quiz?.id ?? attempt.quizId,
+      title: attempt.quiz?.title ?? 'Quiz',
+      quizType: attempt.quiz?.quizType ?? null,
+      subject: subExtId ? { id: subExtId, name: subjectName ?? UNKNOWN_SUBJECT_NAME } : null,
+    },
+    class: 'NOT INCLUDED IN RESPONSE',
+    totalQuestions: answers.length,
+    totalMarks,
+    scoreObtained: attempt.score,
+    percent: attempt.percentage,
+    correctAnswers: attempt.correctAnswers,
+    wrongAnswers: attempt.wrongAnswers,
+    skipped: attempt.skipped,
+  }, answers.map(a => ({
+    id: a.questionId, type: a.question.type, prompt: a.question.prompt,
+    promptImageUrl: a.question.promptImageUrl, options: getOptions(a.question),
+    marks: a.question.marks, difficulty: a.question.difficulty,
+  })));
+
   return {
     attemptId:      attempt.id,
     attemptNumber:  attempt.attemptNumber,
@@ -610,6 +660,19 @@ export const QuizService = {
       throw ApiError.badRequest('This category is an Olympiad mode — use the Olympiad flow, not subject practice.');
     }
 
+    // ── TEMPORARY CONTENT CLIENT DEBUG ──
+    // Raw @epochstudio/content-client Subject record backing `subjectName`
+    // above — served from the same TTL cache ContentMeta.subjects() already
+    // populated, so this adds no extra network call. Dev-only.
+    let contentClientDebug: unknown = null;
+    if (isDev) {
+      try {
+        const rawSubjects = await ContentService.getSubjects();
+        contentClientDebug = rawSubjects.find(s => String(s.id) === input.subjectExternalId) ?? null;
+      } catch { contentClientDebug = null; }
+    }
+    // ── END TEMPORARY CONTENT CLIENT DEBUG ──
+
     const quizId = await getOrCreatePracticeQuiz(input.subjectExternalId, subjectName, studentId);
 
     // Always starts a brand-new attempt, even if the student already has one
@@ -648,6 +711,21 @@ export const QuizService = {
       data: selected.map(sq => ({ attemptId, questionId: sq.id, selectedOptions: '[]', isSkipped: true, isMarkedReview: false, marksAwarded: 0 })),
     });
 
+    const practiceQuestions = selected.map((sq, i) => sanitizeQuestion(sq, i + 1));
+
+    logPracticeToFrontend('start-practice: POST /quizzes/practice/start', {
+      quizId, attemptId, attemptNumber,
+      subject,
+      class: 'NOT INCLUDED IN RESPONSE (used only to scope selection server-side)',
+      chapterTopic: input.chapterExternalId
+        ? `${input.chapterExternalId} (raw external id only — name NOT INCLUDED IN RESPONSE)`
+        : 'not requested',
+      difficulty: input.difficulty,
+      totalQuestions: practiceQuestions.length,
+      totalMarks: selected.reduce((s, sq) => s + sq.marks, 0),
+      timeLimitSec,
+    }, practiceQuestions);
+
     return {
       attemptId,
       attemptNumber,
@@ -658,7 +736,9 @@ export const QuizService = {
       timeLimitSec,
       totalMarks:    selected.reduce((s, sq) => s + sq.marks, 0),
       startTime:     new Date(),
-      questions:     selected.map((sq, i) => sanitizeQuestion(sq, i + 1)),
+      questions:     practiceQuestions,
+      // ── TEMPORARY CONTENT CLIENT DEBUG ── additive-only, dev-only field.
+      ...(isDev && { contentClientDebug }),
     };
   },
 
@@ -704,6 +784,17 @@ export const QuizService = {
       data: selected.map(sq => ({ attemptId, questionId: sq.id, selectedOptions: '[]', isSkipped: true, isMarkedReview: false, marksAwarded: 0 })),
     });
 
+    const mixedQuestions = selected.map((sq, i) => sanitizeQuestion(sq, i + 1));
+
+    logPracticeToFrontend('start-mixed-practice: POST /quizzes/practice/mixed/start', {
+      quizId, attemptId, attemptNumber, subject,
+      class: 'NOT INCLUDED IN RESPONSE (used only to scope selection server-side)',
+      difficulty: input.difficulty,
+      totalQuestions: mixedQuestions.length,
+      totalMarks: selected.reduce((s, sq) => s + sq.marks, 0),
+      timeLimitSec,
+    }, mixedQuestions);
+
     return {
       attemptId,
       attemptNumber,
@@ -714,7 +805,7 @@ export const QuizService = {
       timeLimitSec,
       totalMarks:    selected.reduce((s, sq) => s + sq.marks, 0),
       startTime:     new Date(),
-      questions:     selected.map((sq, i) => sanitizeQuestion(sq, i + 1)),
+      questions:     mixedQuestions,
     };
   },
 
@@ -1036,6 +1127,16 @@ export const QuizService = {
       data: selected.map(sq => ({ attemptId, questionId: sq.id, selectedOptions: '[]', isSkipped: true, isMarkedReview: false, marksAwarded: 0 })),
     });
 
+    const retryQuestions = selected.map((sq, i) => sanitizeQuestion(sq, i + 1));
+
+    logPracticeToFrontend('start-retry: POST /quizzes/practice/retry/:sourceAttemptId/start', {
+      quizId, attemptId, attemptNumber, scope, sourceAttemptId,
+      subject: { id: 'retry', name: 'Retry: Wrong & Skipped Questions' },
+      totalQuestions: retryQuestions.length,
+      totalMarks: selected.reduce((s, sq) => s + sq.marks, 0),
+      timeLimitSec,
+    }, retryQuestions);
+
     return {
       attemptId,
       attemptNumber,
@@ -1048,7 +1149,7 @@ export const QuizService = {
       timeLimitSec,
       totalMarks:    selected.reduce((s, sq) => s + sq.marks, 0),
       startTime:     new Date(),
-      questions:     selected.map((sq, i) => sanitizeQuestion(sq, i + 1)),
+      questions:     retryQuestions,
     };
   },
 
@@ -1081,6 +1182,16 @@ export const QuizService = {
       data: selected.map(sq => ({ attemptId, questionId: sq.id, selectedOptions: '[]', isSkipped: true, isMarkedReview: false, marksAwarded: 0 })),
     });
 
+    const revisionQuestions = selected.map((sq, i) => sanitizeQuestion(sq, i + 1));
+
+    logPracticeToFrontend('start-revision: POST /quizzes/practice/revision/start', {
+      quizId, attemptId, attemptNumber,
+      subject: { id: 'revision', name: "Today's Revision" },
+      totalQuestions: revisionQuestions.length,
+      totalMarks: selected.reduce((s, sq) => s + sq.marks, 0),
+      timeLimitSec,
+    }, revisionQuestions);
+
     return {
       attemptId,
       attemptNumber,
@@ -1091,7 +1202,7 @@ export const QuizService = {
       timeLimitSec,
       totalMarks:    selected.reduce((s, sq) => s + sq.marks, 0),
       startTime:     new Date(),
-      questions:     selected.map((sq, i) => sanitizeQuestion(sq, i + 1)),
+      questions:     revisionQuestions,
     };
   },
 
@@ -1159,6 +1270,17 @@ export const QuizService = {
       data: selected.map(sq => ({ attemptId, questionId: sq.id, selectedOptions: '[]', isSkipped: true, isMarkedReview: false, marksAwarded: 0 })),
     });
 
+    const olympiadQuestions = selected.map((sq, i) => sanitizeQuestion(sq, i + 1));
+
+    logPracticeToFrontend('start-olympiad: POST /quizzes/olympiad/start', {
+      quizId, attemptId, attemptNumber,
+      subject: { id: 'olympiad', name: 'Practice Olympiad' },
+      class: `${profile.classExternalId ?? 'none'} (used only to scope selection server-side — NOT INCLUDED IN RESPONSE)`,
+      perSubject, distribution,
+      totalQuestions: olympiadQuestions.length,
+      totalMarks: selected.reduce((s, sq) => s + sq.marks, 0),
+    }, olympiadQuestions);
+
     return {
       attemptId,
       attemptNumber,
@@ -1171,7 +1293,7 @@ export const QuizService = {
       questionCount: selected.length,
       totalMarks:    selected.reduce((s, sq) => s + sq.marks, 0),
       startTime:     new Date(),
-      questions:     selected.map((sq, i) => sanitizeQuestion(sq, i + 1)),
+      questions:     olympiadQuestions,
     };
   },
 

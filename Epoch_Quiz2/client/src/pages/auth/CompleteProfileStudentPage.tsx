@@ -27,7 +27,6 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
   const [dob,         setDob]         = useState('');
   const [schoolId,    setSchoolId]    = useState('');
   const [branchId,    setBranchId]    = useState('');
-  const [teacherCode, setTeacherCode] = useState('');
   const [classId,     setClassId]     = useState('');
   const [educationBoard, setEducationBoard] = useState('');
   const [stateBoard,  setStateBoard]  = useState('');
@@ -58,13 +57,6 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
   const classOptions   = (classes.data ?? []).map(c => ({ value: c.id, label: c.name }));
   const schoolOptions  = (schools.data ?? []).map(s => ({ value: s.id, label: s.name }));
   const branchOptions  = (branches.data ?? []).map(b => ({ value: b.id, label: b.name }));
-  // Not part of `validate()` — a bad/unknown teacher code must never block
-  // finishing registration (it's optional and can be added/fixed later
-  // from the profile page). This is just immediate inline feedback while
-  // typing; the real check happens server-side when it's actually saved.
-  const teacherCodeFormatError = teacherCode.trim() && !/^[A-Za-z0-9_-]+$/.test(teacherCode.trim())
-    ? 'Teacher code can only contain letters, numbers, - and _.'
-    : '';
 
   const validate = (): Record<string, string> => {
     const errs: Record<string, string> = {};
@@ -111,24 +103,10 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
         imageUrl:    imageUrl || null,
       };
       await updateProfile(payload);
-
-      // Teacher Code is optional and never required to finish registration
-      // (it only unlocks Assessment, added separately here so an invalid
-      // code can never block completing the rest of the profile) — best
-      // effort: if it fails, the student still lands on Home and can fix
-      // it later from their profile.
-      const tc = teacherCode.trim();
-      if (tc) {
-        try {
-          await updateProfile({ teacherCode: tc });
-          showToast('Profile saved — welcome to Epoch Quiz!', 'success');
-        } catch (tcErr) {
-          const tcMsg = tcErr instanceof ApiError ? tcErr.message : 'Could not save your teacher code.';
-          showToast(`Profile saved. ${tcMsg} You can add it later from your profile.`, 'danger');
-        }
-      } else {
-        showToast('Profile saved — welcome to Epoch Quiz!', 'success');
-      }
+      // Class Code is intentionally not part of registration — it's
+      // entered later, either via the Assessment "Enter your Class Code"
+      // popup or the Profile page's "Join Class" action.
+      showToast('Profile saved — welcome to Epoch Quiz!', 'success');
       window.location.href = '/#/home';
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Could not save profile. Please try again.';
@@ -179,12 +157,6 @@ export const CompleteProfileStudentPage: React.FC<Props> = ({ navigate }) => {
               options={branchOptions} icon="building" error={errors.branchId}
               disabled={!schoolId || branches.loading}
               placeholder={!schoolId ? 'Select a school first' : branches.loading ? 'Loading branches…' : 'Select branch'}
-            />
-            <ProfileField
-              label="Teacher code" value={teacherCode} onChange={setTeacherCode}
-              placeholder="If your teacher gave you a code" icon="hash" optional
-              error={teacherCodeFormatError}
-              hint="Unlocks Assessment — you can also add this later from your profile."
             />
             <SelectField
               label="Class" value={classId} onChange={setClassId}

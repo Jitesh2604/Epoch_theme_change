@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import {
   Mail, Award, Edit3, Save, X, Trophy, Calendar, FileText,
-  Building, MapPin, User, Phone, Clock, GraduationCap, KeyRound,
+  Building, MapPin, User, Phone, Clock, GraduationCap, KeyRound, School as SchoolIcon,
 } from 'lucide-react';
 import { PageHeader, Card, Button, Badge, StatCard, Avatar, Skeleton, Select } from '../../shared/ui';
 import { loadUser } from '../../../lib/authStore';
 import { userApi, useMyProfile } from '../../../hooks/useUsers';
 import { useOlympiadAttempts } from '../../../hooks/usePracticeQuiz';
 import { useClasses } from '../../../hooks/useCatalog';
+import { branchCodeApi, useMyBranchStatus } from '../../../hooks/useBranchCodes';
+import { ApiError } from '../../../lib/api';
 import { useToasts } from '../../shared/ui';
 
 function StandalonePage({ children }: { children: React.ReactNode }) {
@@ -57,7 +59,6 @@ export function ProfilePage() {
   const [name, setName] = useState('');
   const [schoolName, setSchoolName] = useState('');
   const [classId, setClassId] = useState('');
-  const [teacherCode, setTeacherCode] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -65,7 +66,6 @@ export function ProfilePage() {
       setName(profile.name ?? '');
       setSchoolName(profile.studentProfile?.schoolName ?? '');
       setClassId(profile.studentProfile?.classExternalId ?? '');
-      setTeacherCode(profile.studentProfile?.teacherCode ?? '');
     } else if (cachedUser) {
       setName(cachedUser.name ?? '');
     }
@@ -78,9 +78,6 @@ export function ProfilePage() {
         name,
         schoolName: schoolName || undefined,
         classExternalId: classId || null,
-        // Unlocks Assessment once it validates against the Teacher Code
-        // catalog server-side — same field the Assessment popup writes to.
-        teacherCode: teacherCode.trim() || null,
       });
       push({ kind: 'success', title: 'Profile updated' });
       setEditing(false);
@@ -89,6 +86,32 @@ export function ProfilePage() {
       push({ kind: 'danger', title: 'Failed', sub: e.message });
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Branch Verification — the School+Branch dropdown at registration is
+  // just a SELECTION; a Branch Code is what actually proves it and unlocks
+  // Assessment (see requireBranchVerification on the backend). Same
+  // "Verify" action the Assessment popup uses, so a student who hasn't
+  // been gate-blocked yet can still self-serve it here.
+  const { data: branchStatus, loading: branchStatusLoading, refetch: refetchBranchStatus } = useMyBranchStatus();
+  const [branchCode, setBranchCode] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState('');
+
+  const verifyBranch = async () => {
+    if (!branchCode.trim()) { setVerifyError('Enter your Branch Code.'); return; }
+    setVerifying(true);
+    setVerifyError('');
+    try {
+      await branchCodeApi.verify(branchCode.trim());
+      setBranchCode('');
+      push({ kind: 'success', title: 'Branch verified' });
+      refetchBranchStatus();
+    } catch (e) {
+      setVerifyError(e instanceof ApiError ? e.message : 'Could not verify that code.');
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -150,12 +173,6 @@ export function ProfilePage() {
                     options={[{ value: '', label: '— Select your class —' }, ...classOptions]}
                   />
                 </div>
-                <div>
-                  <label className="text-[11px] text-fg3 block mb-1">Teacher code <span className="opacity-60">(unlocks Assessment)</span></label>
-                  <input value={teacherCode} onChange={e => setTeacherCode(e.target.value)}
-                    placeholder="If your teacher gave you a code"
-                    className="w-full h-10 px-3 rounded-xl bg-surface1 border border-line text-[13px] text-fg1 focus:outline-none focus:border-brand/40" />
-                </div>
               </div>
             ) : (
               <>
@@ -183,7 +200,6 @@ export function ProfilePage() {
                         <InfoRow icon={Mail}    label="Email"       value={displayEmail} />
                         <InfoRow icon={Award}   label="Role"        value={capitalize(profile?.role ?? cachedUser?.role)} />
                         {sp?.schoolName   && <InfoRow icon={Building}  label="School / Institution" value={sp.schoolName} />}
-                        {sp?.teacherCode  && <InfoRow icon={KeyRound} label="Teacher code" value={sp.teacherCode} />}
                         {sp?.classExternalId && (
                           <InfoRow icon={GraduationCap} label="Class"
                             value={classOptions.find(c => c.value === sp.classExternalId)?.label ?? sp.classExternalId} />
@@ -211,6 +227,52 @@ export function ProfilePage() {
             <StatCard label="Average Score"                value={`${avgPracticePercent}%`}       icon={Award}    tone="emerald" />
             <StatCard label="Best Score"                   value={`${bestPracticePercent}%`}      icon={Trophy}   tone="amber"   />
           </div>
+
+          {/* Branch Verification — unlocks Assessment. School/Branch are
+              already fixed by registration; verifying only confirms the
+              code matches them, it never changes which school/branch is
+              selected. */}
+          <Card className="p-6">
+            <h3 className="font-display font-semibold text-[15px] text-fg1 mb-4 flex items-center gap-2">
+              <KeyRound size={16} className="text-brand" /> Branch Verification
+            </h3>
+            {branchStatusLoading ? (
+              <Skeleton className="h-16 rounded-xl" />
+            ) : !branchStatus ? (
+              <p className="text-[12.5px] text-fg3">
+                You haven't selected a school and branch yet — complete your profile to select one, then verify it here.
+              </p>
+            ) : branchStatus.verified ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <DetailItem icon={SchoolIcon} label="School" value={branchStatus.schoolName ?? '—'} />
+                <DetailItem icon={Building}   label="Branch" value={branchStatus.branchName ?? '—'} />
+                <div className="sm:col-span-2">
+                  <Badge tone="success">Verified{branchStatus.verifiedAt ? ` on ${formatDate(branchStatus.verifiedAt)}` : ''}</Badge>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                  <DetailItem icon={SchoolIcon} label="School" value={branchStatus.schoolName ?? '—'} />
+                  <DetailItem icon={Building}   label="Branch" value={branchStatus.branchName ?? '—'} />
+                </div>
+                <p className="text-[12.5px] text-fg3 mb-3">
+                  Enter the Branch Code your school gave you to unlock Assessment — Practice stays available either way.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    value={branchCode}
+                    onChange={e => setBranchCode(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') verifyBranch(); }}
+                    placeholder="e.g. DPS-RH-4829"
+                    className="flex-1 h-10 px-3 rounded-xl bg-surface1 border border-line text-[13px] text-fg1 focus:outline-none focus:border-brand/40"
+                  />
+                  <Button onClick={verifyBranch} disabled={verifying}>{verifying ? 'Verifying…' : 'Verify'}</Button>
+                </div>
+                {verifyError && <p className="text-[12.5px] text-danger mt-2">{verifyError}</p>}
+              </div>
+            )}
+          </Card>
 
           <Card className="p-6">
             <h3 className="font-display font-semibold text-[15px] text-fg1 mb-4">Account details</h3>

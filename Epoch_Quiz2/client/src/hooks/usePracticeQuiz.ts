@@ -198,11 +198,22 @@ export function useOlympiadAttempts() {
 // ── API methods ───────────────────────────────────────────────────
 
 export const practiceApi = {
+  
   previewPractice: (data: { subjectExternalId: string; difficulty: 'EASY' | 'MEDIUM' | 'HARD' }) =>
     api.post<PracticePreview>('/quizzes/practice/preview', data),
 
-  start: (data: { subjectExternalId: string; difficulty: 'EASY' | 'MEDIUM' | 'HARD'; chapterExternalId?: string }) =>
-    api.post<PracticeAttemptData>('/quizzes/practice/start', data),
+  start: async (data: { subjectExternalId: string; difficulty: 'EASY' | 'MEDIUM' | 'HARD'; chapterExternalId?: string }) => {
+    const result = await api.post<PracticeAttemptData>('/quizzes/practice/start', data);
+    // ── TEMPORARY CONTENT CLIENT DEBUG ──
+    // Dev-only: server only includes this field when isDev, so it's simply
+    // absent (and this never logs) in production. Never contains tokens,
+    // passwords, or student-identifying data — just the raw
+    // @epochstudio/content-client Subject record for this practice subject.
+    const debug = (result as any)?.contentClientDebug;
+    if (debug) console.log('[CONTENT-CLIENT DATA]', debug);
+    // ── END TEMPORARY CONTENT CLIENT DEBUG ──
+    return result;
+  },
 
   startOlympiad: (data: { perSubject?: number } = {}) =>
     api.post<OlympiadAttemptData>('/quizzes/olympiad/start', data),

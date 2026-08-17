@@ -73,11 +73,13 @@ model StudentProfile {
   schoolName       String?
   schoolId         String?
   branchId         String?
-  // Validated live against TeacherCode.code (case-insensitive, stored
-  // uppercase) — see UserService.updateOwnProfile. Optional at registration;
-  // gates Assessment access only, never Practice (see requireTeacherCode
-  // middleware and AssessmentController.checkAccess).
-  teacherCode      String?
+  // Distinguishes "selected a branch at registration" from "proved it via
+  // a real Branch Code" — Assessment access checks THIS, never schoolId/
+  // branchId presence alone (see requireBranchVerification middleware).
+  // Cleared automatically whenever schoolId/branchId changes to a
+  // different value (see UserService.updateOwnProfile) — a verification
+  // can never outlive the branch it was actually issued for.
+  branchVerifiedAt DateTime?
   educationBoard   String?
   stateBoard       String?
   address          String?          @db.Text
@@ -784,6 +786,12 @@ model SchoolBranch {
   schoolId        String
   stateId         String
   name            String
+  // Collected on the School Admin's own "Create Branch" form (School
+  // Panel) — optional so existing rows created before these columns
+  // existed, and rows created via the platform Admin's catalog CRUD
+  // (which never asks for these), stay valid.
+  city            String?
+  address         String?              @db.Text
   isActive        Boolean              @default(true)
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
@@ -791,6 +799,7 @@ model SchoolBranch {
   state           SchoolState          @relation(fields: [stateId], references: [id], onDelete: Cascade)
   registrations   SchoolRegistration[]
   studentProfiles StudentProfile[]
+  branchCodes     BranchCode[]
 
   @@unique([schoolId, stateId, name])
   @@index([schoolId, stateId])
@@ -802,22 +811,27 @@ model SchoolBranch {
 // login stays blocked until an admin flips the User's status to ACTIVE via
 // the existing admin user endpoints (no separate approval table needed).
 model SchoolRegistration {
-  id                String       @id @default(cuid())
-  userId            String       @unique
+  id                String        @id @default(cuid())
+  userId            String        @unique
   schoolId          String
   stateId           String
-  branchId          String
+  // A school no longer selects or is auto-assigned a branch at
+  // registration time (see school.service.ts's register()) — branches are
+  // created afterward by the School Admin themselves, from the School
+  // Panel. Nullable so a fresh registration has no branch at all until
+  // then; unaffected existing rows keep whatever branch they already had.
+  branchId          String?
   contactPersonName String?
   contactPhone      String?
-  address           String?      @db.Text
+  address           String?       @db.Text
   city              String?
   pincode           String?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
-  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  school            School       @relation(fields: [schoolId], references: [id])
-  state             SchoolState  @relation(fields: [stateId], references: [id])
-  branch            SchoolBranch @relation(fields: [branchId], references: [id])
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school            School        @relation(fields: [schoolId], references: [id])
+  state             SchoolState   @relation(fields: [stateId], references: [id])
+  branch            SchoolBranch? @relation(fields: [branchId], references: [id])
 
   @@index([schoolId])
   @@index([stateId])
@@ -825,22 +839,33 @@ model SchoolRegistration {
   @@map("school_registrations")
 }
 
-// ── Teacher Codes (Assessment access gate) ─────────────────────────────────
-// Admin-managed catalog of valid codes — there is no teacher account/login
-// system in this app (removed, see migration 20260805091718_remove_teacher_role),
-// so a code is just an issuable/revocable string, not tied to a User row.
-// A student links one to StudentProfile.teacherCode (validated live against
-// this table, not just "is it non-null") to unlock Assessment; Practice never
-// checks this. Deactivating a code here immediately revokes access for every
-// student who was relying on it — no caching, checked fresh on every gate.
-model TeacherCode {
-  id        String   @id @default(cuid())
-  code      String   @unique
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ── Branch Codes (Assessment access gate) ───────────────────────────────────
+// Replaces the earlier per-class "Class Code" system (removed — see
+// migration history) with one code per SchoolBranch, matching how this
+// School Panel already scopes everything else: School -> Branch -> Code.
+// A student picks their School+Branch at registration (StudentProfile.
+// schoolId/branchId, unchanged by this) — that's an intended SELECTION, not
+// proof. Verifying a Branch Code is what actually unlocks Assessment (see
+// StudentProfile.branchVerifiedAt); the code is purely the verification
+// mechanism, not a second place school/branch membership gets stored.
+//
+// A branch can accumulate several codes over its lifetime — regenerating
+// deactivates the previous one(s) rather than deleting them (a real audit
+// trail), so this is intentionally NOT unique-per-branch; "the current
+// code" is just whichever row for that branch currently has isActive =
+// true (enforced in BranchCodeService, not a DB constraint — MySQL has no
+// clean partial-unique-index primitive).
+model BranchCode {
+  id        String       @id @default(cuid())
+  code      String       @unique
+  branchId  String
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  branch    SchoolBranch @relation(fields: [branchId], references: [id], onDelete: Cascade)
 
-  @@map("teacher_codes")
+  @@index([branchId])
+  @@map("branch_codes")
 }
 
 // ── My Certificates ────────────────────────────────────────────────────────

@@ -13,12 +13,14 @@ import {
   type DevActorProfile,
 } from './leaderboardDevFallback';
 import type { Actor } from './assessment.service';
+import { SchoolPanelService } from './schoolPanel.service';
 import type {
   AssessmentLeaderboardQuery,
   GlobalLeaderboardQuery,
   ScopedLeaderboardQuery,
   MyRankingQuery,
 } from '../validators/leaderboard.validator';
+import type { SchoolLeaderboardQuery } from '../validators/schoolPanel.validator';
 
 /** Submissions that count towards scoring/leaderboards. */
 const COUNTABLE = { in: [SubmissionStatus.SUBMITTED, SubmissionStatus.GRADED] };
@@ -125,6 +127,7 @@ interface RankableRow {
   schoolName: string | null;
   state: string | null;
   classExternalId: string | null;
+  branchId: string | null;
   score: number;
   totalMarks: number;
   timeTakenSec: number;
@@ -158,6 +161,21 @@ interface FetchRowsOpts {
   viewerSchoolName?: string;
   viewerState?: string;
   schoolSearch?: string;
+  /** School Panel only — narrows to one branch within the (already
+   *  school-scoped) result set. Never used by the student-facing scopes. */
+  branchId?: string;
+  /** School Panel only — filters by the real School.id FK (resolved
+   *  server-side from the admin's own SchoolRegistration, never
+   *  client-supplied). Deliberately separate from viewerSchoolName: that's
+   *  a free-text match against the legacy schoolName string students may
+   *  type without ever linking a real School row, which is correct for the
+   *  student-facing "School Leaderboard" (scope: 'school' there just means
+   *  "students who typed the same school name as me") but wrong for the
+   *  School Panel, which must scope to the same schoolId FK every other
+   *  School Panel query uses — a schoolName string match could both leak
+   *  in another school that happens to share a name and miss the admin's
+   *  own students whose free-text name field doesn't match exactly. */
+  schoolId?: string;
 }
 
 /** Countable (SUBMITTED/GRADED), visible-results submissions across the
@@ -167,9 +185,11 @@ async function fetchSubmissionRows(assessmentIds: string[], opts: FetchRowsOpts)
   if (!assessmentIds.length) return [];
 
   const profileConditions: Prisma.StudentProfileWhereInput[] = [];
+  if (opts.schoolId) profileConditions.push({ schoolId: opts.schoolId });
   if (opts.scope === 'school' && opts.viewerSchoolName) profileConditions.push({ schoolName: opts.viewerSchoolName });
   if (opts.scope === 'state' && opts.viewerState) profileConditions.push({ state: opts.viewerState });
   if (opts.schoolSearch) profileConditions.push({ schoolName: { contains: opts.schoolSearch } });
+  if (opts.branchId) profileConditions.push({ branchId: opts.branchId });
 
   const submissions = await prisma.submission.findMany({
     where: {
@@ -180,7 +200,7 @@ async function fetchSubmissionRows(assessmentIds: string[], opts: FetchRowsOpts)
     },
     select: {
       id: true, assessmentId: true, studentId: true, score: true, totalMarks: true, timeTakenSec: true, submittedAt: true,
-      student: { select: { name: true, avatarHue: true, studentProfile: { select: { schoolName: true, state: true, classExternalId: true } } } },
+      student: { select: { name: true, avatarHue: true, studentProfile: { select: { schoolName: true, state: true, classExternalId: true, branchId: true } } } },
     },
   });
 
@@ -193,6 +213,7 @@ async function fetchSubmissionRows(assessmentIds: string[], opts: FetchRowsOpts)
       byStudent.set(s.studentId, {
         studentId: s.studentId, studentName: s.student.name, avatarHue: s.student.avatarHue,
         schoolName: profile?.schoolName ?? null, state: profile?.state ?? null, classExternalId: profile?.classExternalId ?? null,
+        branchId: profile?.branchId ?? null,
         score: s.score, totalMarks: s.totalMarks, timeTakenSec: s.timeTakenSec, submittedAt,
         submissionId: s.id, assessmentId: s.assessmentId,
       });
@@ -560,5 +581,79 @@ export const LeaderboardService = {
       state: viewerProfile?.state ?? null,
       badges,
     };
+  },
+
+  /**
+   * School Panel Leaderboard — ranks ONLY the calling School Admin's own
+   * school's students for a resolved session. Deliberately reuses
+   * fetchSubmissionRows/rankRows (the exact same functions every other
+   * scope above goes through) with scope: 'school' and the admin's own
+   * (never client-supplied) School.name as viewerSchoolName — there is no
+   * second ranking algorithm here, just a different way of resolving whose
+   * "school" to filter to. branchId (if given) is re-validated against
+   * this same school before being trusted (see SchoolPanelService.
+   * resolveBranchFilter, applied by the controller before this is called).
+   */
+  async forSchoolPanel(actor: Actor, query: SchoolLeaderboardQuery) {
+    const schoolId = await SchoolPanelService.resolveAdminSchool(actor);
+    const school = await prisma.school.findUnique({ where: { id: schoolId }, select: { name: true } });
+    if (!school) throw ApiError.notFound('School not found');
+
+    const { page, limit, branchId: rawBranchId, ...sessionFilters } = query;
+    const branchId = await SchoolPanelService.resolveBranchFilter(schoolId, rawBranchId);
+    const assessments = await resolveAssessments(sessionFilters);
+    const assessmentIds = assessments.map(a => a.id);
+    if (!assessmentIds.length) {
+      return { items: [], meta: pageMeta(0, page, limit), reason: 'NO_SESSION' as const };
+    }
+
+    const rows = await fetchSubmissionRows(assessmentIds, { scope: 'school', schoolId, branchId });
+    const ranked = rankRows(rows);
+    const total = ranked.length;
+    const { skip, take } = pageToSkipTake(page, limit);
+    const pageItems = ranked.slice(skip, skip + take);
+
+    const [classNames, subjectNames, branches] = await Promise.all([
+      ContentMeta.classes(),
+      ContentMeta.subjects(),
+      prisma.schoolBranch.findMany({ where: { schoolId }, select: { id: true, name: true } }),
+    ]);
+    const branchNameById = new Map(branches.map(b => [b.id, b.name]));
+    const subjectIdByAssessmentId = new Map(assessments.map(a => [a.id, a.subjectExternalId]));
+
+    const items = pageItems.map(r => {
+      const subjectId = subjectIdByAssessmentId.get(r.assessmentId) ?? null;
+      return {
+        rank: r.rank, studentId: r.studentId, studentName: r.studentName, avatarHue: r.avatarHue,
+        classExternalId: r.classExternalId,
+        className: r.classExternalId ? (classNames.get(r.classExternalId) ?? UNKNOWN_CLASS_NAME) : null,
+        branchName: r.branchId ? (branchNameById.get(r.branchId) ?? null) : null,
+        subjectName: subjectId ? (subjectNames.get(subjectId) ?? UNKNOWN_SUBJECT_NAME) : 'Mixed Subjects',
+        score: r.score, totalMarks: r.totalMarks, percent: r.percent, timeTakenSec: r.timeTakenSec,
+        submissionId: r.submissionId,
+      };
+    });
+
+    return { items, meta: pageMeta(total, page, limit) };
+  },
+
+  /**
+   * Student Details → Leaderboard tab. Reuses myAssessmentRanking()
+   * unmodified — the exact same School/State/Global ranking + badge
+   * computation a student gets for themselves — for an admin-chosen
+   * studentId, after confirming that student belongs to the calling
+   * School Admin's own school. A synthetic STUDENT actor is substituted in
+   * the real actor's place; safe because myAssessmentRanking computes
+   * entirely from the given actor.id/actor.role (gated only by role ===
+   * STUDENT), the same substitution forSchoolPanel already relies on for
+   * viewerSchoolName above. Lives here (not schoolPanel.service.ts) purely
+   * to avoid a circular import: this file already imports SchoolPanelService.
+   */
+  async studentRanking(actor: Actor, studentId: string, query: MyRankingQuery) {
+    const schoolId = await SchoolPanelService.resolveAdminSchool(actor);
+    const profile = await prisma.studentProfile.findUnique({ where: { userId: studentId }, select: { schoolId: true } });
+    // 404, not 403 — never confirm/deny another school's student exists.
+    if (!profile || profile.schoolId !== schoolId) throw ApiError.notFound('Student not found');
+    return this.myAssessmentRanking({ id: studentId, role: Role.STUDENT }, query);
   },
 };

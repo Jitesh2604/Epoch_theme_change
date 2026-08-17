@@ -54,6 +54,28 @@ export const updateAssessmentSchema = z.object({
   resultPublishAt:  resultPublishAtSchema,
 }).refine((v) => Object.keys(v).length > 0, { message: 'No fields to update' });
 
+/**
+ * Auto-generated assessments always use ASSESSMENT_CONFIG for question
+ * count/marks/duration (see AssessmentService.generate) — so unlike
+ * createAssessmentSchema, there's no `duration` field here to accept, and
+ * subjectExternalId is required (question selection needs one subject's
+ * bank to draw from, not the whole platform's).
+ */
+export const generateAssessmentSchema = z.object({
+  title:        titleSchema,
+  description:  descriptionSchema,
+  instructions: instructionsSchema,
+  subjectExternalId: z.string().min(1, 'Select a subject to generate questions from'),
+  classExternalId:   z.string().min(1).optional().nullable(),
+  passingMarks: z.coerce.number().int().min(0).optional(),
+  negativeMarking:    negativeMarkingSchema,
+  negativeMarksValue: negativeMarksValueSchema,
+  resultsPublished: resultsPublishedSchema,
+  resultPublishAt:  resultPublishAtSchema,
+  assignedClassIds:   idArraySchema.optional(),
+  assignedStudentIds: idArraySchema.optional(),
+});
+
 export const listAssessmentsQuerySchema = paginationSchema.extend({
   status:    z.nativeEnum(AssessmentStatus).optional(),
   subjectExternalId: z.string().min(1).optional(),
@@ -65,6 +87,7 @@ export const assessmentIdParamsSchema = z.object({
   id: z.string().min(1),
 });
 
+export type GenerateAssessmentInput   = z.infer<typeof generateAssessmentSchema>;
 export type CreateAssessmentInput     = z.infer<typeof createAssessmentSchema>;
 export type UpdateAssessmentInput     = z.infer<typeof updateAssessmentSchema>;
 export type ListAssessmentsQuery      = z.infer<typeof listAssessmentsQuerySchema>;

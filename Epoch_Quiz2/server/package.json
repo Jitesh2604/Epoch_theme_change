@@ -13,6 +13,9 @@
     "seed:questions": "tsx prisma/seed-questions.ts",
     "seed:e2e": "tsx prisma/seed-e2e.ts",
     "seed:assessments": "tsx prisma/seed-assessments.ts",
+    "seed:leaderboard-demo": "tsx prisma/seed-leaderboard-demo.ts",
+    "seed:practice-demo": "tsx prisma/seed-practice-demo.ts",
+    "seed:school-admin-demo": "tsx prisma/seed-school-admin-demo.ts",
     "sync:questions": "tsx src/scripts/syncQuestions.ts"
   },
   "dependencies": {

@@ -7,11 +7,12 @@ import { SubmissionController } from '../controllers/submission.controller';
 import { LeaderboardController } from '../controllers/leaderboard.controller';
 import { authenticate } from '../middlewares/authenticate';
 import { authorize } from '../middlewares/authorize';
-import { requireTeacherCode } from '../middlewares/requireTeacherCode';
+import { requireBranchVerification } from '../middlewares/requireBranchVerification';
 import { validate } from '../middlewares/validate';
 import {
   createAssessmentSchema,
   updateAssessmentSchema,
+  generateAssessmentSchema,
   listAssessmentsQuerySchema,
   assessmentIdParamsSchema,
   assignAssessmentSchema,
@@ -34,6 +35,10 @@ router.use(authenticate);
 // so it isn't swallowed as an assessment id.
 router.get('/access', AssessmentController.checkAccess);
 
+// The centralized ASSESSMENT_CONFIG, read-only — must come before "/:id"
+// for the same reason as "/access" above.
+router.get('/generate-config', authorize(...ADMIN_ROLES), AssessmentController.generateConfig);
+
 // ── list / read (scoped per role inside the service) ──────────
 router.get(
   '/',
@@ -53,6 +58,15 @@ router.post(
   authorize(...ADMIN_ROLES),
   validate(createAssessmentSchema),
   AssessmentController.create,
+);
+
+// Auto-generate — ASSESSMENT_CONFIG-driven, must come before "/:id"-shaped
+// PATCH/DELETE routes below for the same reason as "/access"/"/generate-config".
+router.post(
+  '/generate',
+  authorize(...ADMIN_ROLES),
+  validate(generateAssessmentSchema),
+  AssessmentController.generate,
 );
 
 router.patch(
@@ -168,7 +182,7 @@ router.delete(
 router.post(
   '/:id/start',
   authorize(Role.STUDENT, ...ADMIN_ROLES),
-  requireTeacherCode,
+  requireBranchVerification,
   validate(assessmentIdParamsSchema, 'params'),
   SubmissionController.start,
 );

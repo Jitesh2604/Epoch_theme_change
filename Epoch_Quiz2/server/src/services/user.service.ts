@@ -7,7 +7,6 @@ import { pageMeta, pageToSkipTake } from "../utils/pagination";
 import { suggestStateBoard } from "../lib/educationBoards";
 import { ContentService, ContentMeta, UNKNOWN_CLASS_NAME } from "./content.service";
 import { assertMinPasswordLength } from "./settings.service";
-import { TeacherCodeService } from "./teacherCode.service";
 import type { DbUser } from "./auth.service";
 import type {
   AdminCreateUserInput,
@@ -49,13 +48,15 @@ function toPublicUser(u: DbUser): PublicUser {
 // Flattens SchoolRegistration's school/state/branch relations to display
 // names — same shape AuthService.getMe returns for a school's own /me call,
 // reused here so the admin approvals list and a school's own profile agree.
+// branch is nullable — no branch is selected/created at registration time
+// anymore, only afterward by the School Admin themselves.
 function toSchoolRegistrationView(reg: {
   school: { name: string };
   state:  { name: string };
-  branch: { name: string };
+  branch: { name: string } | null;
   [key: string]: unknown;
 }) {
-  return { ...reg, schoolName: reg.school.name, stateName: reg.state.name, branchName: reg.branch.name };
+  return { ...reg, schoolName: reg.school.name, stateName: reg.state.name, branchName: reg.branch?.name ?? null };
 }
 
 /** Build a case-insensitive name/email search filter. */
@@ -252,49 +253,56 @@ export const UserService = {
     // exact-string school-scope match stays consistent across every student
     // who picks the same catalog school.
     let schoolCatalogFields: Record<string, unknown> = {};
-    if (input.schoolId !== undefined) {
-      if (input.schoolId === null) {
-        schoolCatalogFields = { schoolId: null, branchId: null };
-      } else {
-        const school = await prisma.school.findUnique({ where: { id: input.schoolId } });
-        if (!school || !school.isActive) throw ApiError.badRequest("Select a valid school");
+    if (input.schoolId !== undefined || input.branchId !== undefined) {
+      const existing = await prisma.studentProfile.findUnique({
+        where: { userId }, select: { schoolId: true, branchId: true, branchVerifiedAt: true },
+      });
 
-        let resolvedBranchId: string | null = null;
-        if (input.branchId) {
+      let resolvedSchoolId: string | null = existing?.schoolId ?? null;
+      let resolvedBranchId: string | null = existing?.branchId ?? null;
+
+      if (input.schoolId !== undefined) {
+        if (input.schoolId === null) {
+          resolvedSchoolId = null;
+          resolvedBranchId = null;
+        } else {
+          const school = await prisma.school.findUnique({ where: { id: input.schoolId } });
+          if (!school || !school.isActive) throw ApiError.badRequest("Select a valid school");
+          resolvedSchoolId = school.id;
+          resolvedBranchId = null; // a new school always clears any previously chosen branch
+
+          if (input.branchId) {
+            const branch = await prisma.schoolBranch.findUnique({ where: { id: input.branchId } });
+            if (!branch || !branch.isActive || branch.schoolId !== school.id) {
+              throw ApiError.badRequest("Select a valid branch for the chosen school");
+            }
+            resolvedBranchId = branch.id;
+          }
+          schoolCatalogFields.schoolName = school.name;
+        }
+      } else if (input.branchId !== undefined) {
+        if (input.branchId === null) {
+          resolvedBranchId = null;
+        } else {
+          if (!resolvedSchoolId) throw ApiError.badRequest("Select a school before choosing a branch");
           const branch = await prisma.schoolBranch.findUnique({ where: { id: input.branchId } });
-          if (!branch || !branch.isActive || branch.schoolId !== school.id) {
+          if (!branch || !branch.isActive || branch.schoolId !== resolvedSchoolId) {
             throw ApiError.badRequest("Select a valid branch for the chosen school");
           }
           resolvedBranchId = branch.id;
         }
-        schoolCatalogFields = { schoolId: school.id, branchId: resolvedBranchId, schoolName: school.name };
       }
-    } else if (input.branchId !== undefined) {
-      if (input.branchId === null) {
-        schoolCatalogFields = { branchId: null };
-      } else {
-        const existing = await prisma.studentProfile.findUnique({ where: { userId }, select: { schoolId: true } });
-        if (!existing?.schoolId) throw ApiError.badRequest("Select a school before choosing a branch");
-        const branch = await prisma.schoolBranch.findUnique({ where: { id: input.branchId } });
-        if (!branch || !branch.isActive || branch.schoolId !== existing.schoolId) {
-          throw ApiError.badRequest("Select a valid branch for the chosen school");
-        }
-        schoolCatalogFields = { branchId: branch.id };
-      }
-    }
 
-    // Teacher Code — validated live against the TeacherCode catalog (case-
-    // insensitive), not just format-checked, since it gates Assessment
-    // access (see requireTeacherCode). Storing the canonical (uppercase)
-    // code so later gate checks compare like-for-like.
-    let teacherCodeFields: Record<string, unknown> = {};
-    if (input.teacherCode !== undefined) {
-      if (input.teacherCode === null) {
-        teacherCodeFields = { teacherCode: null };
-      } else {
-        const tc = await TeacherCodeService.findValid(input.teacherCode);
-        if (!tc) throw ApiError.badRequest("Invalid or inactive teacher code");
-        teacherCodeFields = { teacherCode: tc.code };
+      schoolCatalogFields.schoolId = resolvedSchoolId;
+      schoolCatalogFields.branchId = resolvedBranchId;
+
+      // Changing which school/branch is selected invalidates any existing
+      // Branch Code verification — it was only ever proof that the student
+      // verified THAT branch, not a general "trust this student" flag. See
+      // requireBranchVerification / BranchCodeService.verify.
+      const changed = existing && (existing.schoolId !== resolvedSchoolId || existing.branchId !== resolvedBranchId);
+      if (changed && existing?.branchVerifiedAt) {
+        schoolCatalogFields.branchVerifiedAt = null;
       }
     }
 
@@ -302,7 +310,6 @@ export const UserService = {
       ...(dob !== undefined && { dob }),
       ...(input.schoolName !== undefined && { schoolName: input.schoolName }),
       ...schoolCatalogFields,
-      ...teacherCodeFields,
       ...(input.address !== undefined && { address: input.address }),
       ...(input.country !== undefined && { country: input.country }),
       ...(input.state !== undefined && { state: input.state }),

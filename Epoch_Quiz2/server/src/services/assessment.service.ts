@@ -1,12 +1,14 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { AssessmentStatus, Role } from '../lib/enums';
+import { AssessmentStatus, Difficulty, QuestionSelection, Role } from '../lib/enums';
 import { isAdminRole } from '../utils/roles';
 import { ApiError } from '../utils/ApiError';
 import { pageMeta, pageToSkipTake } from '../utils/pagination';
 import { ContentService, ContentMeta, UNKNOWN_CLASS_NAME } from './content.service';
 import { SettingsService } from './settings.service';
 import { isDev } from '../config';
+import { ASSESSMENT_CONFIG } from '../config/assessmentConfig';
+import { recalcTotalMarks } from './assessmentQuestion.service';
 import {
   DEV_FALLBACK_DESCRIPTION_MARKER, API_SOURCED_DESCRIPTION_MARKER,
   ensureDevFallbackAssessments, ensureApiSourcedAssessments,
@@ -15,6 +17,7 @@ import { getAssessmentsFromApi } from './assessmentApiAdapter';
 import type {
   CreateAssessmentInput,
   UpdateAssessmentInput,
+  GenerateAssessmentInput,
   ListAssessmentsQuery,
   AssignAssessmentInput,
 } from '../validators/assessment.validator';
@@ -168,6 +171,62 @@ async function writeAssignments(
   }
 }
 
+// ── Auto-generation (ASSESSMENT_CONFIG-driven) ─────────────────
+
+/** Fisher–Yates shuffle — same algorithm quiz.service.ts already uses for
+ *  Practice/Olympiad question selection, kept as its own small private
+ *  copy here rather than a shared export (mirrors that file's own
+ *  convention of a private, per-file helper). */
+function shuffleArray<T>(arr: T[]): T[] {
+  const copy = arr.slice();
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+/** Spread totalMarks across `count` questions as evenly as possible using
+ *  whole numbers — e.g. 100 marks over 30 questions is ten questions worth
+ *  4 and twenty worth 3, which always sums to exactly totalMarks
+ *  regardless of whether it divides evenly. ASSESSMENT_CONFIG's own
+ *  startup validation (totalMarks >= totalQuestions) guarantees every
+ *  question gets at least 1. */
+function distributeMarksEvenly(count: number, totalMarks: number): number[] {
+  const base = Math.floor(totalMarks / count);
+  const remainder = totalMarks % count;
+  return Array.from({ length: count }, (_, i) => base + (i < remainder ? 1 : 0));
+}
+
+/** Select exactly `count` questions of one difficulty from the Assessment
+ *  Question Bank, scoped to the target subject (and class, if given).
+ *  Throws a clear, actionable error — naming the difficulty and the exact
+ *  shortfall — rather than ever silently substituting another difficulty
+ *  or generating fewer questions than configured. */
+async function pickQuestionsForDifficulty(
+  difficulty: Difficulty,
+  count: number,
+  filter: { subjectExternalId: string; classExternalId?: string | null },
+): Promise<{ id: string }[]> {
+  const rows = await prisma.assessmentQuestionBank.findMany({
+    where: {
+      difficulty,
+      status: 'ACTIVE',
+      subjectExternalId: filter.subjectExternalId,
+      ...(filter.classExternalId && { classExternalId: filter.classExternalId }),
+    },
+    select: { id: true },
+  });
+  if (rows.length < count) {
+    throw ApiError.badRequest(
+      `Not enough ${difficulty} questions available to generate this assessment. ` +
+      `Required: ${count}, available: ${rows.length}. Add ${count - rows.length} more ${difficulty.toLowerCase()} ` +
+      `question(s) to the question bank for this subject${filter.classExternalId ? ' and class' : ''}, then try again.`
+    );
+  }
+  return shuffleArray(rows).slice(0, count);
+}
+
 async function loadAuthorized(id: string, actor: Actor, mode: 'read' | 'write'): Promise<AssessmentWithRel> {
   const a = await prisma.assessment.findUnique({ where: { id }, include: assessmentInclude });
   if (!a) throw ApiError.notFound('Assessment not found');
@@ -212,6 +271,83 @@ export const AssessmentService = {
           createdById:       actor.id,
         },
       });
+      if (input.assignedClassIds !== undefined || input.assignedStudentIds !== undefined) {
+        await writeAssignments(txc, a.id, input.assignedClassIds, input.assignedStudentIds);
+      }
+      return a;
+    });
+
+    const full = await prisma.assessment.findUnique({ where: { id: created.id }, include: assessmentInclude });
+    return toPublic(full!, await ContentMeta.subjects());
+  },
+
+  /** The live ASSESSMENT_CONFIG, for the admin UI to render instead of
+   *  hardcoding the question count/marks/duration/difficulty mix. */
+  getGenerationConfig() {
+    return ASSESSMENT_CONFIG;
+  },
+
+  /**
+   * Auto-generate an Assessment entirely from ASSESSMENT_CONFIG: selects
+   * exactly the configured number of Easy/Medium/Hard questions from the
+   * target subject's (and optional class's) Question Bank, assigns
+   * per-question marks (via the existing marksOverride mechanism) so the
+   * total is exactly ASSESSMENT_CONFIG.totalMarks, and sets duration from
+   * the config. Nothing is created if any difficulty tier is short — the
+   * selection is fully validated before the first database write.
+   */
+  async generate(actor: Actor, input: GenerateAssessmentInput) {
+    if (!isAdminRole(actor.role)) {
+      throw ApiError.forbidden('Only admins can create assessments');
+    }
+    await ensureSubjectExists(input.subjectExternalId);
+    if (input.classExternalId) await ensureClassExists(input.classExternalId);
+
+    const filter = { subjectExternalId: input.subjectExternalId, classExternalId: input.classExternalId };
+    const difficultyEntries = Object.entries(ASSESSMENT_CONFIG.difficultyDistribution) as [Difficulty, number][];
+
+    const picks: { id: string; difficulty: Difficulty }[] = [];
+    for (const [difficulty, count] of difficultyEntries) {
+      if (count <= 0) continue;
+      const rows = await pickQuestionsForDifficulty(difficulty, count, filter);
+      picks.push(...rows.map(r => ({ id: r.id, difficulty })));
+    }
+
+    // Interleave difficulties instead of leaving them grouped in
+    // Easy/Medium/Hard blocks — a nicer default question order for the
+    // student, and marks below are assigned in this same shuffled order so
+    // "extra mark" questions aren't clustered by difficulty either.
+    const order = shuffleArray(picks);
+    const marks = distributeMarksEvenly(order.length, ASSESSMENT_CONFIG.totalMarks);
+
+    const created = await prisma.$transaction(async (txc) => {
+      const a = await txc.assessment.create({
+        data: {
+          title:             input.title,
+          description:       input.description ?? null,
+          instructions:      input.instructions ?? null,
+          duration:          ASSESSMENT_CONFIG.durationMinutes,
+          totalMarks:        0, // recalculated below from the questions actually attached
+          passingMarks:      input.passingMarks ?? 0,
+          negativeMarking:    input.negativeMarking ?? false,
+          negativeMarksValue: input.negativeMarksValue ?? 0,
+          status:            AssessmentStatus.DRAFT,
+          resultsPublished:  input.resultsPublished ?? false,
+          resultPublishAt:   input.resultPublishAt ?? null,
+          subjectExternalId: input.subjectExternalId,
+          classExternalId:   input.classExternalId ?? null,
+          questionSelection: QuestionSelection.AUTO_LEVEL,
+          createdById:       actor.id,
+        },
+      });
+
+      for (let i = 0; i < order.length; i++) {
+        await txc.assessmentQuestion.create({
+          data: { assessmentId: a.id, questionId: order[i].id, order: i + 1, marksOverride: marks[i] },
+        });
+      }
+      await recalcTotalMarks(a.id, txc);
+
       if (input.assignedClassIds !== undefined || input.assignedStudentIds !== undefined) {
         await writeAssignments(txc, a.id, input.assignedClassIds, input.assignedStudentIds);
       }

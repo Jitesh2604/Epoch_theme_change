@@ -13,14 +13,22 @@ const catalogNameSchema = z.string().trim().min(1, 'Name is required').max(120);
 // Creates a SCHOOL_ADMIN User + a SchoolRegistration row, pending admin
 // approval — see school.service.ts's register(). Deliberately separate from
 // auth.validator.ts's registerSchema (STUDENT-only public signup).
+//
+// schoolName is free text (no catalog dropdown on the registration form
+// anymore) — school.service.ts's register() finds-or-creates a matching
+// School row by exact name. There is no branch selection/creation at
+// registration at all anymore — SchoolRegistration.branchId is now
+// nullable and simply left unset; the School Admin creates their own
+// branch(es) afterward from the School Panel (see branchCode.validator.ts's
+// createOwnBranchSchema / branchCode.service.ts's createBranch()).
+// stateId is unchanged (still a dropdown over the full SchoolState catalog).
 export const schoolRegisterSchema = z.object({
   name:              nameSchema,
   email:             emailSchema,
   password:          passwordSchema,
   mobileNo:          z.string().trim().min(7, 'Mobile number must be at least 7 digits').max(20),
-  schoolId:          z.string().min(1, 'Select a school'),
+  schoolName:        z.string().trim().min(2, 'School name is required').max(160),
   stateId:           z.string().min(1, 'Select a state'),
-  branchId:          z.string().min(1, 'Select a branch'),
   contactPersonName: z.string().trim().min(2, 'Contact person name is required').max(120),
   contactPhone:      z.string().trim().min(7, 'Contact phone must be at least 7 digits').max(20),
   address:           z.string().trim().min(1, 'Address is required').max(500),
@@ -55,10 +63,17 @@ export const listSchoolStatesQuerySchema = z.object({
 });
 
 // ── Admin: SchoolBranch catalog CRUD ───────────────────────────────────────
+// city/address are optional here (the platform Admin's own catalog UI
+// doesn't collect them) — they exist on the model primarily for the School
+// Admin's own "Create Branch" form (see branchCode.validator.ts's
+// createOwnBranchSchema, where they're required), reused via
+// SchoolBranchService.create() so both paths share one implementation.
 export const adminCreateSchoolBranchSchema = z.object({
   schoolId: z.string().min(1, 'schoolId is required'),
   stateId:  z.string().min(1, 'stateId is required'),
   name:     catalogNameSchema,
+  city:     z.string().trim().max(80).optional(),
+  address:  z.string().trim().max(500).optional(),
   isActive: z.boolean().optional(),
 });
 

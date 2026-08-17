@@ -26,7 +26,13 @@ import schoolRoutes         from './school.routes';
 import schoolStateRoutes    from './schoolState.routes';
 import schoolBranchRoutes   from './schoolBranch.routes';
 import certificateRoutes    from './certificate.routes';
-import teacherCodeRoutes    from './teacherCode.routes';
+import branchCodeRoutes     from './branchCode.routes';
+import schoolPanelRoutes    from './schoolPanel.routes';
+import schoolAnalyticsRoutes from './schoolAnalytics.routes';
+// ── TEMPORARY CONTENT CLIENT DEBUG ──
+import debugRoutes          from './debug.routes';
+import { isDev } from '../config';
+// ── END TEMPORARY CONTENT CLIENT DEBUG ──
 
 const router = new Router();
 
@@ -66,6 +72,16 @@ router.use('/schools',        schoolRoutes);
 router.use('/school-states',  schoolStateRoutes);
 router.use('/school-branches', schoolBranchRoutes);
 router.use('/certificates',   certificateRoutes);
-router.use('/teacher-codes',  teacherCodeRoutes);
+router.use('/branch-codes',   branchCodeRoutes);
+router.use('/school-panel',   schoolPanelRoutes);
+router.use('/school-panel',   schoolAnalyticsRoutes);
+
+// ── TEMPORARY CONTENT CLIENT DEBUG ──
+// Only mounted at all when isDev — the route tree does not exist in
+// production, not merely gated inside the handler.
+if (isDev) {
+  router.use('/debug', debugRoutes);
+}
+// ── END TEMPORARY CONTENT CLIENT DEBUG ──
 
 export default router;

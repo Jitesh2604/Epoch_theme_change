@@ -41,6 +41,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ navigate }) => {
         return;
       }
 
+      // School Admins have no public-facing Home experience — a School
+      // Panel is the only thing there is for them to reach, so send them
+      // straight there instead of the generic student/marketing Home page.
+      if (uiRole === 'school') {
+        showToast(`Welcome back, ${user.name}!`, 'success');
+        window.location.href = '/school';
+        return;
+      }
+
       // No specific page was requested — land on Home, not the Dashboard.
       // The Dashboard is only reached by an explicit click.
       showToast(`Welcome back, ${user.name}!`, 'success');

@@ -187,10 +187,15 @@ export interface AssessmentHistoryEntry {
  * studentId filter — one extra query, this student's own submissions only.
  */
 async function getStudentDetail(studentId: string) {
-  const [overview, subjects, questionTypes, topics, revisionDashboard, assessmentSubmissions] = await Promise.all([
+  const [overview, subjects, questionTypes, difficulties, topics, revisionDashboard, assessmentSubmissions] = await Promise.all([
     AnalyticsService.getPracticeOverview(studentId),
     AnalyticsService.getSubjectBreakdown(studentId),
     AnalyticsService.getQuestionTypeBreakdown(studentId),
+    // School Panel's Student Details → Analytics tab needs Difficulty-wise
+    // Performance / Distribution alongside the four calls above — the
+    // exact same AnalyticsService function the student's own Analytics
+    // page already calls for itself, just for an admin-selected studentId.
+    AnalyticsService.getDifficultyBreakdown(studentId),
     AnalyticsService.getTopicBreakdown(studentId),
     RevisionService.getDashboard(studentId),
     fetchSubmissions({ studentId }),
@@ -214,7 +219,7 @@ async function getStudentDetail(studentId: string) {
       };
     });
 
-  return { overview, subjects, questionTypes, topics, revisionDashboard, assessmentStats, assessmentHistory };
+  return { overview, subjects, questionTypes, difficulties, topics, revisionDashboard, assessmentStats, assessmentHistory };
 }
 
 export const StudentPerformanceService = {
