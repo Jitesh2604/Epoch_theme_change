@@ -1,6 +1,16 @@
 /**
  * School Admin end-to-end demo seed — for test-school-admin-flow@example.com.
  *
+ * UPDATE (2026-08-18): ensureAdmin()/ensureBranches() were made fully
+ * idempotent so this script also works standalone on an environment where
+ * none of the below already exists (e.g. a clean production DB) — it no
+ * longer hard-requires the account/school to pre-exist. When the account
+ * IS already there, the original reuse behavior described below still
+ * applies unchanged; when it isn't, a fresh school named "EpochQuiz Demo
+ * School (seed:school-admin-demo)" is created instead (never reuses/upserts
+ * a real-looking school name like "Delhi Public School" for a fresh create,
+ * to guarantee no collision with a genuine school).
+ *
  * BEFORE WRITING THIS SCRIPT, the database was inspected directly (see the
  * chat transcript). Key findings that shaped every decision below:
  *
@@ -162,15 +172,53 @@ const SESSION_TITLES = (year: number) => [`Demo Leaderboard – Term 1 (${year})
 
 // ── Ensure the School Admin account + branches ─────────────────────────────
 
-async function ensureAdmin(): Promise<{ userId: string; schoolId: string }> {
+// A name guaranteed never to collide with a real school someone actually
+// registers — used ONLY on the fresh-create path below (never touches or
+// upserts by an unqualified real-looking name like "Delhi Public School",
+// which could otherwise silently attach demo data to a genuine school).
+const FRESH_SCHOOL_NAME = 'EpochQuiz Demo School (seed:school-admin-demo)';
+const FRESH_STATE_NAME = 'Delhi';
+
+async function ensureAdmin(): Promise<{ userId: string; schoolId: string; schoolName: string }> {
   const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
-  const user = await prisma.user.update({
-    where: { email: ADMIN_EMAIL },
-    data: { passwordHash, role: Role.SCHOOL_ADMIN, status: UserStatus.ACTIVE, profileComplete: true },
+  const existing = await prisma.user.findUnique({ where: { email: ADMIN_EMAIL }, select: { id: true } });
+
+  if (existing) {
+    // Reuse whatever school this account is already registered to — real
+    // pre-existing data or a prior run of this same script. Only the
+    // password/status are touched; the school/registration are left as-is.
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: { passwordHash, role: Role.SCHOOL_ADMIN, status: UserStatus.ACTIVE, profileComplete: true },
+    });
+    const reg = await prisma.schoolRegistration.findUnique({ where: { userId: existing.id }, select: { schoolId: true } });
+    if (!reg) {
+      throw new Error(`[seed:school-admin-demo] User ${ADMIN_EMAIL} exists but has no SchoolRegistration — refusing to guess a school for it. Resolve manually before re-running.`);
+    }
+    const school = await prisma.school.findUniqueOrThrow({ where: { id: reg.schoolId }, select: { name: true } });
+    return { userId: existing.id, schoolId: reg.schoolId, schoolName: school.name };
+  }
+
+  // Fresh environment (e.g. an empty production DB) — nothing to reuse, so
+  // create a brand-new, unambiguously demo-labeled school + admin from
+  // scratch. Additive only: upserts by unique keys, never touches any
+  // other School/SchoolState row.
+  const state = await prisma.schoolState.upsert({
+    where: { name: FRESH_STATE_NAME }, update: {}, create: { name: FRESH_STATE_NAME }, select: { id: true },
+  });
+  const school = await prisma.school.upsert({
+    where: { name: FRESH_SCHOOL_NAME }, update: {}, create: { name: FRESH_SCHOOL_NAME }, select: { id: true, name: true },
+  });
+  const user = await prisma.user.create({
+    data: {
+      email: ADMIN_EMAIL, name: 'Test Principal', passwordHash, role: Role.SCHOOL_ADMIN,
+      status: UserStatus.ACTIVE, profileComplete: true, avatarHue: 200,
+    },
     select: { id: true },
   });
-  const reg = await prisma.schoolRegistration.findUniqueOrThrow({ where: { userId: user.id }, select: { schoolId: true } });
-  return { userId: user.id, schoolId: reg.schoolId };
+  await prisma.schoolRegistration.create({ data: { userId: user.id, schoolId: school.id, stateId: state.id } });
+  console.log(`[seed:school-admin-demo] No existing ${ADMIN_EMAIL} found — created fresh demo school "${school.name}" + admin from scratch.`);
+  return { userId: user.id, schoolId: school.id, schoolName: school.name };
 }
 
 async function ensureBranches(adminUserId: string, schoolId: string): Promise<Record<BranchPlan['key'], string>> {
@@ -184,8 +232,12 @@ async function ensureBranches(adminUserId: string, schoolId: string): Promise<Re
     });
     if (existing) { byKey[plan.key] = existing.id; continue; }
 
-    const state = await prisma.schoolState.findUnique({ where: { name: plan.stateName }, select: { id: true } });
-    if (!state) throw new Error(`[seed:school-admin-demo] SchoolState "${plan.stateName}" not found — run seed:leaderboard-demo first (it creates the shared state catalog rows this script reuses).`);
+    // Upsert rather than require a pre-existing catalog row, so this script
+    // never depends on seed:leaderboard-demo having run first — additive
+    // only, shared state-catalog rows are never school-specific.
+    const state = await prisma.schoolState.upsert({
+      where: { name: plan.stateName }, update: {}, create: { name: plan.stateName }, select: { id: true },
+    });
 
     const created = await BranchCodeService.createBranch(actor, {
       name: plan.name, stateId: state.id, city: plan.city, address: plan.address,
@@ -201,7 +253,7 @@ async function ensureBranches(adminUserId: string, schoolId: string): Promise<Re
 interface DemoStudent extends StudentDef { userId: string; classExternalId: string; branchId: string }
 
 async function ensureStudents(
-  schoolId: string, branchIds: Record<BranchPlan['key'], string>, classIds: Record<string, string>,
+  schoolId: string, schoolName: string, branchIds: Record<BranchPlan['key'], string>, classIds: Record<string, string>,
 ): Promise<DemoStudent[]> {
   const passwordHash = await bcrypt.hash(DEMO_STUDENT_PASSWORD, 10);
   const out: DemoStudent[] = [];
@@ -230,12 +282,12 @@ async function ensureStudents(
     await prisma.studentProfile.upsert({
       where: { userId: user.id },
       update: {
-        schoolName: 'Delhi Public School', schoolId, branchId, branchVerifiedAt: new Date(),
+        schoolName, schoolId, branchId, branchVerifiedAt: new Date(),
         classExternalId, state: branchPlan.stateName, city: branchPlan.city, country: 'India',
         dob, address: `${(def.index % 90) + 1}, ${branchPlan.address}`, zip: '110001',
       },
       create: {
-        userId: user.id, schoolName: 'Delhi Public School', schoolId, branchId, branchVerifiedAt: new Date(),
+        userId: user.id, schoolName, schoolId, branchId, branchVerifiedAt: new Date(),
         classExternalId, state: branchPlan.stateName, city: branchPlan.city, country: 'India',
         dob, address: `${(def.index % 90) + 1}, ${branchPlan.address}`, zip: '110001',
       },
@@ -460,8 +512,8 @@ async function seedOnePracticeAttempt(studentId: string, studentIndex: number, s
   await prisma.quizAttempt.update({ where: { id: attemptId }, data: { startTime, endTime, createdAt: startTime, updatedAt: endTime } });
 }
 
-async function seedPractice(students: DemoStudent[], subjectIds: Record<string, string>): Promise<{ created: number; skippedAlready: number }> {
-  let created = 0, skippedAlready = 0;
+async function seedPractice(students: DemoStudent[], subjectIds: Record<string, string>): Promise<{ created: number; skippedAlready: number; failed: number }> {
+  let created = 0, skippedAlready = 0, failed = 0;
   const practiceStudents = students.filter(s => s.practice);
 
   for (const student of practiceStudents) {
@@ -483,12 +535,22 @@ async function seedPractice(students: DemoStudent[], subjectIds: Record<string, 
         if (already > 0) { skippedAlready++; continue; }
       }
       for (const p of subjectPlans) {
-        await seedOnePracticeAttempt(student.userId, student.index, subjectExternalId, p, student.tier === 'WEAK' ? 0.1 : 0.05);
-        created++;
+        // Optional enrichment only — the account/school/branch/student rows
+        // this script exists to produce are already committed by this
+        // point, so a missing real question bank for this subject/class
+        // (environment-specific content gap, not a bug) must never abort
+        // the whole run.
+        try {
+          await seedOnePracticeAttempt(student.userId, student.index, subjectExternalId, p, student.tier === 'WEAK' ? 0.1 : 0.05);
+          created++;
+        } catch (err) {
+          failed++;
+          console.warn(`[seed:school-admin-demo] Practice attempt skipped for ${student.userId} (${subjectName}): ${err instanceof Error ? err.message : err}`);
+        }
       }
     }
   }
-  return { created, skippedAlready };
+  return { created, skippedAlready, failed };
 }
 
 // ── main ────────────────────────────────────────────────────────────────
@@ -511,15 +573,14 @@ async function main(): Promise<void> {
   }
 
   console.log('[seed:school-admin-demo] Ensuring School Admin account + school…');
-  const { userId: adminUserId, schoolId } = await ensureAdmin();
-  const school = await prisma.school.findUniqueOrThrow({ where: { id: schoolId }, select: { name: true } });
-  console.log(`[seed:school-admin-demo] Admin ready: ${ADMIN_EMAIL} -> ${school.name}`);
+  const { userId: adminUserId, schoolId, schoolName } = await ensureAdmin();
+  console.log(`[seed:school-admin-demo] Admin ready: ${ADMIN_EMAIL} -> ${schoolName}`);
 
   console.log('[seed:school-admin-demo] Ensuring 3 branches…');
   const branchIds = await ensureBranches(adminUserId, schoolId);
 
   console.log('[seed:school-admin-demo] Ensuring 24 demo students…');
-  const students = await ensureStudents(schoolId, branchIds, classIds);
+  const students = await ensureStudents(schoolId, schoolName, branchIds, classIds);
 
   console.log('[seed:school-admin-demo] Enriching shared Assessment question-bank difficulty (idempotent)…');
   const difficultyUpdated = await enrichAssessmentDifficulty();
@@ -535,13 +596,13 @@ async function main(): Promise<void> {
   const { submissions, answers, skipped: subsSkipped } = await seedAssessmentResults(students, assessments);
 
   console.log('[seed:school-admin-demo] Seeding Practice Olympiad attempts for Class 5 students…');
-  const { created: practiceCreated, skippedAlready: practiceSkipped } = await seedPractice(students, subjectIds);
+  const { created: practiceCreated, skippedAlready: practiceSkipped, failed: practiceFailed } = await seedPractice(students, subjectIds);
 
   console.log('[seed:school-admin-demo] Done.');
-  console.log(`[seed:school-admin-demo] School: ${school.name} | Branches: ${Object.keys(branchIds).length} | Students: ${students.length}`);
+  console.log(`[seed:school-admin-demo] School: ${schoolName} | Branches: ${Object.keys(branchIds).length} | Students: ${students.length}`);
   console.log(`[seed:school-admin-demo] Assessment question-bank difficulty rows updated: ${difficultyUpdated}`);
   console.log(`[seed:school-admin-demo] Submissions created: ${submissions} (${answers} Answer rows), ${subsSkipped} already-existing/skipped this run.`);
-  console.log(`[seed:school-admin-demo] Practice attempts created: ${practiceCreated}, ${practiceSkipped} subject/student pairs already seeded.`);
+  console.log(`[seed:school-admin-demo] Practice attempts created: ${practiceCreated}, ${practiceSkipped} subject/student pairs already seeded, ${practiceFailed} skipped due to missing question content.`);
   console.log(`[seed:school-admin-demo] Login: ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
 }
 
